@@ -1,4 +1,4 @@
-package edu.brown.cs.student.kdtree;
+package kdtree;
 
 import java.util.Comparator;
 

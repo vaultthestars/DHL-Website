@@ -6,10 +6,10 @@ package user;
 public class User {
   private String username;
   private int membershipLength;
-  private Float[] songPoint;
+  private float[] songPoint;
   private User[] connections;
-  private Float[] historicalSongPoint;
-  private Float[] historicalConnections;
+  private float[] historicalSongPoint;
+  private float[] historicalConnections;
 
   /**
    * Constructor for User object
@@ -21,8 +21,8 @@ public class User {
    * @param historicalSongPoint - avg audio features of all song points since joining
    * @param historicalConnections - nearest neighbors from historical song points tree
    */
-  public User(String username, int membershipLength, Float[] songPoint, User[] connections,
-      Float[] historicalSongPoint, Float[] historicalConnections) {
+  public User(String username, int membershipLength, float[] songPoint, User[] connections,
+      float[] historicalSongPoint, float[] historicalConnections) {
     this.username = username;
     this.membershipLength = membershipLength;
     this.songPoint = songPoint;
@@ -47,11 +47,11 @@ public class User {
     this.membershipLength = membershipLength;
   }
 
-  public Float[] getSongPoint() {
+  public float[] getSongPoint() {
     return this.songPoint.clone();
   }
 
-  public void setSongPoint(Float[] songPoint) {
+  public void setSongPoint(float[] songPoint) {
     this.songPoint = songPoint;
   }
 
@@ -63,19 +63,21 @@ public class User {
     this.connections = connections;
   }
 
-  public Float[] getHistoricalSongPoint() {
+  public float[] getHistoricalSongPoint() {
     return this.historicalSongPoint.clone();
   }
 
-  public void setHistoricalSongPoint(Float[] historicalSongPoint) {
+  public void setHistoricalSongPoint(float[] historicalSongPoint) {
     this.historicalSongPoint = historicalSongPoint;
   }
 
-  public Float[] getHistoricalConnections() {
+  public float[] getHistoricalConnections() {
     return this.historicalConnections.clone();
   }
 
-  public void setHistoricalConnections(Float[] historicalConnections) {
+  public void setHistoricalConnections(float[] historicalConnections) {
     this.historicalConnections = historicalConnections;
   }
+
+  //TODO: implement updateHistoricalSongPoint(float[] newSongPoint) with running average formula
 }

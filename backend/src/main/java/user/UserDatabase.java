@@ -8,6 +8,7 @@ import java.util.HashMap;
 public class UserDatabase {
 
   private HashMap<String,User> users;
+  // private HashMap<float[], User> userSongPoints;
 
   /**
    * Constructor
