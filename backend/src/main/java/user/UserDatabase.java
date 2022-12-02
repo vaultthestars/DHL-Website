@@ -1,6 +1,9 @@
 package user;
 
 import java.util.HashMap;
+import java.util.List;
+import kdtree.KdTree;
+import kdtree.SongPoint;
 
 /**
  * Class representing the complete database of users
@@ -8,7 +11,10 @@ import java.util.HashMap;
 public class UserDatabase {
 
   private HashMap<String,User> users;
-  // private HashMap<float[], User> userSongPoints;
+  private List<SongPoint> daySongPoints;
+  private List<SongPoint> historicalSongPoints;
+  private KdTree<SongPoint> daySongTree;
+  private KdTree<SongPoint> historicalSongTree;
 
   /**
    * Constructor
@@ -37,5 +43,35 @@ public class UserDatabase {
     if (this.users.containsKey(user.getUsername())) {
       this.users.remove(user.getUsername());
     }
+  }
+
+  public List<SongPoint> getDaySongPoints() {
+    return daySongPoints;
+  }
+
+  public void setDaySongPoints(List<SongPoint> daySongPoints) {
+    this.daySongPoints = daySongPoints;
+  }
+
+  public List<SongPoint> getHistoricalSongPoints() {
+    return historicalSongPoints;
+  }
+
+  public void setHistoricalSongPoints(List<SongPoint> historicalSongPoints) {
+    this.historicalSongPoints = historicalSongPoints;
+  }
+
+  /**
+   * Builds 6-d tree with song points from today
+   */
+  public void buildSongTree() {
+    this.daySongTree = new KdTree<SongPoint>(this.getDaySongPoints(), 1);
+  }
+
+  /**
+   * Builds 6-d tree with historical song points
+   */
+  public void buildHistoricalSongTree() {
+    this.historicalSongTree = new KdTree<SongPoint>(this.getHistoricalSongPoints(), 1);
   }
 }

@@ -4,7 +4,9 @@ import java.util.Arrays;
 import java.util.Objects;
 
 /** Class to represent a simple point in k-dimensional space. */
-public class Point implements KdTreeNode {
+public class SongPoint implements KdTreeNode {
+
+  private String username;
   private float[] point;
   private int dimension;
   private final int hashNum = 31; // ???
@@ -14,7 +16,8 @@ public class Point implements KdTreeNode {
    *
    * @param vals array of floats representing a point (i.e. (x,y,z))
    */
-  public Point(float[] vals) {
+  public SongPoint(String username, float[] vals) {
+    this.username = username;
     this.point = vals;
     this.dimension = vals.length;
   }
@@ -49,10 +52,10 @@ public class Point implements KdTreeNode {
     if (this == o) {
       return true;
     }
-    if (!(o instanceof Point)) {
+    if (!(o instanceof SongPoint)) {
       return false;
     }
-    Point point1 = (Point) o;
+    SongPoint point1 = (SongPoint) o;
     return dimension == point1.dimension && Arrays.equals(point, point1.point);
   }
 
@@ -71,4 +74,11 @@ public class Point implements KdTreeNode {
   public float[] getPoint() {
     return this.point.clone();
   }
+
+  /**
+   * Getter to return the username identifier of a Point
+   *
+   * @return - string representing the user
+   */
+  public String getUsername() { return this.username; }
 }

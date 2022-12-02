@@ -3,6 +3,8 @@ package server;
 import static spark.Spark.after;
 
 import spark.Spark;
+import user.User;
+import user.UserDatabase;
 
 /**
  * Top-level class to run our API server. Contains the main() method which starts Spark and runs the
@@ -12,6 +14,7 @@ public class Server {
 
   public static void main(String[] args) {
     Spark.port(3232);
+    UserDatabase userDatabase = new UserDatabase();
 
     /*
        Setting CORS headers to allow cross-origin requests from the client; this is necessary for the client to
@@ -35,6 +38,8 @@ public class Server {
           response.header("Access-Control-Allow-Origin", "*");
           response.header("Access-Control-Allow-Methods", "*");
         });
+
+    // mock Points for now to build kd trees
 
     // Setting up the handler for the GET endpoints
     // Spark.get("loadcsv", new LoadCSVHandler(csvDatabase));

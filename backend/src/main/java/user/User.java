@@ -9,7 +9,21 @@ public class User {
   private float[] songPoint;
   private User[] connections;
   private float[] historicalSongPoint;
-  private float[] historicalConnections;
+  private User[] historicalConnections;
+
+  /**
+   * Constructor for new user
+   *
+   * @param username - TunedIn username, identifier for the user
+   */
+  public User(String username) {
+    this.username = username;
+    this.membershipLength = 0;
+    this.songPoint = new float[6];
+    this.connections = new User[5];
+    this.historicalSongPoint = new float[6];
+    this.historicalConnections = new User[5];
+  }
 
   /**
    * Constructor for User object
@@ -22,7 +36,7 @@ public class User {
    * @param historicalConnections - nearest neighbors from historical song points tree
    */
   public User(String username, int membershipLength, float[] songPoint, User[] connections,
-      float[] historicalSongPoint, float[] historicalConnections) {
+      float[] historicalSongPoint, User[] historicalConnections) {
     this.username = username;
     this.membershipLength = membershipLength;
     this.songPoint = songPoint;
@@ -71,11 +85,11 @@ public class User {
     this.historicalSongPoint = historicalSongPoint;
   }
 
-  public float[] getHistoricalConnections() {
+  public User[] getHistoricalConnections() {
     return this.historicalConnections.clone();
   }
 
-  public void setHistoricalConnections(float[] historicalConnections) {
+  public void setHistoricalConnections(User[] historicalConnections) {
     this.historicalConnections = historicalConnections;
   }
 
