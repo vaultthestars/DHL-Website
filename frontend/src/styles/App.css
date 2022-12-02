@@ -41,13 +41,13 @@
 }
 
 .App-header {
-  background-color: #282c34;
+  background-color: #29186d;
   min-height: 20vh;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  font-size: calc(10px + 2vmin);
+  font-size: calc(20px + 2vmin);
   color: white;
 }
 
@@ -118,4 +118,70 @@ circle {
 
 .draggable {
   cursor: move;
+}
+
+/* Sidebar stuff */
+
+@import url('https://fonts.googleapis.com/css2?family=Open+Sans&display=swap');
+
+*{
+    list-style: none;
+    text-decoration: none;
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+    font-family: 'Open Sans', sans-serif;
+}
+
+body{
+    background: #f5f6fa;
+}
+
+.wrapper .sidebar{
+    background: rgb(73, 58, 173);
+    position: absolute;
+    top: 20vh;
+    right: 0;
+    width: 225px;
+    height: 600px;
+    padding: 20px 0;
+    transition: all 0.5s ease;
+}
+
+.wrapper .sidebar .profile{
+  margin-bottom: 30px;
+  text-align: center;
+}
+
+.wrapper .sidebar .tuneinlogo img{
+  display: block;
+  position: absolute;
+  top: 25px;
+  width: 225px;
+  height: 225px;
+}
+
+.wrapper .sidebar .tuneinlogo h3{
+  color: #ffffff;
+  margin: 10px 0 5px;
+}
+
+.wrapper .sidebar .tuneinlogo p{
+  color: rgb(206, 240, 253);
+  font-size: 14px;
+}
+
+.wrapper .sidebar .matcheswrapper{
+  background: rgb(92, 149, 218);
+  position: absolute;
+  top: 200px;
+  right: 12.5px;
+  width: 200px;
+  height: 387.5px;
+  padding: 20px 0;
+  transition: all 0.5s ease;
+}
+
+.wrapper .svgwindow{
+  background: rgb(95, 163, 223);
 }

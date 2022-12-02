@@ -227,7 +227,6 @@ export default function GraphVis() {
                         <img src="https://i.ibb.co/V2Dmsx4/tuneinlogo.png" 
                         alt="tunein_logo"/>
                         <div className = "matcheswrapper">
-
                         </div>
                     </div>
                 </div>
