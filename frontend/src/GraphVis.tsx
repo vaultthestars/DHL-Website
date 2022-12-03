@@ -6,6 +6,7 @@ import ReactSlider from "react-slider";
 import * as d3 from 'd3';
 import ReactDOM from 'react-dom';
 import { svg } from 'd3';
+import tuneinlogo from './images/tuneinlogo.png'
 
 //npm i --save-dev @types/react-slider
 
@@ -15,10 +16,22 @@ import { svg } from 'd3';
 //pain in the ass. Try doing it with arrays instead.
 // Point data format: ID/key, cx, cy
 // Have a separate map from ID/key to energy, something, something else, something else, etc.
+//TODO: Add the actual parameters we want[DONE]
+//TODO: Change background color
+//TODO: Make the website actually look the way we want it to
+//TODO: Add click and drag camera controls
+//TODO: Add the current user
+//TODO: Round display numbers or use a better system
 
 let userdata: Map<number, Array<number>> = new Map<number, Array<number>>();
 
 let maxnum = 500;
+
+let centerx = 600;
+
+let repulseval = 1.5;
+
+let repulsedist = 40;
 
 const sortstyle: Map<number, (inpt: Array<number>, SortParameter: number) => Array<number>> = new Map<number, (inpt: Array<number>) => Array<number>>();
 const sortname: Map<number, string> = new Map<number, string>();
@@ -30,18 +43,23 @@ sortstyle.set(1,linsort);
 sortname.set(0,"radial sort");
 sortname.set(1,"linear sort");
 
-parameternames.set(0,"energy");
-parameternames.set(1,"mood");
-parameternames.set(2,"length");
+parameternames.set(0,"Acousticness");
+parameternames.set(1,"Danceability");
+parameternames.set(2,"Energy");
+parameternames.set(3,"Instrumentalness");
+parameternames.set(4,"Speechiness");
+parameternames.set(5,"Valence");
+
+//Acousticness, Danceability, Energy, Instrumentalness, Speechiness, Valence
 
 for(let i = 0; i < maxnum; i++){
-    userdata.set(i,[Math.random(),Math.random(),Math.random()])
+    userdata.set(i,[Math.random(),Math.random(),Math.random(),Math.random(),Math.random(),Math.random()])
 }
 
 function initdist(initdata: Map<number, Array<number>>): Array<Array<number>>{
     let returnarr: Array<Array<number>> = new Array<Array<number>>();
     for(let i = 0; i < initdata.size; i++){
-        returnarr.push([i,800*(Math.random()-0.5),600*(Math.random()-0.5)])
+        returnarr.push([i,1500*(Math.random()-0.5),600*(Math.random()-0.5)])
     }
     return returnarr;
 }
@@ -73,7 +91,7 @@ function radsort(pt: Array<number>, SortParameter: number): Array<number>{
 }
 
 function linsort(pt: Array<number>, SortParameter: number): Array<number>{
-    return [pt[0], 600*getdata(pt[0],SortParameter)-300, pt[2]]
+    return [pt[0], pt[1],300-(600*getdata(pt[0],SortParameter))] //trying to do it with 0 y instead of pt[2]
 }
 
 function getdata(index: number, index2: number): number{
@@ -93,7 +111,7 @@ function repulse(p1: Array<number>, p2: Array<number>): Array<number>{
     }
     else{
         //MIGHT HAVE TO TWEAK THIS VALUE
-        let scalar = sech((1/15)*magdiff)/magdiff
+        let scalar = sech((1/repulsedist)*magdiff)/magdiff
         return [p1[0], scalar * (p1[1]-p2[1]), scalar*(p1[2]-p2[2])]
     }
 }
@@ -120,8 +138,8 @@ function towardsort(pt: Array<number>, SortParameter: number, allpts: Array<Arra
         repy = repy + repulse(pt, allpts[i])[2]
     }
     return [vector[0],
-    pt[1]+scalar*vector[1] + 1*repx,
-    pt[2]+scalar*vector[2] + 1*repy]
+    pt[1]+scalar*vector[1] + repulseval*repx,
+    pt[2]+scalar*vector[2] + repulseval*repy]
 }
 
 function sortshift(pts: Array<Array<number>>, SortParameter: number, sortfunc: (inputarr: Array<number>, SortParameter: number) => Array<number>, speed: number):Array<Array<number>>{
@@ -190,20 +208,60 @@ export default function GraphVis() {
     const [SelectIndex, setSelectIndex] = useState<number>(0);
     const [Timer, setTimer] = useState<number>(0);
     const [SortIndex, setSortIndex] = useState<number>(0);
-    const [SortParameter, setSortParameter] = useState<number>(0);
-    const [Speed, setSpeed] = useState<number>(0);
+    const [SortParameter, setSortParameter] = useState<number>(1);
+    const [Speed, setSpeed] = useState<number>(10);
     const [ShowCircLabels, SetShowCircLabels] = useState<boolean>(false);
     
     useEffect(() => {
         setCircleData(sortshift(CircleData, SortParameter, getsortmethod(SortIndex), Speed))
-        setTimer((Timer + 0.0005) % 1)
+        setTimer((Timer + 0.001) % 1)
     }, CircleData)
 
     console.log(getsortname(SortIndex))
 
     //Make some sort of time update thing that lets you update circles and send their positions somewhere
-    return <div className="app stuff">
-                <div>
+    return <div className = "wrapper">
+                <div className = "sidebar">
+                    <div className="tuneinlogo">
+                        <h3>Who's on your wavelength?</h3>
+                        <img src="https://i.ibb.co/V2Dmsx4/tuneinlogo.png" 
+                        alt="tunein_logo"/>
+                        <div className = "matcheswrapper">
+                        </div>
+                    </div>
+                </div>
+                {/* <p>{paramstring(SelectIndex)}
+                </p> */}
+                <svg className="svgwindow" fill = "true"
+                 width="100%" height="600">
+                    {/* render the circles */}
+                    {CircleData.map((entry) => 
+                        <circle 
+                        onClick= {() => {
+                            console.log("circle " + entry[0] + " clicked");
+                            setSelectIndex(entry[0])
+                        }} 
+                        key= {entry[0]} 
+                        cx= {entry[1]+centerx} cy= {entry[2]+300} 
+                        r={20 + 4*Math.sin(0.1*mag(entry)+tau*Timer)} fill={"hsla(" + 200+90*getdata(entry[0],SortParameter) + ", 100%, 40%, 0.5)"}
+                        stroke = {renderstroke(entry[0],SelectIndex)}
+                        strokeWidth = "5"
+                        >
+                            {/* FOR WHATEVER REASON I CAN'T PUT TEXT OVER THIS */}
+                        </circle>
+                    )}
+                    {CircleData.map((entry) => 
+                        {if(ShowCircLabels){
+                            return (<text x={entry[1]+centerx-5*digs(entry[0])} y={entry[2]+300+5} 
+                        className="small"
+                        onClick= {() => {
+                            console.log("circle " + entry[0] + " clicked");
+                            setSelectIndex(entry[0])
+                        }} >
+                        {entry[0]}</text>)}}
+                    )}
+                </svg>
+                <div className = "button stuff">
                     <button onClick= {() => {  
                         // update the circle positions
                         setCircleData(initarray);
@@ -233,38 +291,7 @@ export default function GraphVis() {
                     </button>
                     <p>{"Sort style: " + getsortname(SortIndex) + " Sort parameter: " + getparamname(SortParameter)}</p>
                 </div>
-                <p>{paramstring(SelectIndex)}
-                </p>
-                <svg fill = "true"
-                 width="1000" height="600">
-                    {/* render the circles */}
-                    {CircleData.map((entry) => 
-                        <circle 
-                        onClick= {() => {
-                            console.log("circle " + entry[0] + " clicked");
-                            setSelectIndex(entry[0])
-                        }} 
-                        key= {entry[0]} 
-                        cx= {entry[1]+500} cy= {entry[2]+300} 
-                        r={10 + 1*Math.sin(0.1*mag(entry)+tau*Timer)} fill={"hsla(" + 180 * getdata(entry[0],SortParameter) + ", 100%, 50%, 1.0)"}
-                        stroke = {renderstroke(entry[0],SelectIndex)}
-                        strokeWidth = "5"
-                        >
-                            {/* FOR WHATEVER REASON I CAN'T PUT TEXT OVER THIS */}
-                        </circle>
-                    )}
-                    {CircleData.map((entry) => 
-                        {if(ShowCircLabels){
-                            return (<text x={entry[1]+500-5*digs(entry[0])} y={entry[2]+300+5} 
-                        className="small"
-                        onClick= {() => {
-                            console.log("circle " + entry[0] + " clicked");
-                            setSelectIndex(entry[0])
-                        }} >
-                        {entry[0]}</text>)}}
-                    )}
-                </svg>
-                <div className = "beegslider">
+                {/* <div className = "beegslider">
                     <ReactSlider
                         className="horizontal-slider"
                         thumbClassName="example-thumb"
@@ -276,8 +303,9 @@ export default function GraphVis() {
                         pearling
                         minDistance={10}
                     />
-                </div>
+                </div> */}
             </div>
+            
 }
 
 {/* {circledata.map((circx,circy)=>
