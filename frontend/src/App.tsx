@@ -11,10 +11,7 @@ function App() {
       <p className="App-header">
       <button className="google-button" onClick = {signInWithGoogle}>Sign in With Google</button>
         tunein
-      <button className="google-button" onClick = {signInWithGoogle}>Sign in With Google</button>
-        TunedIn
-      </p>
-      
+      </p>      
       <GraphVis />
       {/* <Terminal /> */}
     </div>
