@@ -1,9 +1,12 @@
 package user;
 
+import java.util.Arrays;
+import java.util.Objects;
+
 /**
  * Class representing an individual TuneIn user, which houses essential user-specific information.
  */
-public class User {
+public class User implements Cloneable {
   private String username;
   private int membershipLength;
   private float[] songPoint;
@@ -35,14 +38,46 @@ public class User {
    * @param historicalSongPoint - avg audio features of all song points since joining
    * @param historicalConnections - nearest neighbors from historical song points tree
    */
-  public User(String username, int membershipLength, float[] songPoint, String[] connections,
-      float[] historicalSongPoint, String[] historicalConnections) {
+  public User(
+      String username,
+      int membershipLength,
+      float[] songPoint,
+      String[] connections,
+      float[] historicalSongPoint,
+      String[] historicalConnections) {
     this.username = username;
     this.membershipLength = membershipLength;
     this.songPoint = songPoint;
     this.connections = connections;
     this.historicalSongPoint = historicalSongPoint;
     this.historicalConnections = historicalConnections;
+  }
+
+  @Override
+  public boolean equals(Object o) {
+    if (this == o) {
+      return true;
+    }
+    if (o == null || getClass() != o.getClass()) {
+      return false;
+    }
+    User user = (User) o;
+    return membershipLength == user.membershipLength
+        && username.equals(user.username)
+        && Arrays.equals(songPoint, user.songPoint)
+        && Arrays.equals(connections, user.connections)
+        && Arrays.equals(historicalSongPoint, user.historicalSongPoint)
+        && Arrays.equals(historicalConnections, user.historicalConnections);
+  }
+
+  @Override
+  public int hashCode() {
+    int result = Objects.hash(username, membershipLength);
+    result = 31 * result + Arrays.hashCode(songPoint);
+    result = 31 * result + Arrays.hashCode(connections);
+    result = 31 * result + Arrays.hashCode(historicalSongPoint);
+    result = 31 * result + Arrays.hashCode(historicalConnections);
+    return result;
   }
 
   public String getUsername() {
@@ -93,5 +128,24 @@ public class User {
     this.historicalConnections = historicalConnections;
   }
 
-  // TODO: implement updateHistoricalSongPoint(float[] newSongPoint) with running average formula
+  @Override
+  public User clone() {
+    try {
+      User clone = (User) super.clone();
+      // TODO: copy mutable state here, so the clone can't change the internals of the original
+      clone.setUsername(this.getUsername());
+      clone.setMembershipLength(this.getMembershipLength());
+      clone.setSongPoint(this.getSongPoint());
+      clone.setConnections(this.getConnections());
+      clone.setHistoricalSongPoint(this.getHistoricalSongPoint());
+      clone.setHistoricalConnections(this.getHistoricalConnections());
+      return clone;
+    } catch (CloneNotSupportedException e) {
+      throw new AssertionError();
+    }
+  }
+
+  public void updateHistoricalSongPoint(float[] newSongPoint) {
+    // TODO: implement with incremental / running average formula
+  }
 }

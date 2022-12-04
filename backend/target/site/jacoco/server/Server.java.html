@@ -1,0 +1,96 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>Server.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">s0</a> &gt; <a href="index.source.html" class="el_package">server</a> &gt; <span class="el_source">Server.java</span></div><h1>Server.java</h1><pre class="source lang-java linenums">package server;
+
+import static spark.Spark.after;
+
+import csv.CSVParser;
+import csv.FactoryFailureException;
+import java.io.FileReader;
+import java.io.IOException;
+import java.util.List;
+import server.handlers.LoadConnectionsHandler;
+import spark.Spark;
+import user.User;
+import user.UserDatabase;
+import user.UserFactory;
+
+/**
+ * Top-level class to run our API server. Contains the main() method which starts Spark and runs the
+ * various handlers.
+ */
+<span class="nc" id="L20">public class Server {</span>
+
+  /**
+   * Creates a List of User objects from a csv of mock users.
+   *
+   * @return a List of Users
+   */
+  public static List&lt;User&gt; generateMockUsers() {
+    try {
+<span class="nc" id="L29">      CSVParser&lt;User&gt; userCSVParser =</span>
+          new CSVParser&lt;User&gt;(new FileReader(&quot;data/mockUsers.csv&quot;), new UserFactory());
+<span class="nc" id="L31">      return userCSVParser.getParsedData();</span>
+<span class="nc" id="L32">    } catch (IOException | FactoryFailureException e) {</span>
+<span class="nc" id="L33">      throw new RuntimeException(e);</span>
+    }
+  }
+
+  /**
+   * Registers users from a list in the user database
+   *
+   * @param userDatabase - the user database to update
+   * @param users - the list of users to register
+   */
+  public static void registerUsers(UserDatabase userDatabase, List&lt;User&gt; users) {
+<span class="nc bnc" id="L44" title="All 2 branches missed.">    for (User user : users) {</span>
+<span class="nc" id="L45">      userDatabase.register(user);</span>
+<span class="nc" id="L46">    }</span>
+<span class="nc" id="L47">  }</span>
+
+  public static void main(String[] args) {
+<span class="nc" id="L50">    Spark.port(3232);</span>
+<span class="nc" id="L51">    UserDatabase userDatabase = new UserDatabase();</span>
+<span class="nc" id="L52">    registerUsers(userDatabase, generateMockUsers());</span>
+
+    /*
+       Setting CORS headers to allow cross-origin requests from the client; this is necessary for the client to
+       be able to make requests to the server.
+
+       By setting the Access-Control-Allow-Origin header to &quot;*&quot;, we allow requests from any origin.
+       This is not a good idea in real-world applications, since it opens up your server to cross-origin requests
+       from any website. Instead, you should set this header to the origin of your client, or a list of origins
+       that you trust.
+
+       By setting the Access-Control-Allow-Methods header to &quot;*&quot;, we allow requests with any HTTP method.
+       Again, it's generally better to be more specific here and only allow the methods you need, but for
+       this demo we'll allow all methods.
+
+       We recommend you learn more about CORS with these resources:
+           - https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS
+           - https://portswigger.net/web-security/cors
+    */
+<span class="nc" id="L71">    after(</span>
+        (request, response) -&gt; {
+<span class="nc" id="L73">          response.header(&quot;Access-Control-Allow-Origin&quot;, &quot;*&quot;);</span>
+<span class="nc" id="L74">          response.header(&quot;Access-Control-Allow-Methods&quot;, &quot;*&quot;);</span>
+<span class="nc" id="L75">        });</span>
+
+    // mock Points for now to build kd trees
+
+    // Setting up the handler for the GET endpoints
+<span class="nc" id="L80">    Spark.get(&quot;load-connections&quot;, new LoadConnectionsHandler(userDatabase));</span>
+
+    /*
+    Endpoints
+    - spotify calls
+    - getUsers --&gt; response = user database
+        - to be used on frontend for getting all users and displaying interactive clustering
+    - getUser?username=&lt;username&gt; --&gt; response = user object
+        - to be used on frontend for getting &amp; displaying top 5 connections to a logged in tune in user
+     */
+
+<span class="nc" id="L91">    Spark.init();</span>
+<span class="nc" id="L92">    Spark.awaitInitialization();</span>
+<span class="nc" id="L93">    System.out.println(&quot;Server started.&quot;);</span>
+<span class="nc" id="L94">  }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.8.202204050719</span></div></body></html>

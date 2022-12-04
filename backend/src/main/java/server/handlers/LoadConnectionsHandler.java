@@ -1,5 +1,7 @@
 package server.handlers;
 
+import com.squareup.moshi.Moshi;
+import edu.brown.cs.student.server.ErrBadJsonResponse;
 import spark.Request;
 import spark.Response;
 import spark.Route;
@@ -28,8 +30,41 @@ public class LoadConnectionsHandler implements Route {
    */
   @Override
   public Object handle(Request request, Response response) throws Exception {
-    return null;
-    // TODO: call kd-tree methods from UserDatabase & store connections / historicalConnections in user objects
-    // TODO: create success response
+    try {
+      // call kd-tree methods from UserDatabase & store connections & historicalConnections in user
+      // objects
+      this.userDatabase.loadSongPoints();
+      this.userDatabase.loadHistoricalSongPoints();
+      this.userDatabase.buildSongTree();
+      this.userDatabase.buildHistoricalSongTree();
+      this.userDatabase.loadConnections();
+      this.userDatabase.loadHistoricalConnections();
+      return new LoadConnectionsSuccessResponse().serialize();
+    } catch (Exception e) {
+      e.printStackTrace();
+      return new ErrBadJsonResponse();
+    }
+  }
+
+  public record LoadConnectionsSuccessResponse(String result) {
+
+    public LoadConnectionsSuccessResponse() {
+      this("success");
+    }
+
+    /**
+     * Serializes this response object ot a Json String
+     *
+     * @return this response, serialized as Json
+     */
+    String serialize() {
+      try {
+        Moshi moshi = new Moshi.Builder().build();
+        return moshi.adapter(LoadConnectionsSuccessResponse.class).toJson(this);
+      } catch (Exception e) {
+        e.printStackTrace();
+        throw e;
+      }
+    }
   }
 }

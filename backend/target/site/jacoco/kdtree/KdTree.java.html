@@ -1,0 +1,284 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>KdTree.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">s0</a> &gt; <a href="index.source.html" class="el_package">kdtree</a> &gt; <span class="el_source">KdTree.java</span></div><h1>KdTree.java</h1><pre class="source lang-java linenums">package kdtree;
+
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.HashSet;
+import java.util.List;
+import java.util.PriorityQueue;
+
+/**
+ * Class to store KDTreeNodes in a k-d tree, a special form of a binary tree built for the quick
+ * search of points in a k-dimensional space.
+ *
+ * @param &lt;T&gt; data to be stored in the KdTree, must extend KdTreeNode
+ */
+public class KdTree&lt;T extends KdTreeNode&gt; {
+  private T head;
+  private KdTree&lt;T&gt; left;
+  private KdTree&lt;T&gt; right;
+  private int axis;
+  private List&lt;T&gt; kdTreeNodes;
+
+  /**
+   * Recursively constructs a k-d tree of the given nodes.
+   *
+   * @param kdTreeNodes List of nodes to construct the k-d tree with.
+   * @param depth Current depth of the tree, which determines the axis to sort by.
+   */
+<span class="nc" id="L28">  public KdTree(List&lt;T&gt; kdTreeNodes, int depth) {</span>
+<span class="nc" id="L29">    int size = kdTreeNodes.size();</span>
+<span class="nc" id="L30">    this.kdTreeNodes = kdTreeNodes;</span>
+<span class="nc bnc" id="L31" title="All 2 branches missed.">    if (size == 0) {</span>
+      // base case
+<span class="nc" id="L33">      this.head = null;</span>
+<span class="nc" id="L34">      this.left = null;</span>
+<span class="nc" id="L35">      this.right = null;</span>
+    } else {
+<span class="nc" id="L37">      int dimension = kdTreeNodes.get(0).getDimension();</span>
+<span class="nc" id="L38">      int currentAxis = depth % dimension;</span>
+<span class="nc" id="L39">      this.axis = currentAxis;</span>
+
+      // sort the list of nodes by the current relevant axis
+<span class="nc" id="L42">      kdTreeNodes.sort(new AxisSorter(currentAxis));</span>
+
+      // find the median index to split the list at
+      int medianIndex;
+<span class="nc bnc" id="L46" title="All 2 branches missed.">      if (size % 2 == 1) {</span>
+<span class="nc" id="L47">        medianIndex = (size - 1) / 2;</span>
+      } else {
+<span class="nc" id="L49">        medianIndex = size / 2;</span>
+      }
+      // recursively construct the rest of the tree with each half of the node list
+<span class="nc" id="L52">      this.head = kdTreeNodes.get(medianIndex);</span>
+<span class="nc" id="L53">      this.left = new KdTree&lt;&gt;(new ArrayList&lt;&gt;(kdTreeNodes.subList(0, medianIndex)), depth + 1);</span>
+<span class="nc" id="L54">      this.right =</span>
+<span class="nc" id="L55">          new KdTree&lt;&gt;(new ArrayList&lt;&gt;(kdTreeNodes.subList(medianIndex + 1, size)), depth + 1);</span>
+    }
+<span class="nc" id="L57">  }</span>
+
+  /**
+   * Performs either a radius search or a k-nearest neighbors search using a specific k-d tree
+   * traversal algorithm.
+   *
+   * @param type The type of search to perform. Can either be &quot;neighbors&quot; or &quot;radius.&quot;
+   * @param val If type is &quot;neighbors&quot;, the number of neighbors to return. If type is &quot;radius&quot;, the
+   *     radius around targetPoint to search for nodes.
+   * @param targetPoint The point to search around for neighbors or points in a given radius.
+   * @param distanceSorter Comparator to sort the returned PriorityQueue in descending order by
+   *     distance from targetPoint.
+   * @param ignore HashSet of KDTreeNodes to skip when returning nodes. Used to avoid returning
+   *     &quot;name&quot; when command format is 'neighbors k &quot;name&quot;' OR 'radius r &quot;name&quot;'.
+   * @return PriorityQueue in descending order by distance from targetPoint of nearest
+   *     neighbors/nodes within radius.
+   */
+  public PriorityQueue&lt;T&gt; kdTreeSearch(
+      String type,
+      double val,
+      KdTreeNode targetPoint,
+      Comparator&lt;KdTreeNode&gt; distanceSorter,
+      HashSet&lt;T&gt; ignore) {
+    // k is used for &quot;neighbors&quot; search
+<span class="nc" id="L81">    int k = (int) Math.round(val);</span>
+<span class="nc" id="L82">    PriorityQueue&lt;T&gt; returnNodes = new PriorityQueue&lt;&gt;();</span>
+
+<span class="nc bnc" id="L84" title="All 6 branches missed.">    if (val == 0 &amp;&amp; type.equals(&quot;neighbors&quot;) || this.head == null) {</span>
+      // base case
+<span class="nc" id="L86">      return returnNodes;</span>
+    } else {
+<span class="nc bnc" id="L88" title="All 2 branches missed.">      if (&quot;radius&quot;.equals(type)) {</span>
+        // init priority queue with enough room for all nodes
+<span class="nc" id="L90">        returnNodes = new PriorityQueue&lt;&gt;(this.kdTreeNodes.size(), distanceSorter);</span>
+<span class="nc bnc" id="L91" title="All 2 branches missed.">      } else if (&quot;neighbors&quot;.equals(type)) {</span>
+        // init priority queue with enough room for k neighbors (k + 1 in case k == 0)
+<span class="nc" id="L93">        returnNodes = new PriorityQueue&lt;&gt;(k + 1, distanceSorter);</span>
+      }
+      // recur
+<span class="nc" id="L96">      kdTreeSearchRecursive(type, val, returnNodes, targetPoint, ignore);</span>
+    }
+<span class="nc" id="L98">    return returnNodes;</span>
+  }
+
+  /**
+   * Helper function to recursively to perform either a radius search or a k-nearest neighbors
+   * search.
+   *
+   * @param type The type of search to perform. Can either be &quot;neighbors&quot; or &quot;radius.&quot;
+   * @param val If type is &quot;neighbors&quot;, the number of neighbors to return. If type is &quot;radius&quot;, the
+   *     radius around targetPoint to search for nodes.
+   * @param returnNodes PriorityQueue in descending order by distance from targetPoint of nearest
+   *     neighbors/nodes within radius.
+   * @param targetPoint The point to search around for neighbors or points in a given radius.
+   * @param ignore HashSet of KDTreeNodes to skip when returning nodes. Used to avoid returning
+   *     &quot;name&quot; when command format is 'neighbors k &quot;name&quot;' OR 'radius r &quot;name&quot;'.
+   */
+  private void kdTreeSearchRecursive(
+      String type,
+      double val,
+      PriorityQueue&lt;T&gt; returnNodes,
+      KdTreeNode targetPoint,
+      HashSet&lt;T&gt; ignore) {
+<span class="nc bnc" id="L120" title="All 2 branches missed.">    if (this.getHead() != null) {</span>
+<span class="nc" id="L121">      T currentNode = this.getHead();</span>
+<span class="nc" id="L122">      double currentDistance = currentNode.euclideanDistance(targetPoint);</span>
+      // comparison value used for traversal (differs for radius and neighbors)
+<span class="nc" id="L124">      double traversalComparison = 0;</span>
+<span class="nc" id="L125">      int relevantAxis = this.getAxis();</span>
+<span class="nc" id="L126">      double relevantAxisDistance =</span>
+<span class="nc" id="L127">          targetPoint.getPoint()[relevantAxis] - currentNode.getPoint()[relevantAxis];</span>
+
+<span class="nc bnc" id="L129" title="All 2 branches missed.">      if (&quot;neighbors&quot;.equals(type)) {</span>
+<span class="nc" id="L130">        int k = (int) Math.round(val);</span>
+<span class="nc bnc" id="L131" title="All 2 branches missed.">        if (returnNodes.size() == 0) {</span>
+          // if returnNodes is empty and ignore does not have current node, add current node
+<span class="nc bnc" id="L133" title="All 2 branches missed.">          if (!ignore.contains(currentNode)) {</span>
+<span class="nc" id="L134">            returnNodes.add(currentNode);</span>
+          }
+          // this ensures recursion on subtrees
+<span class="nc" id="L137">          traversalComparison = relevantAxisDistance + 1;</span>
+<span class="nc bnc" id="L138" title="All 2 branches missed.">        } else if (returnNodes.size() &lt; k) {</span>
+          // if returnNodes isn't full and ignore does not have current node, add current node
+<span class="nc bnc" id="L140" title="All 2 branches missed.">          if (!ignore.contains(currentNode)) {</span>
+<span class="nc" id="L141">            returnNodes.add(currentNode);</span>
+          }
+<span class="nc" id="L143">          traversalComparison = returnNodes.peek().euclideanDistance(targetPoint);</span>
+<span class="nc bnc" id="L144" title="All 2 branches missed.">        } else if (returnNodes.size() == k) {</span>
+          // if returnNodes is full, compare with farthest node &amp; update accordingly
+<span class="nc" id="L146">          traversalComparison = returnNodes.peek().euclideanDistance(targetPoint);</span>
+<span class="nc bnc" id="L147" title="All 2 branches missed.">          if (!ignore.contains(currentNode)</span>
+<span class="nc bnc" id="L148" title="All 2 branches missed.">              &amp;&amp; Double.compare(currentDistance, traversalComparison) == -1) {</span>
+<span class="nc" id="L149">            returnNodes.poll();</span>
+<span class="nc" id="L150">            returnNodes.add(currentNode);</span>
+          } else {
+<span class="nc" id="L152">            traversalComparison = returnNodes.peek().euclideanDistance(targetPoint);</span>
+          }
+        }
+
+<span class="nc bnc" id="L156" title="All 2 branches missed.">      } else if (&quot;radius&quot;.equals(type)) {</span>
+<span class="nc" id="L157">        traversalComparison = val;</span>
+<span class="nc bnc" id="L158" title="All 4 branches missed.">        if (!ignore.contains(currentNode) &amp;&amp; Double.compare(currentDistance, val) &lt;= 0) {</span>
+          // if the current node's distance is within the radius, add
+<span class="nc" id="L160">          returnNodes.add(currentNode);</span>
+        }
+      }
+
+<span class="nc bnc" id="L164" title="All 2 branches missed.">      if (Double.compare(traversalComparison, relevantAxisDistance) &gt;= 0) {</span>
+        // recur on both subtrees if traversalComparison &gt; relevant axis dist.
+<span class="nc" id="L166">        this.left.kdTreeSearchRecursive(type, val, returnNodes, targetPoint, ignore);</span>
+<span class="nc" id="L167">        this.right.kdTreeSearchRecursive(type, val, returnNodes, targetPoint, ignore);</span>
+      } else {
+<span class="nc" id="L169">        double currentNodeRelevantAxis = currentNode.getPoint()[relevantAxis];</span>
+<span class="nc" id="L170">        double targetPointRelevantAxis = targetPoint.getPoint()[relevantAxis];</span>
+
+<span class="nc bnc" id="L172" title="All 2 branches missed.">        if (Double.compare(currentNodeRelevantAxis, targetPointRelevantAxis) == -1) {</span>
+          // if currentNode &lt; targetPoint on relevant axis, recur on right subtree
+<span class="nc" id="L174">          this.right.kdTreeSearchRecursive(type, val, returnNodes, targetPoint, ignore);</span>
+<span class="nc bnc" id="L175" title="All 2 branches missed.">        } else if (Double.compare(currentNodeRelevantAxis, targetPointRelevantAxis) == 1) {</span>
+          // if currentNode &gt; targetPoint on relevant axis, recur on left subtree
+<span class="nc" id="L177">          this.left.kdTreeSearchRecursive(type, val, returnNodes, targetPoint, ignore);</span>
+        } else {
+          // if currentNode == targetPoint on relevant axis, recur on both subtrees
+<span class="nc" id="L180">          this.left.kdTreeSearchRecursive(type, val, returnNodes, targetPoint, ignore);</span>
+<span class="nc" id="L181">          this.right.kdTreeSearchRecursive(type, val, returnNodes, targetPoint, ignore);</span>
+        }
+      }
+    }
+<span class="nc" id="L185">  }</span>
+
+  /**
+   * Performs either a radius search or a k-nearest neighbors search using a naive, inefficient
+   * algorithm.
+   *
+   * @param type The type of search to perform. Can either be &quot;neighbors&quot; or &quot;radius.&quot;
+   * @param val If type is &quot;neighbors&quot;, the number of neighbors to return. If type is &quot;radius&quot;, the
+   *     radius around targetPoint to search for nodes.
+   * @param targetPoint The point to search around for neighbors or points in a given radius.
+   * @param ignore HashSet of KDTreeNodes to skip when returning nodes. Used to avoid returning
+   *     &quot;name&quot; when command format is 'neighbors k &quot;name&quot;' OR 'radius r &quot;name&quot;'.
+   * @return PriorityQueue in descending order by distance from targetPoint of nearest
+   *     neighbors/nodes within radius.
+   */
+  public PriorityQueue&lt;T&gt; naiveSearch(
+      String type, double val, KdTreeNode targetPoint, HashSet&lt;T&gt; ignore) {
+<span class="nc" id="L202">    List&lt;T&gt; nodeList = this.kdTreeNodes;</span>
+<span class="nc" id="L203">    int k = (int) Math.round(val);</span>
+<span class="nc" id="L204">    PriorityQueue&lt;T&gt; returnNodes = new PriorityQueue&lt;&gt;(k + 1, new DistanceSorter(targetPoint));</span>
+<span class="nc bnc" id="L205" title="All 2 branches missed.">    if (type.equals(&quot;radius&quot;)) {</span>
+      // iterate through node list and add node if it is within the radius
+<span class="nc bnc" id="L207" title="All 2 branches missed.">      for (T node : nodeList) {</span>
+<span class="nc" id="L208">        double currentDistance = targetPoint.euclideanDistance(node);</span>
+<span class="nc bnc" id="L209" title="All 4 branches missed.">        if (!ignore.contains(node) &amp;&amp; Double.compare(currentDistance, val) &lt;= 0) {</span>
+<span class="nc" id="L210">          returnNodes.add(node);</span>
+        }
+<span class="nc" id="L212">      }</span>
+
+<span class="nc bnc" id="L214" title="All 2 branches missed.">    } else if (type.equals(&quot;neighbors&quot;)) {</span>
+<span class="nc bnc" id="L215" title="All 4 branches missed.">      if (k == 0 || nodeList.isEmpty()) {</span>
+        // base case
+<span class="nc" id="L217">        return returnNodes;</span>
+      } else {
+<span class="nc bnc" id="L219" title="All 2 branches missed.">        for (T node : nodeList) {</span>
+          // iterate through node list and update returnNodes accordingly
+<span class="nc bnc" id="L221" title="All 2 branches missed.">          if (!ignore.contains(node)) {</span>
+<span class="nc" id="L222">            double currentDistance = targetPoint.euclideanDistance(node);</span>
+<span class="nc bnc" id="L223" title="All 2 branches missed.">            if (returnNodes.size() == k</span>
+<span class="nc bnc" id="L224" title="All 2 branches missed.">                &amp;&amp; Double.compare(</span>
+<span class="nc" id="L225">                        currentDistance, returnNodes.peek().euclideanDistance(targetPoint))</span>
+                    &lt;= 0) {
+<span class="nc" id="L227">              returnNodes.poll();</span>
+<span class="nc" id="L228">              returnNodes.add(node);</span>
+<span class="nc bnc" id="L229" title="All 2 branches missed.">            } else if (returnNodes.size() &lt; k) {</span>
+<span class="nc" id="L230">              returnNodes.add(node);</span>
+            }
+          }
+<span class="nc" id="L233">        }</span>
+      }
+    }
+<span class="nc" id="L236">    return returnNodes;</span>
+  }
+
+  /**
+   * Getter to return head of KdTree.
+   *
+   * @return Head of type T of KdTree.
+   */
+  public T getHead() {
+<span class="nc" id="L245">    return this.head;</span>
+  }
+
+  /**
+   * Getter to return left child of current KdTree.
+   *
+   * @return KdTree of type T
+   */
+  public KdTree&lt;T&gt; getLeft() {
+<span class="nc" id="L254">    return this.left;</span>
+  }
+
+  /**
+   * Getter to return right child of current KdTree.
+   *
+   * @return KdTree of type T
+   */
+  public KdTree&lt;T&gt; getRight() {
+<span class="nc" id="L263">    return this.right;</span>
+  }
+
+  /**
+   * Getter to return relevant axis of current KdTree.
+   *
+   * @return integer representing current relevant axis
+   */
+  public int getAxis() {
+<span class="nc" id="L272">    return this.axis;</span>
+  }
+
+  /**
+   * Getter to return ArrayList of all KDTreeNodes in the tree.
+   *
+   * @return ArrayList of all KDTreeNodes in the tree.
+   */
+  public List&lt;T&gt; getKdTreeNodes() {
+<span class="nc" id="L281">    return this.kdTreeNodes;</span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.8.202204050719</span></div></body></html>
