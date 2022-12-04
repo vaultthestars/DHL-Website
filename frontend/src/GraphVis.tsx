@@ -10,22 +10,27 @@ import tuneinlogo from './images/tuneinlogo.png'
 
 //npm i --save-dev @types/react-slider
 
-//TODO: We need to be able to render a whole ton of circles.
-// [DONE!]
 //For whatever reason, this is causing us a lot of problems. Trying to create a map gives us a warning that the map items could be null, which is a huge
 //pain in the ass. Try doing it with arrays instead.
 // Point data format: ID/key, cx, cy
 // Have a separate map from ID/key to energy, something, something else, something else, etc.
-//TODO: Add the actual parameters we want[DONE]
-//TODO: Change background color
+//[TODO]: We need to be able to render a whole ton of circles.
+//[DONE]: Add the actual parameters we want
+//[DONE]: Change background color
+//[DONE]: Add camera controls
+//[DONE]: Make button fade in dynamically
+
+//TODO: Make the sidebar change when you zoom in
+//TODO: Add number displays in the sidebar
+//TODO: Add variables for everything we're actually going to use
+//TODO: Make google thing vanish after you've logged in
 //TODO: Make the website actually look the way we want it to
-//TODO: Add click and drag camera controls
 //TODO: Add the current user
-//TODO: Round display numbers or use a better system
+//TODO: Get frontend to communicate with backend
 
 let userdata: Map<number, Array<number>> = new Map<number, Array<number>>();
 
-let maxnum = 500;
+let maxnum = 250;
 
 let centerx = 600;
 
@@ -204,16 +209,9 @@ function updatecamcenter(campt: number[], targpt: number[]): number[]{
         return campt
     }
     else{
-        let scalar = 4*(1-sech((1/1)*mag(nudgevec)))/mag(nudgevec)
+        let scalar = 0.05*(1-sech((1/1)*mag(nudgevec)))
         return [campt[0]+scalar*nudgevec[0],campt[1]+scalar*nudgevec[1],campt[2]+scalar*nudgevec[2]]
     }
-}
-
-function hidebutton(zoombool: boolean): string{
-    if (zoombool){
-        return "10";
-    }
-    return "10000"
 }
 
 function camtarg(A: number[],B: number[],zoomed: boolean): number[]{
@@ -247,14 +245,15 @@ export default function GraphVis() {
             //In reality we might want to center which user is you!
             camtarg([4,CircleData[SelectIndex][1],CircleData[SelectIndex][2]],[1,0,0],zoomed)))
         setTimer((Timer + 0.001) % 1)
-    }, [CircleData, camcenter])
+        document.documentElement.style.setProperty('--sidebar-mode', (1-(camcenter[0]-2)/2).toString());
+    }, CircleData)
 
     //Make some sort of time update thing that lets you update circles and send their positions somewhere
     return <div className = "wrapper">
                 <div className = "sidebar">
                     <div className="tuneinlogo">
-                        <h3>Who's on your wavelength?</h3>
-                        <img src="https://i.ibb.co/V2Dmsx4/tuneinlogo.png" 
+                        <h2>Who's on your wavelength?</h2>
+                        <img className = "wavepic" src="https://i.ibb.co/V2Dmsx4/tuneinlogo.png" 
                         alt="tunein_logo"/>
                         <div className = "matcheswrapper">
                         </div>
@@ -263,7 +262,7 @@ export default function GraphVis() {
                 {/* <p>{paramstring(SelectIndex)}
                 </p> */}
                 <svg className="svgwindow" fill = "true"
-                 width="100%" height="600">
+                 width="100%" height="600" >
                     {/* render the circles */}
                     {CircleData.map((entry) => 
                         <circle 
@@ -279,20 +278,31 @@ export default function GraphVis() {
                         strokeWidth = "5"
                         >
                         </circle>
-                    ).concat(<rect 
+                    )}
+                    {<rect 
                         width = "150"
                         height = "50"
-                        x= {hidebutton(zoomed)}
+                        x= "10"
                         y= "10"
                         rx="10"
                         ry="10"
+                        opacity = {camcenter[0]-3}
                         onClick= {() => {  
                             // update the circle positions
                             Setzoomed(false);
                         }}>
-                            {"Zoom out"}
-                        </rect>
-                    )}
+                        </rect>}
+                        {<text 
+                        className = "whitetext"
+                        x= "42"
+                        y= "42"
+                        opacity = {camcenter[0]-3}
+                        onClick= {() => {  
+                            // update the circle positions
+                            Setzoomed(false);
+                        }}>
+                            Zoom out
+                        </text>}
                     {CircleData.map((entry) => 
                         {if(ShowCircLabels){
                             return (<text x={entry[1]+centerx-5*digs(entry[0])} y={entry[2]+300+5} 

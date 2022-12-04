@@ -1,4 +1,5 @@
 :root {
+  --sidebar-mode: 0;
   --main-color: rgb(104, 117, 217);
   --main-color-hover: rgb(104, 117, 217, 0.2);
   --track-color: #ddd;
@@ -105,12 +106,6 @@ circle {
   opacity: 1;
 }
 
-rect {
-  fill:rgb(0,0,255);
-  stroke-width:3;
-  stroke:rgb(0,0,0)
-}
-
 .example-thumb {
   font-size: 0.9em;
   text-align: center;
@@ -185,9 +180,11 @@ body{
   top: 25px;
   width: 225px;
   height: 225px;
+  opacity: var(--sidebar-mode)
 }
 
-.wrapper .sidebar .tuneinlogo h3{
+.wrapper .sidebar .tuneinlogo h2{
+  opacity: var(--sidebar-mode);
   color: #ffffff;
   margin: 10px 0 5px;
 }
@@ -231,4 +228,16 @@ body{
   background-color: white;
   background-repeat: no-repeat;
   background-position: 12px 11px;
+}
+
+rect {
+  fill:rgb(40, 40, 209);
+  stroke-width:3;
+  stroke:rgb(0,0,0)
+}
+
+.wrapper .svgwindow .whitetext{
+  /* font: italic 40px serif; */
+      font: normal 20px helvetica;
+      fill: rgb(255, 255, 255);
 }
