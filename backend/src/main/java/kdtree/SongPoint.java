@@ -80,5 +80,7 @@ public class SongPoint implements KdTreeNode {
    *
    * @return - string representing the user
    */
-  public String getUsername() { return this.username; }
+  public String getUsername() {
+    return this.username;
+  }
 }

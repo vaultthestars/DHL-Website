@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>DistanceSorter.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">s0</a> &gt; <a href="index.source.html" class="el_package">kdtree</a> &gt; <span class="el_source">DistanceSorter.java</span></div><h1>DistanceSorter.java</h1><pre class="source lang-java linenums">package kdtree;
+
+import java.util.Comparator;
+
+/** Comparator to sort KDTreeNodes by descending euclidean distance from a targetNode. */
+public class DistanceSorter implements Comparator&lt;KdTreeNode&gt; {
+  private KdTreeNode targetNode;
+
+  /**
+   * Constructs a DistanceSorter using the targetNode for euclidean distance.
+   *
+   * @param targetNode node by which to compare other nodes by euclidean distance.
+   */
+<span class="nc" id="L14">  public DistanceSorter(KdTreeNode targetNode) {</span>
+<span class="nc" id="L15">    this.targetNode = targetNode;</span>
+<span class="nc" id="L16">  }</span>
+
+  /**
+   * Compares two KDTreeNodes by their euclidean distance from targetNode.
+   *
+   * @param o1 first KdTreeNode to be compared.
+   * @param o2 second KdTreeNode to be compared.
+   * @return integer 1 for o1 less than o2, 0 for o1 equals o2, -1 for o1 greater than o2
+   */
+  @Override
+  public int compare(KdTreeNode o1, KdTreeNode o2) {
+    try {
+<span class="nc" id="L28">      double o1Distance = this.targetNode.euclideanDistance(o1);</span>
+<span class="nc" id="L29">      double o2Distance = this.targetNode.euclideanDistance(o2);</span>
+<span class="nc" id="L30">      return Double.compare(o2Distance, o1Distance);</span>
+      // sort in descending order by euclidean distance
+<span class="nc" id="L32">    } catch (Exception ex) {</span>
+<span class="nc" id="L33">      System.err.println(&quot;ERROR: KDTreeNodes do not have the same dimensionality.&quot;);</span>
+    }
+<span class="nc" id="L35">    return 0;</span>
+  }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.8.202204050719</span></div></body></html>

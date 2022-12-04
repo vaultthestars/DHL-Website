@@ -2,9 +2,17 @@ package server;
 
 import static spark.Spark.after;
 
+import csv.CSVParser;
+import csv.FactoryFailureException;
+import java.io.FileReader;
+import java.io.IOException;
+import java.util.List;
+import server.handlers.GetUserHandler;
+import server.handlers.LoadConnectionsHandler;
 import spark.Spark;
 import user.User;
 import user.UserDatabase;
+import user.UserFactory;
 
 /**
  * Top-level class to run our API server. Contains the main() method which starts Spark and runs the
@@ -12,9 +20,37 @@ import user.UserDatabase;
  */
 public class Server {
 
+  /**
+   * Creates a List of User objects from a csv of mock users.
+   *
+   * @return a List of Users
+   */
+  public static List<User> generateMockUsers() {
+    try {
+      CSVParser<User> userCSVParser =
+          new CSVParser<User>(new FileReader("data/mockUsers.csv"), new UserFactory());
+      return userCSVParser.getParsedData();
+    } catch (IOException | FactoryFailureException e) {
+      throw new RuntimeException(e);
+    }
+  }
+
+  /**
+   * Registers users from a list in the user database
+   *
+   * @param userDatabase - the user database to update
+   * @param users - the list of users to register
+   */
+  public static void registerUsers(UserDatabase userDatabase, List<User> users) {
+    for (User user : users) {
+      userDatabase.register(user);
+    }
+  }
+
   public static void main(String[] args) {
     Spark.port(3232);
     UserDatabase userDatabase = new UserDatabase();
+    registerUsers(userDatabase, generateMockUsers());
 
     /*
        Setting CORS headers to allow cross-origin requests from the client; this is necessary for the client to
@@ -42,7 +78,8 @@ public class Server {
     // mock Points for now to build kd trees
 
     // Setting up the handler for the GET endpoints
-    // Spark.get("loadcsv", new LoadCSVHandler(csvDatabase));
+    Spark.get("load-connections", new LoadConnectionsHandler(userDatabase));
+    Spark.get("get-user", new GetUserHandler(userDatabase));
 
     /*
     Endpoints

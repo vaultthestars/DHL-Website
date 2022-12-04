@@ -1,0 +1,133 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>User.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">s0</a> &gt; <a href="index.source.html" class="el_package">user</a> &gt; <span class="el_source">User.java</span></div><h1>User.java</h1><pre class="source lang-java linenums">package user;
+
+import java.util.Arrays;
+import java.util.Objects;
+
+/**
+ * Class representing an individual TuneIn user, which houses essential user-specific information.
+ */
+public class User {
+  private String username;
+  private int membershipLength;
+  private float[] songPoint;
+  private String[] connections;
+  private float[] historicalSongPoint;
+  private String[] historicalConnections;
+
+  /**
+   * Constructor for new user
+   *
+   * @param username - TunedIn username, identifier for the user
+   */
+<span class="nc" id="L22">  public User(String username) {</span>
+<span class="nc" id="L23">    this.username = username;</span>
+<span class="nc" id="L24">    this.membershipLength = 0;</span>
+<span class="nc" id="L25">    this.songPoint = new float[6];</span>
+<span class="nc" id="L26">    this.connections = new String[5];</span>
+<span class="nc" id="L27">    this.historicalSongPoint = new float[6];</span>
+<span class="nc" id="L28">    this.historicalConnections = new String[5];</span>
+<span class="nc" id="L29">  }</span>
+
+  /**
+   * Constructor for User object
+   *
+   * @param username - TuneIn username, identifier for the user
+   * @param membershipLength - days since joining TuneIn
+   * @param songPoint - audio features for most recent song
+   * @param connections - nearest neighbors from song points tree
+   * @param historicalSongPoint - avg audio features of all song points since joining
+   * @param historicalConnections - nearest neighbors from historical song points tree
+   */
+  public User(
+      String username,
+      int membershipLength,
+      float[] songPoint,
+      String[] connections,
+      float[] historicalSongPoint,
+<span class="fc" id="L47">      String[] historicalConnections) {</span>
+<span class="fc" id="L48">    this.username = username;</span>
+<span class="fc" id="L49">    this.membershipLength = membershipLength;</span>
+<span class="fc" id="L50">    this.songPoint = songPoint;</span>
+<span class="fc" id="L51">    this.connections = connections;</span>
+<span class="fc" id="L52">    this.historicalSongPoint = historicalSongPoint;</span>
+<span class="fc" id="L53">    this.historicalConnections = historicalConnections;</span>
+<span class="fc" id="L54">  }</span>
+
+  @Override
+  public boolean equals(Object o) {
+<span class="pc bpc" id="L58" title="1 of 2 branches missed.">    if (this == o) {</span>
+<span class="nc" id="L59">      return true;</span>
+    }
+<span class="pc bpc" id="L61" title="2 of 4 branches missed.">    if (o == null || getClass() != o.getClass()) {</span>
+<span class="nc" id="L62">      return false;</span>
+    }
+<span class="fc" id="L64">    User user = (User) o;</span>
+<span class="pc bpc" id="L65" title="1 of 2 branches missed.">    return membershipLength == user.membershipLength</span>
+<span class="pc bpc" id="L66" title="1 of 2 branches missed.">        &amp;&amp; username.equals(user.username)</span>
+<span class="pc bpc" id="L67" title="1 of 2 branches missed.">        &amp;&amp; Arrays.equals(songPoint, user.songPoint)</span>
+<span class="pc bpc" id="L68" title="1 of 2 branches missed.">        &amp;&amp; Arrays.equals(connections, user.connections)</span>
+<span class="pc bpc" id="L69" title="1 of 2 branches missed.">        &amp;&amp; Arrays.equals(historicalSongPoint, user.historicalSongPoint)</span>
+<span class="pc bpc" id="L70" title="1 of 2 branches missed.">        &amp;&amp; Arrays.equals(historicalConnections, user.historicalConnections);</span>
+  }
+
+  @Override
+  public int hashCode() {
+<span class="nc" id="L75">    int result = Objects.hash(username, membershipLength);</span>
+<span class="nc" id="L76">    result = 31 * result + Arrays.hashCode(songPoint);</span>
+<span class="nc" id="L77">    result = 31 * result + Arrays.hashCode(connections);</span>
+<span class="nc" id="L78">    result = 31 * result + Arrays.hashCode(historicalSongPoint);</span>
+<span class="nc" id="L79">    result = 31 * result + Arrays.hashCode(historicalConnections);</span>
+<span class="nc" id="L80">    return result;</span>
+  }
+
+  public String getUsername() {
+<span class="nc" id="L84">    return this.username;</span>
+  }
+
+  public void setUsername(String username) {
+<span class="nc" id="L88">    this.username = username;</span>
+<span class="nc" id="L89">  }</span>
+
+  public int getMembershipLength() {
+<span class="nc" id="L92">    return this.membershipLength;</span>
+  }
+
+  public void setMembershipLength(int membershipLength) {
+<span class="nc" id="L96">    this.membershipLength = membershipLength;</span>
+<span class="nc" id="L97">  }</span>
+
+  public float[] getSongPoint() {
+<span class="nc" id="L100">    return this.songPoint.clone();</span>
+  }
+
+  public void setSongPoint(float[] songPoint) {
+<span class="nc" id="L104">    this.songPoint = songPoint;</span>
+<span class="nc" id="L105">  }</span>
+
+  public String[] getConnections() {
+<span class="nc" id="L108">    return this.connections.clone();</span>
+  }
+
+  public void setConnections(String[] connections) {
+<span class="nc" id="L112">    this.connections = connections;</span>
+<span class="nc" id="L113">  }</span>
+
+  public float[] getHistoricalSongPoint() {
+<span class="nc" id="L116">    return this.historicalSongPoint.clone();</span>
+  }
+
+  public void setHistoricalSongPoint(float[] historicalSongPoint) {
+<span class="nc" id="L120">    this.historicalSongPoint = historicalSongPoint;</span>
+<span class="nc" id="L121">  }</span>
+
+  public String[] getHistoricalConnections() {
+<span class="nc" id="L124">    return this.historicalConnections.clone();</span>
+  }
+
+  public void setHistoricalConnections(String[] historicalConnections) {
+<span class="nc" id="L128">    this.historicalConnections = historicalConnections;</span>
+<span class="nc" id="L129">  }</span>
+
+  // TODO: implement updateHistoricalSongPoint(float[] newSongPoint) with running average formula
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.8.202204050719</span></div></body></html>
