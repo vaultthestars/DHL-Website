@@ -196,6 +196,33 @@ function paramstring(SelectIndex: number): string{
     return returnstring
 }
 
+function updatecamcenter(campt: number[], targpt: number[]): number[]{
+    // so we need wherever it is and wherever it needs to go. Use a 1-sech(x) system
+    // Again, we want a scalar and a nudge vector
+    let nudgevec = [targpt[0]-campt[0],targpt[1]-campt[1],targpt[2]-campt[2]]
+    if (mag(nudgevec)==0){
+        return campt
+    }
+    else{
+        let scalar = 4*(1-sech((1/1)*mag(nudgevec)))/mag(nudgevec)
+        return [campt[0]+scalar*nudgevec[0],campt[1]+scalar*nudgevec[1],campt[2]+scalar*nudgevec[2]]
+    }
+}
+
+function hidebutton(zoombool: boolean): string{
+    if (zoombool){
+        return "10";
+    }
+    return "10000"
+}
+
+function camtarg(A: number[],B: number[],zoomed: boolean): number[]{
+    if (zoomed){
+        return A;
+    }
+    return B;
+}
+
 
 //TODO: add repulsive force
 //TODO: add stats display!
@@ -207,17 +234,20 @@ export default function GraphVis() {
     const [CircleData, setCircleData] = useState<number[][]>(initarray);
     const [SelectIndex, setSelectIndex] = useState<number>(0);
     const [Timer, setTimer] = useState<number>(0);
-    const [SortIndex, setSortIndex] = useState<number>(0);
-    const [SortParameter, setSortParameter] = useState<number>(1);
+    const [SortIndex, setSortIndex] = useState<number>(1);
+    const [SortParameter, setSortParameter] = useState<number>(0);
     const [Speed, setSpeed] = useState<number>(10);
     const [ShowCircLabels, SetShowCircLabels] = useState<boolean>(false);
+    const [camcenter, Setcamcenter] = useState<number[]>([1,0,0]); //scale, position x, position y
+    const [zoomed, Setzoomed] = useState<boolean>(false);
     
     useEffect(() => {
         setCircleData(sortshift(CircleData, SortParameter, getsortmethod(SortIndex), Speed))
+        Setcamcenter(updatecamcenter(camcenter,
+            //In reality we might want to center which user is you!
+            camtarg([4,CircleData[SelectIndex][1],CircleData[SelectIndex][2]],[1,0,0],zoomed)))
         setTimer((Timer + 0.001) % 1)
-    }, CircleData)
-
-    console.log(getsortname(SortIndex))
+    }, [CircleData, camcenter])
 
     //Make some sort of time update thing that lets you update circles and send their positions somewhere
     return <div className = "wrapper">
@@ -238,17 +268,30 @@ export default function GraphVis() {
                     {CircleData.map((entry) => 
                         <circle 
                         onClick= {() => {
+                            Setzoomed(true);
                             console.log("circle " + entry[0] + " clicked");
                             setSelectIndex(entry[0])
                         }} 
                         key= {entry[0]} 
-                        cx= {entry[1]+centerx} cy= {entry[2]+300} 
-                        r={20 + 4*Math.sin(0.1*mag(entry)+tau*Timer)} fill={"hsla(" + 200+90*getdata(entry[0],SortParameter) + ", 100%, 40%, 0.5)"}
+                        cx= {camcenter[0]*(entry[1]-camcenter[1])+centerx} cy= {camcenter[0]*(entry[2]-camcenter[2])+300} 
+                        r={camcenter[0]*20 + 4*Math.sin(0.1*mag(entry)+tau*Timer)} fill={"hsla(" + 200+90*getdata(entry[0],SortParameter) + ", 100%, 40%, 0.5)"}
                         stroke = {renderstroke(entry[0],SelectIndex)}
                         strokeWidth = "5"
                         >
-                            {/* FOR WHATEVER REASON I CAN'T PUT TEXT OVER THIS */}
                         </circle>
+                    ).concat(<rect 
+                        width = "150"
+                        height = "50"
+                        x= {hidebutton(zoomed)}
+                        y= "10"
+                        rx="10"
+                        ry="10"
+                        onClick= {() => {  
+                            // update the circle positions
+                            Setzoomed(false);
+                        }}>
+                            {"Zoom out"}
+                        </rect>
                     )}
                     {CircleData.map((entry) => 
                         {if(ShowCircLabels){
@@ -284,7 +327,6 @@ export default function GraphVis() {
                     </button>
                     <button onClick= {() => {  
                             // update the circle positions
-                            console.log(SortParameter)
                             setSortParameter((SortParameter + 1) % parameternames.size);
                         }}>
                             {"Change sorting parameter"}
