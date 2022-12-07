@@ -4,20 +4,17 @@ import java.util.Arrays;
 import java.util.Objects;
 
 /** Class to represent a simple point in k-dimensional space. */
-public class SongPoint implements KdTreeNode {
-
-  private String username;
+public class Point implements KdTreeNode {
   private float[] point;
   private int dimension;
-  private final int hashNum = 31; // ???
+  private final int hashNum = 31;
 
   /**
-   * Constructs a point from an array of floats.
+   * Constructs a point from an array of doubles.
    *
-   * @param vals array of floats representing a point (i.e. (x,y,z))
+   * @param vals array of doubles representing a point (i.e. (x,y,z))
    */
-  public SongPoint(String username, float[] vals) {
-    this.username = username;
+  public Point(float[] vals) {
     this.point = vals;
     this.dimension = vals.length;
   }
@@ -35,12 +32,12 @@ public class SongPoint implements KdTreeNode {
    * Finds euclidean distance between the current node and a given node.
    *
    * @param node The point to find the distance to.
-   * @return float The straight line distance.
+   * @return double The straight line distance.
    */
   public double euclideanDistance(KdTreeNode node) {
     float[] currentVals = this.point;
     float[] targetVals = node.getPoint();
-    float sum = 0;
+    double sum = 0;
     for (int i = 0; i < currentVals.length; i++) {
       sum += Math.pow(currentVals[i] - targetVals[i], 2);
     }
@@ -52,10 +49,10 @@ public class SongPoint implements KdTreeNode {
     if (this == o) {
       return true;
     }
-    if (!(o instanceof SongPoint)) {
+    if (!(o instanceof Point)) {
       return false;
     }
-    SongPoint point1 = (SongPoint) o;
+    Point point1 = (Point) o;
     return dimension == point1.dimension && Arrays.equals(point, point1.point);
   }
 
@@ -69,18 +66,9 @@ public class SongPoint implements KdTreeNode {
   /**
    * Getter to return the point data of a Point.
    *
-   * @return array of floats representing a point (i.e. (x,y,z))
+   * @return array of doubles representing a point (i.e. (x,y,z))
    */
   public float[] getPoint() {
-    return this.point.clone();
-  }
-
-  /**
-   * Getter to return the username identifier of a Point
-   *
-   * @return - string representing the user
-   */
-  public String getUsername() {
-    return this.username;
+    return this.point;
   }
 }

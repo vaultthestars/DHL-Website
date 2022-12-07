@@ -17,7 +17,7 @@ import user.Song;
 
 public class LoadSongFeaturesHelpers {
 
-  public Song getCurrentSong(String accessToken) {
+  public Song getCurrentSong(String username, String accessToken) {
     SpotifyApi spotifyApi = new SpotifyApi.Builder()
         .setAccessToken(accessToken)
         .build();
@@ -50,7 +50,7 @@ public class LoadSongFeaturesHelpers {
       features[4] = audioFeatures.getSpeechiness();
       features[5] = audioFeatures.getValence();
 
-      return new Song(title, id, artists, features);
+      return new Song(title, id, artists, features, username);
     } catch (IOException e) {
       throw new RuntimeException(e);
     } catch (SpotifyWebApiException e) {
