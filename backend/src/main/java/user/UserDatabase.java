@@ -98,7 +98,7 @@ public class UserDatabase {
   }
 
   /** Builds 6-d tree with historical song points */
-  public void buildHistoricalSongTree() {
+  public void buildUserTree() {
     this.userTree = new KdTree<User>(this.getUserPoints(), 1);
   }
 
