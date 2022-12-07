@@ -1,7 +1,7 @@
 package server.handlers;
 
 import com.squareup.moshi.Moshi;
-import edu.brown.cs.student.server.ErrBadJsonResponse;
+import server.ErrBadJsonResponse;
 import spark.Request;
 import spark.Response;
 import spark.Route;

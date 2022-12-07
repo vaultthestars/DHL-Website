@@ -9,6 +9,7 @@ import java.io.IOException;
 import java.util.List;
 import server.handlers.GetUserHandler;
 import server.handlers.LoadConnectionsHandler;
+import server.handlers.LoadSongFeaturesHandler;
 import spark.Spark;
 import user.User;
 import user.UserDatabase;
@@ -80,6 +81,7 @@ public class Server {
     // Setting up the handler for the GET endpoints
     Spark.get("load-connections", new LoadConnectionsHandler(userDatabase));
     Spark.get("get-user", new GetUserHandler(userDatabase));
+    Spark.get("load-song-features", new LoadSongFeaturesHandler(userDatabase));
 
     /*
     Endpoints

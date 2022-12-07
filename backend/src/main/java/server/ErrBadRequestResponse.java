@@ -1,4 +1,4 @@
-package edu.brown.cs.student.server;
+package server;
 
 import com.squareup.moshi.Moshi;
 
