@@ -7,7 +7,6 @@ import java.util.List;
 import java.util.PriorityQueue;
 import kdtree.DistanceSorter;
 import kdtree.KdTree;
-import kdtree.SongPoint;
 
 /** Class representing the complete database of users */
 public class UserDatabase {
@@ -86,7 +85,6 @@ public class UserDatabase {
     List<User> userPoints = new ArrayList<User>();
     this.users.forEach(
         (username, user) -> {
-          SongPoint songPoint = new SongPoint(username, user.getHistoricalSongPoint());
           userPoints.add(user);
         });
     this.userPoints = userPoints;
