@@ -2,14 +2,15 @@ package user;
 
 import java.util.Arrays;
 import java.util.Objects;
+import kdtree.KdTreeNode;
 
 /**
  * Class representing an individual TuneIn user, which houses essential user-specific information.
  */
-public class User implements Cloneable {
+public class User implements KdTreeNode, Cloneable {
   private String username;
   private int membershipLength;
-  private float[] songPoint;
+  private Song currentSong;
   private String[] connections;
   private float[] historicalSongPoint;
   private String[] historicalConnections;
@@ -22,7 +23,7 @@ public class User implements Cloneable {
   public User(String username) {
     this.username = username;
     this.membershipLength = 0;
-    this.songPoint = new float[6];
+    this.currentSong = null;
     this.connections = new String[5];
     this.historicalSongPoint = new float[6];
     this.historicalConnections = new String[5];
@@ -33,7 +34,7 @@ public class User implements Cloneable {
    *
    * @param username - TuneIn username, identifier for the user
    * @param membershipLength - days since joining TuneIn
-   * @param songPoint - audio features for most recent song
+   * @param currentSong - currently playing song at the time of TunedIn
    * @param connections - nearest neighbors from song points tree
    * @param historicalSongPoint - avg audio features of all song points since joining
    * @param historicalConnections - nearest neighbors from historical song points tree
@@ -41,13 +42,13 @@ public class User implements Cloneable {
   public User(
       String username,
       int membershipLength,
-      float[] songPoint,
+      Song currentSong,
       String[] connections,
       float[] historicalSongPoint,
       String[] historicalConnections) {
     this.username = username;
     this.membershipLength = membershipLength;
-    this.songPoint = songPoint;
+    this.currentSong = currentSong;
     this.connections = connections;
     this.historicalSongPoint = historicalSongPoint;
     this.historicalConnections = historicalConnections;
@@ -64,7 +65,7 @@ public class User implements Cloneable {
     User user = (User) o;
     return membershipLength == user.membershipLength
         && username.equals(user.username)
-        && Arrays.equals(songPoint, user.songPoint)
+        && currentSong.equals(user.currentSong)
         && Arrays.equals(connections, user.connections)
         && Arrays.equals(historicalSongPoint, user.historicalSongPoint)
         && Arrays.equals(historicalConnections, user.historicalConnections);
@@ -73,7 +74,7 @@ public class User implements Cloneable {
   @Override
   public int hashCode() {
     int result = Objects.hash(username, membershipLength);
-    result = 31 * result + Arrays.hashCode(songPoint);
+    result = 31 * result + currentSong.hashCode();
     result = 31 * result + Arrays.hashCode(connections);
     result = 31 * result + Arrays.hashCode(historicalSongPoint);
     result = 31 * result + Arrays.hashCode(historicalConnections);
@@ -96,12 +97,12 @@ public class User implements Cloneable {
     this.membershipLength = membershipLength;
   }
 
-  public float[] getSongPoint() {
-    return this.songPoint.clone();
+  public Song getCurrentSong() {
+    return currentSong;
   }
 
-  public void setSongPoint(float[] songPoint) {
-    this.songPoint = songPoint;
+  public void setCurrentSong(Song currentSong) {
+    this.currentSong = currentSong;
   }
 
   public String[] getConnections() {
@@ -135,7 +136,7 @@ public class User implements Cloneable {
       // TODO: copy mutable state here, so the clone can't change the internals of the original
       clone.setUsername(this.getUsername());
       clone.setMembershipLength(this.getMembershipLength());
-      clone.setSongPoint(this.getSongPoint());
+      clone.setCurrentSong(this.getCurrentSong());
       clone.setConnections(this.getConnections());
       clone.setHistoricalSongPoint(this.getHistoricalSongPoint());
       clone.setHistoricalConnections(this.getHistoricalConnections());
@@ -147,5 +148,26 @@ public class User implements Cloneable {
 
   public void updateHistoricalSongPoint(float[] newSongPoint) {
     // TODO: implement with incremental / running average formula
+  }
+
+  @Override
+  public float[] getPoint() {
+    return this.getHistoricalSongPoint();
+  }
+
+  @Override
+  public int getDimension() {
+    return this.getHistoricalSongPoint().length;
+  }
+
+  @Override
+  public double euclideanDistance(KdTreeNode node) {
+    float[] currentVals = this.getHistoricalSongPoint();
+    float[] targetVals = node.getPoint();
+    float sum = 0;
+    for (int i = 0; i < currentVals.length; i++) {
+      sum += Math.pow(currentVals[i] - targetVals[i], 2);
+    }
+    return Math.sqrt(sum);
   }
 }
