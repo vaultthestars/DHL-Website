@@ -16,12 +16,13 @@ public class Song implements KdTreeNode {
   private int dimension;
   private String username;
 
-  public Song(String title, String id, List<String> artists, float[] features) {
+  public Song(String title, String id, List<String> artists, float[] features, String username) {
     this.title = title;
     this.id = id;
     this.artists = artists;
     this.features = features;
     this.dimension = features.length;
+    this.username = username;
   }
 
   public String getTitle() {

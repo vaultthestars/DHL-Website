@@ -13,10 +13,10 @@ import kdtree.SongPoint;
 public class UserDatabase {
 
   private HashMap<String, User> users;
-  private List<SongPoint> daySongPoints;
-  private List<SongPoint> historicalSongPoints;
-  private KdTree<SongPoint> daySongTree;
-  private KdTree<SongPoint> historicalSongTree;
+  private List<Song> currentSongPoints;
+  private List<User> userPoints;
+  private KdTree<Song> currentSongTree;
+  private KdTree<User> userTree;
 
   /** Constructor */
   public UserDatabase() {
@@ -55,67 +55,66 @@ public class UserDatabase {
     return this.users.get(username).clone();
   }
 
-  public List<SongPoint> getDaySongPoints() {
-    return daySongPoints;
+  public List<Song> getCurrentSongPoints() {
+    return currentSongPoints;
   }
 
-  public void setDaySongPoints(List<SongPoint> daySongPoints) {
-    this.daySongPoints = daySongPoints;
+  public void setCurrentSongPoints(List<Song> currentSongPoints) {
+    this.currentSongPoints = currentSongPoints;
   }
 
-  public List<SongPoint> getHistoricalSongPoints() {
-    return historicalSongPoints;
+  public List<User> getUserPoints() {
+    return userPoints;
   }
 
-  public void setHistoricalSongPoints(List<SongPoint> historicalSongPoints) {
-    this.historicalSongPoints = historicalSongPoints;
+  public void setUserPoints(List<User> userPoints) {
+    this.userPoints = userPoints;
   }
 
   /** Creates SongPoint objects from updated user data and stores in daySongPoints */
-  public void loadSongPoints() {
-    List<SongPoint> songPoints = new ArrayList<SongPoint>();
+  public void loadCurrentSongPoints() {
+    List<Song> songPoints = new ArrayList<Song>();
     this.users.forEach(
         (username, user) -> {
-          SongPoint songPoint = new SongPoint(username, user.getSongPoint());
-          songPoints.add(songPoint);
+          songPoints.add(user.getCurrentSong());
         });
-    this.daySongPoints = songPoints;
+    this.setCurrentSongPoints(songPoints);
   }
 
   /** Creates SongPoint objects from updated user data and stores in historicalSongPoints */
-  public void loadHistoricalSongPoints() {
-    List<SongPoint> songPoints = new ArrayList<SongPoint>();
+  public void loadUserPoints() {
+    List<User> userPoints = new ArrayList<User>();
     this.users.forEach(
         (username, user) -> {
           SongPoint songPoint = new SongPoint(username, user.getHistoricalSongPoint());
-          songPoints.add(songPoint);
+          userPoints.add(user);
         });
-    this.historicalSongPoints = songPoints;
+    this.userPoints = userPoints;
   }
 
   /** Builds 6-d tree with song points from today */
   public void buildSongTree() {
-    this.daySongTree = new KdTree<SongPoint>(this.getDaySongPoints(), 1);
+    this.currentSongTree = new KdTree<Song>(this.getCurrentSongPoints(), 1);
   }
 
   /** Builds 6-d tree with historical song points */
   public void buildHistoricalSongTree() {
-    this.historicalSongTree = new KdTree<SongPoint>(this.getHistoricalSongPoints(), 1);
+    this.userTree = new KdTree<User>(this.getUserPoints(), 1);
   }
 
   /** Loads connections into each User object using kd-tree */
   public void loadConnections() {
     this.users.forEach(
         (username, user) -> {
-          SongPoint sp = new SongPoint(username, user.getSongPoint());
-          PriorityQueue<SongPoint> connectionsQueue =
-              this.daySongTree.kdTreeSearch(
-                  "neighbors", 5, sp, new DistanceSorter(sp), new HashSet<>());
+          Song currentSong = user.getCurrentSong();
+          PriorityQueue<Song> connectionsQueue =
+              this.currentSongTree.kdTreeSearch(
+                  "neighbors", 5, currentSong, new DistanceSorter(currentSong), new HashSet<>());
           // System.out.println(connectionsQueue.toString());
           String[] connections = new String[5];
           int i = 0;
-          for (SongPoint songPoint : connectionsQueue) {
-            connections[i] = songPoint.getUsername();
+          for (Song song : connectionsQueue) {
+            connections[i] = song.getUsername();
             i++;
           }
           user.setConnections(connections);
@@ -126,14 +125,13 @@ public class UserDatabase {
   public void loadHistoricalConnections() {
     this.users.forEach(
         (username, user) -> {
-          SongPoint sp = new SongPoint(username, user.getHistoricalSongPoint());
-          PriorityQueue<SongPoint> connectionsQueue =
-              this.historicalSongTree.kdTreeSearch(
-                  "neighbors", 5, sp, new DistanceSorter(sp), new HashSet<>());
+          PriorityQueue<User> connectionsQueue =
+              this.userTree.kdTreeSearch(
+                  "neighbors", 5, user, new DistanceSorter(user), new HashSet<>());
           String[] connections = new String[5];
           int i = 0;
-          for (SongPoint songPoint : connectionsQueue) {
-            connections[i] = songPoint.getUsername();
+          for (User usr : connectionsQueue) {
+            connections[i] = usr.getUsername();
             i++;
           }
           user.setHistoricalConnections(connections);
