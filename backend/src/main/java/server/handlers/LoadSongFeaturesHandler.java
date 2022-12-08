@@ -1,8 +1,13 @@
 package server.handlers;
 
 import com.squareup.moshi.Moshi;
+import java.io.IOException;
+import org.apache.hc.core5.http.ParseException;
 import se.michaelthelin.spotify.SpotifyApi;
+import se.michaelthelin.spotify.exceptions.SpotifyWebApiException;
+import se.michaelthelin.spotify.model_objects.credentials.AuthorizationCodeCredentials;
 import se.michaelthelin.spotify.model_objects.specification.AudioFeatures;
+import se.michaelthelin.spotify.requests.authorization.authorization_code.AuthorizationCodeRefreshRequest;
 import se.michaelthelin.spotify.requests.data.tracks.GetAudioFeaturesForTrackRequest;
 import spark.Request;
 import spark.Response;
@@ -26,10 +31,15 @@ public class LoadSongFeaturesHandler implements Route {
     // features of current song
     // update song field of user object to contain new song object
 
-    // TODO: proof of concept: retrieve features for 1 song
-    String accessToken =
-        "BQBK0OpqXlvQ7dMAKaRT7ON6Hv6Z3gzI5DC_XB9TPSTLsPvhbaQWWoU2QUTVOVK78woO29y8RyWXYCThCakOaILUBVCr8lmLA_dnWzFCgWFfFTfNAP_AU3cyQjx3VlgpiDnRQOxn2yhqtGVAyx3dPule_D6LIE9N59doqKVkgoCUNhfBFNXuytiHYVk0_7Nxq49o";
-    String id = "4ewazQLXFTDC8XvCbhvtXs";
+
+
+    String id = "4ewazQLXFTDC8XvCbhvtXs"; // Glimpse of us by Joji (mock song ID)
+
+    // mock user refresh token
+  
+    String ddcsRefreshToken = "AQCfudjNUN1Iww0-BCNsHvyf4ggc9cmcySPtsDVj6nJN6NIf5YcactC5VRGfOk-ZaggVuaw3oaN98HmqPh_zCPq6HA-_gKein9j5zr4LcvbK5PUuNSlZXRTH40-3PsaNBuA";
+    String accessToken = this.getAuthToken(ddcsRefreshToken);
+    System.out.print(accessToken);
 
     SpotifyApi spotifyApi = new SpotifyApi.Builder().setAccessToken(accessToken).build();
     GetAudioFeaturesForTrackRequest getAudioFeaturesForTrackRequest =
@@ -64,4 +74,34 @@ public class LoadSongFeaturesHandler implements Route {
       }
     }
   }
+
+  /**
+   * Helper method that takes in a user's refresh token and makes a call to the Spotify API
+   * to return a valid access token
+   * @param refreshToken - refresh token (obtained when a user logins in with their Spotify account)
+   * @return access token
+   */
+  private String getAuthToken(String refreshToken) {
+    try {
+        String clientId = "213450855ac44f5aa842c2359939fded";
+        String clientSecret = "9771ae6d19724806b33c585b57068127";
+        SpotifyApi spotifyApi = new SpotifyApi.Builder()
+            .setClientId(clientId)
+            .setClientSecret(clientSecret)
+            .setRefreshToken(refreshToken)
+            .build();
+        AuthorizationCodeRefreshRequest authorizationCodeRefreshRequest = spotifyApi.authorizationCodeRefresh()
+            .build();
+        AuthorizationCodeCredentials authorizationCodeCredentials = authorizationCodeRefreshRequest.execute();
+        return authorizationCodeCredentials.getAccessToken();
+    } catch (IOException | SpotifyWebApiException | ParseException e) {
+      System.out.println("Error: " + e.getMessage());
+      throw new RuntimeException(e);
+
+    }
+
+  }
 }
+
+
+
