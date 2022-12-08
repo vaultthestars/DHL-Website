@@ -6,7 +6,7 @@ import java.util.Objects;
 /**
  * Class representing an individual TuneIn user, which houses essential user-specific information.
  */
-public class User {
+public class User implements Cloneable {
   private String username;
   private int membershipLength;
   private float[] songPoint;
@@ -128,6 +128,25 @@ public class User {
 <span class="nc" id="L128">    this.historicalConnections = historicalConnections;</span>
 <span class="nc" id="L129">  }</span>
 
-  // TODO: implement updateHistoricalSongPoint(float[] newSongPoint) with running average formula
+  @Override
+  public User clone() {
+    try {
+<span class="nc" id="L134">      User clone = (User) super.clone();</span>
+      // TODO: copy mutable state here, so the clone can't change the internals of the original
+<span class="nc" id="L136">      clone.setUsername(this.getUsername());</span>
+<span class="nc" id="L137">      clone.setMembershipLength(this.getMembershipLength());</span>
+<span class="nc" id="L138">      clone.setSongPoint(this.getSongPoint());</span>
+<span class="nc" id="L139">      clone.setConnections(this.getConnections());</span>
+<span class="nc" id="L140">      clone.setHistoricalSongPoint(this.getHistoricalSongPoint());</span>
+<span class="nc" id="L141">      clone.setHistoricalConnections(this.getHistoricalConnections());</span>
+<span class="nc" id="L142">      return clone;</span>
+<span class="nc" id="L143">    } catch (CloneNotSupportedException e) {</span>
+<span class="nc" id="L144">      throw new AssertionError();</span>
+    }
+  }
+
+  public void updateHistoricalSongPoint(float[] newSongPoint) {
+    // TODO: implement with incremental / running average formula
+<span class="nc" id="L150">  }</span>
 }
 </pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.8.202204050719</span></div></body></html>

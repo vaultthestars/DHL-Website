@@ -7,7 +7,9 @@ import csv.FactoryFailureException;
 import java.io.FileReader;
 import java.io.IOException;
 import java.util.List;
+import server.handlers.GetUserHandler;
 import server.handlers.LoadConnectionsHandler;
+import server.handlers.LoadSongFeaturesHandler;
 import spark.Spark;
 import user.User;
 import user.UserDatabase;
@@ -17,7 +19,7 @@ import user.UserFactory;
  * Top-level class to run our API server. Contains the main() method which starts Spark and runs the
  * various handlers.
  */
-<span class="nc" id="L20">public class Server {</span>
+<span class="nc" id="L22">public class Server {</span>
 
   /**
    * Creates a List of User objects from a csv of mock users.
@@ -26,11 +28,11 @@ import user.UserFactory;
    */
   public static List&lt;User&gt; generateMockUsers() {
     try {
-<span class="nc" id="L29">      CSVParser&lt;User&gt; userCSVParser =</span>
+<span class="nc" id="L31">      CSVParser&lt;User&gt; userCSVParser =</span>
           new CSVParser&lt;User&gt;(new FileReader(&quot;data/mockUsers.csv&quot;), new UserFactory());
-<span class="nc" id="L31">      return userCSVParser.getParsedData();</span>
-<span class="nc" id="L32">    } catch (IOException | FactoryFailureException e) {</span>
-<span class="nc" id="L33">      throw new RuntimeException(e);</span>
+<span class="nc" id="L33">      return userCSVParser.getParsedData();</span>
+<span class="nc" id="L34">    } catch (IOException | FactoryFailureException e) {</span>
+<span class="nc" id="L35">      throw new RuntimeException(e);</span>
     }
   }
 
@@ -41,15 +43,15 @@ import user.UserFactory;
    * @param users - the list of users to register
    */
   public static void registerUsers(UserDatabase userDatabase, List&lt;User&gt; users) {
-<span class="nc bnc" id="L44" title="All 2 branches missed.">    for (User user : users) {</span>
-<span class="nc" id="L45">      userDatabase.register(user);</span>
-<span class="nc" id="L46">    }</span>
-<span class="nc" id="L47">  }</span>
+<span class="nc bnc" id="L46" title="All 2 branches missed.">    for (User user : users) {</span>
+<span class="nc" id="L47">      userDatabase.register(user);</span>
+<span class="nc" id="L48">    }</span>
+<span class="nc" id="L49">  }</span>
 
   public static void main(String[] args) {
-<span class="nc" id="L50">    Spark.port(3232);</span>
-<span class="nc" id="L51">    UserDatabase userDatabase = new UserDatabase();</span>
-<span class="nc" id="L52">    registerUsers(userDatabase, generateMockUsers());</span>
+<span class="nc" id="L52">    Spark.port(3232);</span>
+<span class="nc" id="L53">    UserDatabase userDatabase = new UserDatabase();</span>
+<span class="nc" id="L54">    registerUsers(userDatabase, generateMockUsers());</span>
 
     /*
        Setting CORS headers to allow cross-origin requests from the client; this is necessary for the client to
@@ -68,16 +70,18 @@ import user.UserFactory;
            - https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS
            - https://portswigger.net/web-security/cors
     */
-<span class="nc" id="L71">    after(</span>
+<span class="nc" id="L73">    after(</span>
         (request, response) -&gt; {
-<span class="nc" id="L73">          response.header(&quot;Access-Control-Allow-Origin&quot;, &quot;*&quot;);</span>
-<span class="nc" id="L74">          response.header(&quot;Access-Control-Allow-Methods&quot;, &quot;*&quot;);</span>
-<span class="nc" id="L75">        });</span>
+<span class="nc" id="L75">          response.header(&quot;Access-Control-Allow-Origin&quot;, &quot;*&quot;);</span>
+<span class="nc" id="L76">          response.header(&quot;Access-Control-Allow-Methods&quot;, &quot;*&quot;);</span>
+<span class="nc" id="L77">        });</span>
 
     // mock Points for now to build kd trees
 
     // Setting up the handler for the GET endpoints
-<span class="nc" id="L80">    Spark.get(&quot;load-connections&quot;, new LoadConnectionsHandler(userDatabase));</span>
+<span class="nc" id="L82">    Spark.get(&quot;load-connections&quot;, new LoadConnectionsHandler(userDatabase));</span>
+<span class="nc" id="L83">    Spark.get(&quot;get-user&quot;, new GetUserHandler(userDatabase));</span>
+<span class="nc" id="L84">    Spark.get(&quot;load-song-features&quot;, new LoadSongFeaturesHandler(userDatabase));</span>
 
     /*
     Endpoints
@@ -88,9 +92,9 @@ import user.UserFactory;
         - to be used on frontend for getting &amp; displaying top 5 connections to a logged in tune in user
      */
 
-<span class="nc" id="L91">    Spark.init();</span>
-<span class="nc" id="L92">    Spark.awaitInitialization();</span>
-<span class="nc" id="L93">    System.out.println(&quot;Server started.&quot;);</span>
-<span class="nc" id="L94">  }</span>
+<span class="nc" id="L95">    Spark.init();</span>
+<span class="nc" id="L96">    Spark.awaitInitialization();</span>
+<span class="nc" id="L97">    System.out.println(&quot;Server started.&quot;);</span>
+<span class="nc" id="L98">  }</span>
 }
 </pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.8.202204050719</span></div></body></html>

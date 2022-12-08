@@ -1,7 +1,7 @@
 package server.handlers;
 
 import com.squareup.moshi.Moshi;
-import edu.brown.cs.student.server.ErrBadJsonResponse;
+import server.ErrBadJsonResponse;
 import spark.Request;
 import spark.Response;
 import spark.Route;
@@ -33,10 +33,10 @@ public class LoadConnectionsHandler implements Route {
     try {
       // call kd-tree methods from UserDatabase & store connections & historicalConnections in user
       // objects
-      this.userDatabase.loadSongPoints();
-      this.userDatabase.loadHistoricalSongPoints();
+      this.userDatabase.loadCurrentSongPoints();
+      this.userDatabase.loadUserPoints();
       this.userDatabase.buildSongTree();
-      this.userDatabase.buildHistoricalSongTree();
+      this.userDatabase.buildUserTree();
       this.userDatabase.loadConnections();
       this.userDatabase.loadHistoricalConnections();
       return new LoadConnectionsSuccessResponse().serialize();

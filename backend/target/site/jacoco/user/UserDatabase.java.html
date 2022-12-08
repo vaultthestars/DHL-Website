@@ -45,86 +45,99 @@ public class UserDatabase {
     }
 <span class="nc" id="L46">  }</span>
 
+  /**
+   * Returns User object given username
+   *
+   * @param username - the name of the user to get
+   * @return the User
+   */
+  public User getUser(String username) {
+<span class="nc" id="L55">    return this.users.get(username).clone();</span>
+  }
+
   public List&lt;SongPoint&gt; getDaySongPoints() {
-<span class="nc" id="L49">    return daySongPoints;</span>
+<span class="nc" id="L59">    return daySongPoints;</span>
   }
 
   public void setDaySongPoints(List&lt;SongPoint&gt; daySongPoints) {
-<span class="nc" id="L53">    this.daySongPoints = daySongPoints;</span>
-<span class="nc" id="L54">  }</span>
+<span class="nc" id="L63">    this.daySongPoints = daySongPoints;</span>
+<span class="nc" id="L64">  }</span>
 
   public List&lt;SongPoint&gt; getHistoricalSongPoints() {
-<span class="nc" id="L57">    return historicalSongPoints;</span>
+<span class="nc" id="L67">    return historicalSongPoints;</span>
   }
 
   public void setHistoricalSongPoints(List&lt;SongPoint&gt; historicalSongPoints) {
-<span class="nc" id="L61">    this.historicalSongPoints = historicalSongPoints;</span>
-<span class="nc" id="L62">  }</span>
+<span class="nc" id="L71">    this.historicalSongPoints = historicalSongPoints;</span>
+<span class="nc" id="L72">  }</span>
 
   /** Creates SongPoint objects from updated user data and stores in daySongPoints */
   public void loadSongPoints() {
-<span class="nc" id="L66">    List&lt;SongPoint&gt; songPoints = new ArrayList&lt;SongPoint&gt;();</span>
-<span class="nc" id="L67">    this.users.forEach(</span>
+<span class="nc" id="L76">    List&lt;SongPoint&gt; songPoints = new ArrayList&lt;SongPoint&gt;();</span>
+<span class="nc" id="L77">    this.users.forEach(</span>
         (username, user) -&gt; {
-<span class="nc" id="L69">          SongPoint songPoint = new SongPoint(username, user.getSongPoint());</span>
-<span class="nc" id="L70">          songPoints.add(songPoint);</span>
-<span class="nc" id="L71">        });</span>
-<span class="nc" id="L72">    this.daySongPoints = songPoints;</span>
-<span class="nc" id="L73">  }</span>
+<span class="nc" id="L79">          SongPoint songPoint = new SongPoint(username, user.getSongPoint());</span>
+<span class="nc" id="L80">          songPoints.add(songPoint);</span>
+<span class="nc" id="L81">        });</span>
+<span class="nc" id="L82">    this.daySongPoints = songPoints;</span>
+<span class="nc" id="L83">  }</span>
 
   /** Creates SongPoint objects from updated user data and stores in historicalSongPoints */
   public void loadHistoricalSongPoints() {
-<span class="nc" id="L77">    List&lt;SongPoint&gt; songPoints = new ArrayList&lt;SongPoint&gt;();</span>
-<span class="nc" id="L78">    this.users.forEach(</span>
+<span class="nc" id="L87">    List&lt;SongPoint&gt; songPoints = new ArrayList&lt;SongPoint&gt;();</span>
+<span class="nc" id="L88">    this.users.forEach(</span>
         (username, user) -&gt; {
-<span class="nc" id="L80">          SongPoint songPoint = new SongPoint(username, user.getHistoricalSongPoint());</span>
-<span class="nc" id="L81">          songPoints.add(songPoint);</span>
-<span class="nc" id="L82">        });</span>
-<span class="nc" id="L83">    this.historicalSongPoints = songPoints;</span>
-<span class="nc" id="L84">  }</span>
+<span class="nc" id="L90">          SongPoint songPoint = new SongPoint(username, user.getHistoricalSongPoint());</span>
+<span class="nc" id="L91">          songPoints.add(songPoint);</span>
+<span class="nc" id="L92">        });</span>
+<span class="nc" id="L93">    this.historicalSongPoints = songPoints;</span>
+<span class="nc" id="L94">  }</span>
 
   /** Builds 6-d tree with song points from today */
   public void buildSongTree() {
-<span class="nc" id="L88">    this.daySongTree = new KdTree&lt;SongPoint&gt;(this.getDaySongPoints(), 1);</span>
-<span class="nc" id="L89">  }</span>
+<span class="nc" id="L98">    this.daySongTree = new KdTree&lt;SongPoint&gt;(this.getDaySongPoints(), 1);</span>
+<span class="nc" id="L99">  }</span>
 
   /** Builds 6-d tree with historical song points */
   public void buildHistoricalSongTree() {
-<span class="nc" id="L93">    this.historicalSongTree = new KdTree&lt;SongPoint&gt;(this.getHistoricalSongPoints(), 1);</span>
-<span class="nc" id="L94">  }</span>
+<span class="nc" id="L103">    this.historicalSongTree = new KdTree&lt;SongPoint&gt;(this.getHistoricalSongPoints(), 1);</span>
+<span class="nc" id="L104">  }</span>
 
   /** Loads connections into each User object using kd-tree */
   public void loadConnections() {
-<span class="nc" id="L98">    this.users.forEach(</span>
+<span class="nc" id="L108">    this.users.forEach(</span>
         (username, user) -&gt; {
-<span class="nc" id="L100">          SongPoint sp = new SongPoint(username, user.getSongPoint());</span>
-<span class="nc" id="L101">          PriorityQueue&lt;SongPoint&gt; connectionsQueue =</span>
-<span class="nc" id="L102">              this.daySongTree.kdTreeSearch(</span>
+<span class="nc" id="L110">          SongPoint sp = new SongPoint(username, user.getSongPoint());</span>
+<span class="nc" id="L111">          PriorityQueue&lt;SongPoint&gt; connectionsQueue =</span>
+<span class="nc" id="L112">              this.daySongTree.kdTreeSearch(</span>
                   &quot;neighbors&quot;, 5, sp, new DistanceSorter(sp), new HashSet&lt;&gt;());
-<span class="nc" id="L104">          String[] connections = new String[5];</span>
-<span class="nc" id="L105">          int i = 0;</span>
-<span class="nc bnc" id="L106" title="All 2 branches missed.">          for (SongPoint songPoint : connectionsQueue) {</span>
-<span class="nc" id="L107">            connections[i] = songPoint.getUsername();</span>
-<span class="nc" id="L108">          }</span>
-<span class="nc" id="L109">          user.setConnections(connections);</span>
-<span class="nc" id="L110">        });</span>
-<span class="nc" id="L111">  }</span>
+          // System.out.println(connectionsQueue.toString());
+<span class="nc" id="L115">          String[] connections = new String[5];</span>
+<span class="nc" id="L116">          int i = 0;</span>
+<span class="nc bnc" id="L117" title="All 2 branches missed.">          for (SongPoint songPoint : connectionsQueue) {</span>
+<span class="nc" id="L118">            connections[i] = songPoint.getUsername();</span>
+<span class="nc" id="L119">            i++;</span>
+<span class="nc" id="L120">          }</span>
+<span class="nc" id="L121">          user.setConnections(connections);</span>
+<span class="nc" id="L122">        });</span>
+<span class="nc" id="L123">  }</span>
 
   /** Loads historical connections into each User object using kd-tree */
   public void loadHistoricalConnections() {
-<span class="nc" id="L115">    this.users.forEach(</span>
+<span class="nc" id="L127">    this.users.forEach(</span>
         (username, user) -&gt; {
-<span class="nc" id="L117">          SongPoint sp = new SongPoint(username, user.getHistoricalSongPoint());</span>
-<span class="nc" id="L118">          PriorityQueue&lt;SongPoint&gt; connectionsQueue =</span>
-<span class="nc" id="L119">              this.historicalSongTree.kdTreeSearch(</span>
+<span class="nc" id="L129">          SongPoint sp = new SongPoint(username, user.getHistoricalSongPoint());</span>
+<span class="nc" id="L130">          PriorityQueue&lt;SongPoint&gt; connectionsQueue =</span>
+<span class="nc" id="L131">              this.historicalSongTree.kdTreeSearch(</span>
                   &quot;neighbors&quot;, 5, sp, new DistanceSorter(sp), new HashSet&lt;&gt;());
-<span class="nc" id="L121">          String[] connections = new String[5];</span>
-<span class="nc" id="L122">          int i = 0;</span>
-<span class="nc bnc" id="L123" title="All 2 branches missed.">          for (SongPoint songPoint : connectionsQueue) {</span>
-<span class="nc" id="L124">            connections[i] = songPoint.getUsername();</span>
-<span class="nc" id="L125">          }</span>
-<span class="nc" id="L126">          user.setHistoricalConnections(connections);</span>
-<span class="nc" id="L127">        });</span>
-<span class="nc" id="L128">  }</span>
+<span class="nc" id="L133">          String[] connections = new String[5];</span>
+<span class="nc" id="L134">          int i = 0;</span>
+<span class="nc bnc" id="L135" title="All 2 branches missed.">          for (SongPoint songPoint : connectionsQueue) {</span>
+<span class="nc" id="L136">            connections[i] = songPoint.getUsername();</span>
+<span class="nc" id="L137">            i++;</span>
+<span class="nc" id="L138">          }</span>
+<span class="nc" id="L139">          user.setHistoricalConnections(connections);</span>
+<span class="nc" id="L140">        });</span>
+<span class="nc" id="L141">  }</span>
 }
 </pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.8.202204050719</span></div></body></html>
