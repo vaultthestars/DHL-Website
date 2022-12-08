@@ -14,7 +14,7 @@ import tuneinlogo from './images/tuneinlogo.png'
 //pain in the ass. Try doing it with arrays instead.
 // Point data format: ID/key, cx, cy
 // Have a separate map from ID/key to energy, something, something else, something else, etc.
-//[TODO]: We need to be able to render a whole ton of circles.
+//[DONE]: We need to be able to render a whole ton of circles.
 //[DONE]: Add the actual parameters we want
 //[DONE]: Change background color
 //[DONE]: Add camera controls
@@ -29,6 +29,17 @@ import tuneinlogo from './images/tuneinlogo.png'
 //TODO: Get frontend to communicate with backend
 
 let userdata: Map<number, Array<number>> = new Map<number, Array<number>>();
+//What do we want? The user name, the current song, and the current artist.
+
+// auth token or refresh token maps to a
+//USER:
+    // username
+    // current song name
+    // current song artist
+    // current song data
+    // historical song data
+
+// Store this in a big hash map from auth tokens to user objects
 
 let maxnum = 250;
 
@@ -257,6 +268,11 @@ export default function GraphVis() {
                         alt="tunein_logo"/>
                         <div className = "matcheswrapper">
                         </div>
+                    </div>
+                    <div className="userbar">
+                        <h2>CURRENT SONG</h2>
+                        <h3>by current artist</h3>
+                        <p>username</p>
                     </div>
                 </div>
                 {/* <p>{paramstring(SelectIndex)}
