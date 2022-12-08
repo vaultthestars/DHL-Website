@@ -36,8 +36,9 @@ public class LoadSongFeaturesHandler implements Route {
     String id = "4ewazQLXFTDC8XvCbhvtXs"; // Glimpse of us by Joji (mock song ID)
 
     // mock user refresh token
-    String refreshToken = "AQB8M71Nlja3q8-pCbmyCqzcIk2h23xSdK2GVF9VRVm04Mq6QfSBDZ9tDLf26MmUaN0NK-g7HuB2SMpC-ED1HQ-g36-ci3Xj16NA5t-kw2VYFJZ9wzGX2eFRk8g1_igwCws";
-    String accessToken = this.getAuthToken(refreshToken);
+  
+    String ddcsRefreshToken = "AQCfudjNUN1Iww0-BCNsHvyf4ggc9cmcySPtsDVj6nJN6NIf5YcactC5VRGfOk-ZaggVuaw3oaN98HmqPh_zCPq6HA-_gKein9j5zr4LcvbK5PUuNSlZXRTH40-3PsaNBuA";
+    String accessToken = this.getAuthToken(ddcsRefreshToken);
     System.out.print(accessToken);
 
     SpotifyApi spotifyApi = new SpotifyApi.Builder().setAccessToken(accessToken).build();
@@ -82,8 +83,8 @@ public class LoadSongFeaturesHandler implements Route {
    */
   private String getAuthToken(String refreshToken) {
     try {
-        String clientId = "d760ead8737f4c978ca2db46cfd2610a"; // need to update this to be TuneIn App
-        String clientSecret = "9ca4a794c8624a01883513a2c46c751d"; // need to update this to be TuneIn App
+        String clientId = "213450855ac44f5aa842c2359939fded";
+        String clientSecret = "9771ae6d19724806b33c585b57068127";
         SpotifyApi spotifyApi = new SpotifyApi.Builder()
             .setClientId(clientId)
             .setClientSecret(clientSecret)
