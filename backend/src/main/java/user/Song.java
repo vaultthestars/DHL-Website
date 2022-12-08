@@ -5,7 +5,6 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
 import kdtree.KdTreeNode;
-import kdtree.SongPoint;
 
 public class Song implements KdTreeNode {
 
@@ -91,7 +90,7 @@ public class Song implements KdTreeNode {
     if (this == o) {
       return true;
     }
-    if (!(o instanceof SongPoint)) {
+    if (!(o instanceof Song)) {
       return false;
     }
     Song point1 = (Song) o;
