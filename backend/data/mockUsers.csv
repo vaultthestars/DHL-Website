@@ -1,15 +1,15 @@
-username,membershipLength,songTitle,songId,songArtists,songPoint
-bradleywiseman,2,Blade of Flame,z7w9sLpW5s,Morgan Luiz,0.39 0.17 0.63 0.48 0.95 0.92
-cuckoopal3,1,Entwined Consort,koKFxwly5b,Emre,0.20 0.67 0.66 0.38 0.31 0.42
-froggy.79,2,The Ships's Trainer,qSxJvZNY6A,Jakub Vazquez Joe,0.23 0.50 0.14 0.89 0.62 0.02
-harry_styles,5,The Years of the Truth,KEuAbhXNsK,Aysha Hayes,0.25 0.05 0.05 0.58 0.23 0.33
-j2d2,5,Nobody in the Son,tk8CqsFkLt,Samantha Burke,0.59 0.70 0.84 0.62 0.54 0.17
-jade,4,Cold Servants,OCyANdFbWQ,Kurt ,0.05 0.71 0.66 0.65 0.41 0.13
-jewl12,4,The Rising Secret,dmQsWiG01t,Dillan Atkinson,1.00 0.33 0.66 0.48 0.43 0.10
-john3,2,Souls of Edge,Si9uAMCX9m,Harley Brewer,0.43 0.66 0.74 0.93 0.74 0.58
-maria.t7,3,The Something's Flight,UwbMyZI9FL,Charley Dotson,0.93 0.88 0.20 0.79 0.97 0.18
-max,3,The Misty of the Dreams,ojQc4FMNHB,Alyssia Waters,0.06 0.32 0.92 0.00 0.92 0.62
-musicluv3r,4,Eye in the Hunter,A9ZFm9Hogi,George Farley,0.54 0.12 0.36 0.93 0.81 0.64
-pablo365,4,Missing Past,26yjT6PsTF,Aine Paul,0.41 0.64 0.24 0.79 0.30 0.09
-star22,3,The Moon's Eyes,uGkTsDTeLW,Arianna Floyd,0.75 0.57 0.20 0.60 0.15 0.43
-will.smith,6,Fairy in the Birch,4LVRn0o60b,Lorna Moss,0.36 0.16 0.23 0.03 0.91 0.36
+username,membershipLength,songTitle,songId,songArtists,songPoint,connections,historicalSongPoint,historicalConnections
+bradleywiseman,2,Blade of Flame,z7w9sLpW5s,Morgan Luiz,0.39 0.17 0.63 0.48 0.95 0.92,star22 max maria.t7 pablo365 musicluv3r,0.62 0.40 0.00 0.05 0.39 0.34,will.smith harry_styles pablo365 maria.t7 bradleywiseman
+cuckoopal3,1,Entwined Consort,koKFxwly5b,Emre,0.20 0.67 0.66 0.38 0.31 0.42,froggy.79 bradleywiseman star22 max maria.t7,0.99 0.70 0.33 0.02 0.97 0.68,cuckoopal3 froggy.79 star22 musicluv3r jade
+froggy.79,2,The Ships's Trainer,qSxJvZNY6A,Jakub Vazquez Joe,0.23 0.50 0.14 0.89 0.62 0.02,jewl12 jade j2d2 harry_styles will.smith,0.41 0.91 0.93 0.92 0.38 0.67,bradleywiseman will.smith harry_styles froggy.79 cuckoopal3
+harry_styles,5,The Years of the Truth,KEuAbhXNsK,Aysha Hayes,0.25 0.05 0.05 0.58 0.23 0.33,j2d2 musicluv3r john3 pablo365 bradleywiseman,0.46 0.53 0.41 0.73 0.03 0.77,harry_styles froggy.79 cuckoopal3 max jade
+j2d2,5,Nobody in the Son,tk8CqsFkLt,Samantha Burke,0.59 0.70 0.84 0.62 0.54 0.17,will.smith harry_styles pablo365 max bradleywiseman,0.70 0.63 0.97 0.94 0.97 0.67,bradleywiseman will.smith harry_styles froggy.79 cuckoopal3
+jade,4,Cold Servants,OCyANdFbWQ,Kurt ,0.05 0.71 0.66 0.65 0.41 0.13,star22 j2d2 musicluv3r john3 pablo365,0.16 0.32 0.16 0.34 0.90 0.23,jewl12 j2d2 will.smith harry_styles pablo365
+jewl12,4,The Rising Secret,dmQsWiG01t,Dillan Atkinson,1.00 0.33 0.66 0.48 0.43 0.10,cuckoopal3 froggy.79 star22 musicluv3r jade,0.35 0.72 0.50 0.85 0.92 0.21,froggy.79 bradleywiseman star22 max maria.t7
+john3,2,Souls of Edge,Si9uAMCX9m,Harley Brewer,0.43 0.66 0.74 0.93 0.74 0.58,will.smith harry_styles pablo365 maria.t7 bradleywiseman,0.71 0.25 0.88 0.17 0.86 0.67,star22 max maria.t7 pablo365 musicluv3r
+maria.t7,3,The Something's Flight,UwbMyZI9FL,Charley Dotson,0.93 0.88 0.20 0.79 0.97 0.18,jewl12 j2d2 will.smith harry_styles pablo365,1.00 0.00 0.51 0.19 0.21 0.03,star22 j2d2 musicluv3r john3 pablo365
+max,3,The Misty of the Dreams,ojQc4FMNHB,Alyssia Waters,0.06 0.32 0.92 0.00 0.92 0.62,bradleywiseman will.smith harry_styles froggy.79 cuckoopal3,0.66 0.64 0.90 0.91 0.86 0.51,will.smith harry_styles pablo365 max bradleywiseman
+musicluv3r,4,Eye in the Hunter,A9ZFm9Hogi,George Farley,0.54 0.12 0.36 0.93 0.81 0.64,bradleywiseman will.smith harry_styles froggy.79 cuckoopal3,0.88 0.88 0.16 0.57 0.48 0.59,jewl12 jade j2d2 harry_styles will.smith
+pablo365,4,Missing Past,26yjT6PsTF,Aine Paul,0.41 0.64 0.24 0.79 0.30 0.09,harry_styles froggy.79 cuckoopal3 max jade,0.87 0.57 0.28 0.14 0.87 0.39,j2d2 musicluv3r john3 pablo365 bradleywiseman
+star22,3,The Moon's Eyes,uGkTsDTeLW,Arianna Floyd,0.75 0.57 0.20 0.60 0.15 0.43,pablo365 musicluv3r jewl12 jade j2d2,0.75 0.81 0.66 0.34 0.90 0.26,jewl12 maria.t7 star22 j2d2 musicluv3r
+will.smith,6,Fairy in the Birch,4LVRn0o60b,Lorna Moss,0.36 0.16 0.23 0.03 0.91 0.36,jewl12 maria.t7 star22 j2d2 musicluv3r,0.46 0.67 0.55 0.93 0.40 0.79,pablo365 musicluv3r jewl12 jade j2d2
