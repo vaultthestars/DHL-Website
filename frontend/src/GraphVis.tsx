@@ -7,6 +7,7 @@ import * as d3 from 'd3';
 import ReactDOM from 'react-dom';
 import { svg } from 'd3';
 import tuneinlogo from './images/tuneinlogo.png'
+import { isVisible } from '@testing-library/user-event/dist/utils';
 
 //npm i --save-dev @types/react-slider
 
@@ -232,6 +233,14 @@ function camtarg(A: number[],B: number[],zoomed: boolean): number[]{
     return B;
 }
 
+function slidenum(bool: boolean){
+    if (bool){
+        return 1
+    }
+    else{
+        return 0
+    }
+}
 
 //TODO: add repulsive force
 //TODO: add stats display!
@@ -249,6 +258,8 @@ export default function GraphVis() {
     const [ShowCircLabels, SetShowCircLabels] = useState<boolean>(false);
     const [camcenter, Setcamcenter] = useState<number[]>([1,0,0]); //scale, position x, position y
     const [zoomed, Setzoomed] = useState<boolean>(false);
+    const [zoomval, Setzoomval] = useState<number>(0);
+    const [alltime, Setalltime] = useState<boolean>(false)
     
     useEffect(() => {
         setCircleData(sortshift(CircleData, SortParameter, getsortmethod(SortIndex), Speed))
@@ -256,24 +267,109 @@ export default function GraphVis() {
             //In reality we might want to center which user is you!
             camtarg([4,CircleData[SelectIndex][1],CircleData[SelectIndex][2]],[1,0,0],zoomed)))
         setTimer((Timer + 0.001) % 1)
-        document.documentElement.style.setProperty('--sidebar-mode', (1-(camcenter[0]-2)/2).toString());
+        Setzoomval(1-((camcenter[0]-2)/2))
+        document.documentElement.style.setProperty('--sidebar-mode', zoomval.toString());
+        document.documentElement.style.setProperty('--timeslidermode', slidenum(alltime).toString());
     }, CircleData)
-
+    
+    const nums = [0,1,2,3,4,5];
+    const xoffset = 25;
     //Make some sort of time update thing that lets you update circles and send their positions somewhere
     return <div className = "wrapper">
                 <div className = "sidebar">
-                    <div className="tuneinlogo">
+                    <div className="defaultbar">
                         <h2>Who's on your wavelength?</h2>
                         <img className = "wavepic" src="https://i.ibb.co/V2Dmsx4/tuneinlogo.png" 
                         alt="tunein_logo"/>
-                        <div className = "matcheswrapper">
-                        </div>
+                        <svg className = "matchesdisplay" width = "100%" height = "387.5">
+                                 <rect className="timesliderbg"
+                                    width = "175"
+                                    height = "25"
+                                    x= "11"
+                                    y= "7"
+                                    rx="5"
+                                    ry="5"
+                                    opacity = {(zoomval).toString()}
+                                    >
+                                </rect>
+                                <rect className="timeslider"
+                                    width = "75"
+                                    height = "25"
+                                    rx="5"
+                                    ry="5"
+                                    x = "10"
+                                    y = "7"
+                                    opacity = {(zoomval).toString()}
+                                    onClick= {() => {  
+                                        //Do something? idk. Maybe send the camera to that user, that would make sense
+                                    }}>
+                                </rect>
+                                <text x= "20" y="24"
+                                onClick={()=>
+                                    {console.log("HEY");
+                                    Setalltime(false)
+                                    }
+                                }> current</text>
+                                <text x= "120" y="24"
+                                onClick={()=>
+                                    {console.log("YAH");
+                                    Setalltime(true)
+                                    }
+                                }> all-time</text>
+                                {[0,1,2,3,4].map((x)=>{
+                                    return <rect 
+                                    width = "175"
+                                    height = "50"
+                                    x= "11"
+                                    y= {(45+70*x).toString()}
+                                    rx="5"
+                                    ry="5"
+                                    opacity = {(zoomval).toString()}
+                                    onClick= {() => {  
+                                        console.log("AYOOOOO")
+                                        //Do something? idk. Maybe send the camera to that user, that would make sense
+                                    }}>
+                                    </rect>
+                                })}
+                            </svg>
                     </div>
-                    <div className="userbar">
+                    {[0].map(()=>{if(zoomval < 0.9){return <div className="userbar">
                         <h2>CURRENT SONG</h2>
                         <h3>by current artist</h3>
                         <p>username</p>
+                        {/* TODO: Replace all of this with a simple map! */}
+                        {/* [DONE]]: Add actual number labels for each circle! */}
+                        {/* [DONE]]: Shift circles over to the right */}
+                        {/* TODO: Make easing? maybe. Maybe not */}
+                        <svg className = "paramdisplay" width = "100%" height = "500">
+                            {nums.map((x)=>{
+                                return <circle cx = {(200+xoffset).toString()} cy = {(40+70*x).toString()} r= "25" stroke = "#000000" strokeWidth = "5" 
+                                fill = {"hsla(1,0%,100%," + (1-zoomval).toString() + ")"}
+                                stroke-opacity = {(1-zoomval).toString()}
+                                />
+                            })}
+                            {nums.map((x)=>{
+                                return <path
+                                d={"M " + (200+xoffset).toString() + " " + (15 + 70*x).toString() + " a 25 25 0 0 1 0 50 a 25 25 0 0 1 0 -50"}
+                                fill="none"
+                                stroke={"hsla(" + 90*getdata(SelectIndex,x) + ", 100%, 40%, 1)"}
+                                stroke-width="5"
+                                stroke-dasharray={getdata(SelectIndex,x)*157.079632679 + ", 157.079632679"}
+                                opacity = {(1-zoomval).toString()}
+                                />
+                            })}
+                            {nums.map((x)=>{
+                                return <text fontSize="18" x = {(182+xoffset).toString()} y = {45+70*x} opacity = {(1-zoomval).toString()}>
+                                    {Math.round(getdata(SelectIndex,x)*100) + "%"}</text>
+                            })}
+                            {nums.map((x)=>{
+                                return <text className = "whitetext" x= "20" y= {(50 + 70*x).toString()}> {getparamname(x)+":"} </text>
+                            })}
+                        </svg>
                     </div>
+                }
+
+                })}
                 </div>
                 {/* <p>{paramstring(SelectIndex)}
                 </p> */}
@@ -300,8 +396,8 @@ export default function GraphVis() {
                         height = "50"
                         x= "10"
                         y= "10"
-                        rx="10"
-                        ry="10"
+                        rx="5"
+                        ry="5"
                         opacity = {camcenter[0]-3}
                         onClick= {() => {  
                             // update the circle positions

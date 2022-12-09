@@ -1,5 +1,6 @@
 :root {
   --sidebar-mode: 0;
+  --timeslidermode: 1;
   --main-color: rgb(104, 117, 217);
   --main-color-hover: rgb(104, 117, 217, 0.2);
   --track-color: #ddd;
@@ -63,7 +64,7 @@
 
 .App-header {
   background-color: #29186d;
-  min-height: 20vh;
+  min-height: 110px;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -161,9 +162,9 @@ body{
 .wrapper .sidebar{
     background: rgb(73, 58, 173);
     position: absolute;
-    top: 20vh;
+    top: 110px;
     right: 0;
-    width: 225px;
+    width: calc(255px + 30px*(1 - var(--sidebar-mode)));
     height: 600px;
     padding: 20px 0;
     transition: all 0.5s ease;
@@ -174,11 +175,12 @@ body{
   text-align: center;
 }
 
-.wrapper .sidebar .tuneinlogo img{
+.wrapper .sidebar .defaultbar img{
   display: block;
   position: absolute;
   top: 25px;
-  width: 225px;
+  right:0px;
+  width: 240px;
   height: 225px;
   opacity: var(--sidebar-mode)
 }
@@ -192,40 +194,55 @@ body{
 }
 
 .wrapper .sidebar .userbar h3{
-  position: absolute;
-  top: 55px;
+  position: relative;
+  text-align: left;
+  top: -40px;
   left: 25px;
   opacity: calc(1 - var(--sidebar-mode));
   color: #ffffff;
 }
 
 .wrapper .sidebar .userbar p{
-  position: absolute;
-  top: 75px;
+  position: relative;
+  text-align: left;
+  top: -35px;
   left: 25px;
   opacity: calc(1 - var(--sidebar-mode));
   color: #ffffff;
 }
 
-.wrapper .sidebar .tuneinlogo h2{
+.wrapper .sidebar .userbar .whitetext{
+  /* font: italic 40px serif; */
+      font: normal 20px helvetica;
+      fill: rgb(255, 255, 255);
+      opacity: calc(1 - var(--sidebar-mode));
+}
+
+.wrapper .sidebar .userbar .paramdisplay{
+  position: absolute;
+  top: 110px;
+  left: 10px;
+}
+
+.wrapper .sidebar .defaultbar h2{
   opacity: var(--sidebar-mode);
   color: #ffffff;
   margin: 10px 0 5px;
 }
 
-.wrapper .sidebar .tuneinlogo p{
+.wrapper .sidebar .defaultbar p{
   color: rgb(206, 240, 253);
   font-size: 14px;
 }
 
-.wrapper .sidebar .matcheswrapper{
+.wrapper .sidebar .matchesdisplay{
   background: rgb(92, 149, 218);
   position: absolute;
   top: 200px;
-  right: 12.5px;
+  right: 20px;
   width: 200px;
   height: 387.5px;
-  padding: 20px 0;
+  opacity: calc(2*var(--sidebar-mode) - 1);
   transition: all 0.5s ease;
 }
 
@@ -254,8 +271,30 @@ body{
   background-position: 12px 11px;
 }
 
+.wrapper .sidebar .matchesdisplay rect {
+  fill:rgb(113, 113, 219);
+  stroke-width:3;
+  stroke:rgb(0,0,0)
+}
+
+.wrapper .sidebar .matchesdisplay .timesliderbg {
+  fill:rgb(208, 208, 230);
+  stroke-width:3;
+  stroke:rgb(0,0,0)
+}
+
+.wrapper .sidebar .matchesdisplay .timeslider{
+  transition-duration: 500ms;
+  fill:rgb(143, 70, 191);
+  transform: translate(calc(100px*var(--timeslidermode)),0);
+  stroke-width:3;
+  stroke:rgb(0,0,0);
+  opacity: 100%;
+}
+
+
 rect {
-  fill:rgb(40, 40, 209);
+  fill:rgb(64, 64, 194);
   stroke-width:3;
   stroke:rgb(0,0,0)
 }
