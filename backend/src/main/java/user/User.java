@@ -8,45 +8,21 @@ import kdtree.KdTreeNode;
  * Class representing an individual TuneIn user, which houses essential user-specific information.
  */
 public class User implements KdTreeNode, Cloneable {
-  private String username;
+  private String userId;
+  private String displayName;
+  private String refreshToken;
   private int membershipLength;
   private Song currentSong;
   private String[] connections;
-  private float[] historicalSongPoint;
+  private double[] historicalSongPoint;
   private String[] historicalConnections;
 
-  /**
-   * Constructor for new user
-   *
-   * @param username - TunedIn username, identifier for the user
-   */
-  public User(String username) {
-    this.username = username;
-    this.membershipLength = 0;
-    this.currentSong = null;
-    this.connections = new String[5];
-    this.historicalSongPoint = new float[6];
-    this.historicalConnections = new String[5];
-  }
-
-  /**
-   * Constructor for User object
-   *
-   * @param username - TuneIn username, identifier for the user
-   * @param membershipLength - days since joining TuneIn
-   * @param currentSong - currently playing song at the time of TunedIn
-   * @param connections - nearest neighbors from song points tree
-   * @param historicalSongPoint - avg audio features of all song points since joining
-   * @param historicalConnections - nearest neighbors from historical song points tree
-   */
-  public User(
-      String username,
-      int membershipLength,
-      Song currentSong,
-      String[] connections,
-      float[] historicalSongPoint,
+  public User(String userId, String displayName, String refreshToken, int membershipLength,
+      Song currentSong, String[] connections, double[] historicalSongPoint,
       String[] historicalConnections) {
-    this.username = username;
+    this.userId = userId;
+    this.displayName = displayName;
+    this.refreshToken = refreshToken;
     this.membershipLength = membershipLength;
     this.currentSong = currentSong;
     this.connections = connections;
@@ -64,7 +40,7 @@ public class User implements KdTreeNode, Cloneable {
     }
     User user = (User) o;
     return membershipLength == user.membershipLength
-        && username.equals(user.username)
+        && userId.equals(user.userId)
         && currentSong.equals(user.currentSong)
         && Arrays.equals(connections, user.connections)
         && Arrays.equals(historicalSongPoint, user.historicalSongPoint)
@@ -73,7 +49,7 @@ public class User implements KdTreeNode, Cloneable {
 
   @Override
   public int hashCode() {
-    int result = Objects.hash(username, membershipLength);
+    int result = Objects.hash(userId, membershipLength);
     result = 31 * result + currentSong.hashCode();
     result = 31 * result + Arrays.hashCode(connections);
     result = 31 * result + Arrays.hashCode(historicalSongPoint);
@@ -81,12 +57,28 @@ public class User implements KdTreeNode, Cloneable {
     return result;
   }
 
-  public String getUsername() {
-    return this.username;
+  public String getuserId() {
+    return this.userId;
   }
 
-  public void setUsername(String username) {
-    this.username = username;
+  public void setuserId(String userId) {
+    this.userId = userId;
+  }
+
+  public String getDisplayName() {
+    return displayName;
+  }
+
+  public void setDisplayName(String displayName) {
+    this.displayName = displayName;
+  }
+
+  public String getRefreshToken() {
+    return refreshToken;
+  }
+
+  public void setRefreshToken(String refreshToken) {
+    this.refreshToken = refreshToken;
   }
 
   public int getMembershipLength() {
@@ -113,11 +105,11 @@ public class User implements KdTreeNode, Cloneable {
     this.connections = connections;
   }
 
-  public float[] getHistoricalSongPoint() {
+  public double[] getHistoricalSongPoint() {
     return this.historicalSongPoint.clone();
   }
 
-  public void setHistoricalSongPoint(float[] historicalSongPoint) {
+  public void setHistoricalSongPoint(double[] historicalSongPoint) {
     this.historicalSongPoint = historicalSongPoint;
   }
 
@@ -134,7 +126,7 @@ public class User implements KdTreeNode, Cloneable {
     try {
       User clone = (User) super.clone();
       // TODO: copy mutable state here, so the clone can't change the internals of the original
-      clone.setUsername(this.getUsername());
+      clone.setuserId(this.getuserId());
       clone.setMembershipLength(this.getMembershipLength());
       clone.setCurrentSong(this.getCurrentSong());
       clone.setConnections(this.getConnections());
@@ -146,12 +138,12 @@ public class User implements KdTreeNode, Cloneable {
     }
   }
 
-  public void updateHistoricalSongPoint(float[] newSongPoint) {
+  public void updateHistoricalSongPoint(double[] newSongPoint) {
     // TODO: implement with incremental / running average formula
   }
 
   @Override
-  public float[] getPoint() {
+  public double[] getPoint() {
     return this.getHistoricalSongPoint();
   }
 
@@ -162,9 +154,9 @@ public class User implements KdTreeNode, Cloneable {
 
   @Override
   public double euclideanDistance(KdTreeNode node) {
-    float[] currentVals = this.getHistoricalSongPoint();
-    float[] targetVals = node.getPoint();
-    float sum = 0;
+    double[] currentVals = this.getHistoricalSongPoint();
+    double[] targetVals = node.getPoint();
+    double sum = 0;
     for (int i = 0; i < currentVals.length; i++) {
       sum += Math.pow(currentVals[i] - targetVals[i], 2);
     }

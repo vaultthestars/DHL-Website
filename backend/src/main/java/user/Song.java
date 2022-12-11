@@ -8,20 +8,28 @@ import kdtree.KdTreeNode;
 
 public class Song implements KdTreeNode {
 
+  private String userId;
   private String title;
   private String id;
   private List<String> artists;
-  private float[] features;
+  private double[] features;
   private int dimension;
-  private String username;
 
-  public Song(String title, String id, List<String> artists, float[] features, String username) {
+  public Song(String userId, String title, String id, List<String> artists, double[] features) {
+    this.userId = userId;
     this.title = title;
     this.id = id;
     this.artists = artists;
     this.features = features;
     this.dimension = features.length;
-    this.username = username;
+  }
+
+  public String getUserId() {
+    return userId;
+  }
+
+  public void setUserId(String userId) {
+    this.userId = userId;
   }
 
   public String getTitle() {
@@ -48,24 +56,24 @@ public class Song implements KdTreeNode {
     this.artists = artists;
   }
 
-  public float[] getFeatures() {
+  public double[] getFeatures() {
     return this.features.clone();
   }
 
-  public void setFeatures(float[] features) {
+  public void setFeatures(double[] features) {
     this.features = features;
   }
 
-  public String getUsername() {
-    return this.username;
+  public String getuserId() {
+    return this.userId;
   }
 
-  public void setUsername(String username) {
-    this.username = username;
+  public void setuserId(String userId) {
+    this.userId = userId;
   }
 
   @Override
-  public float[] getPoint() {
+  public double[] getPoint() {
     return this.getFeatures();
   }
 
@@ -76,9 +84,9 @@ public class Song implements KdTreeNode {
 
   @Override
   public double euclideanDistance(KdTreeNode node) {
-    float[] currentVals = this.getFeatures();
-    float[] targetVals = node.getPoint();
-    float sum = 0;
+    double[] currentVals = this.getFeatures();
+    double[] targetVals = node.getPoint();
+    double sum = 0;
     for (int i = 0; i < currentVals.length; i++) {
       sum += Math.pow(currentVals[i] - targetVals[i], 2);
     }
