@@ -65,6 +65,22 @@ public class User implements KdTreeNode, Cloneable {
     this.userId = userId;
   }
 
+  public String getDisplayName() {
+    return displayName;
+  }
+
+  public void setDisplayName(String displayName) {
+    this.displayName = displayName;
+  }
+
+  public String getRefreshToken() {
+    return refreshToken;
+  }
+
+  public void setRefreshToken(String refreshToken) {
+    this.refreshToken = refreshToken;
+  }
+
   public int getMembershipLength() {
     return this.membershipLength;
   }
