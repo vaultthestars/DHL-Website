@@ -5,7 +5,7 @@ import java.util.Objects;
 
 /** Class to represent a simple point in k-dimensional space. */
 public class Point implements KdTreeNode {
-  private float[] point;
+  private double[] point;
   private int dimension;
   private final int hashNum = 31;
 
@@ -14,7 +14,7 @@ public class Point implements KdTreeNode {
    *
    * @param vals array of doubles representing a point (i.e. (x,y,z))
    */
-  public Point(float[] vals) {
+  public Point(double[] vals) {
     this.point = vals;
     this.dimension = vals.length;
   }
@@ -35,8 +35,8 @@ public class Point implements KdTreeNode {
    * @return double The straight line distance.
    */
   public double euclideanDistance(KdTreeNode node) {
-    float[] currentVals = this.point;
-    float[] targetVals = node.getPoint();
+    double[] currentVals = this.point;
+    double[] targetVals = node.getPoint();
     double sum = 0;
     for (int i = 0; i < currentVals.length; i++) {
       sum += Math.pow(currentVals[i] - targetVals[i], 2);
@@ -68,7 +68,7 @@ public class Point implements KdTreeNode {
    *
    * @return array of doubles representing a point (i.e. (x,y,z))
    */
-  public float[] getPoint() {
+  public double[] getPoint() {
     return this.point;
   }
 }

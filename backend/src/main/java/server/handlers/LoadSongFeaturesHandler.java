@@ -53,7 +53,7 @@ public class LoadSongFeaturesHandler implements Route {
 
     AudioFeatures audioFeatures = getAudioFeaturesForTrackRequest.execute();
 
-    float[] songFeatures = new float[6];
+    double[] songFeatures = new double[6];
     songFeatures[0] = audioFeatures.getAcousticness();
     songFeatures[1] = audioFeatures.getDanceability();
     songFeatures[2] = audioFeatures.getEnergy();
@@ -64,9 +64,9 @@ public class LoadSongFeaturesHandler implements Route {
     return new LoadSongFeaturesSuccessResponse(id, songFeatures).serialize();
   }
 
-  public record LoadSongFeaturesSuccessResponse(String result, String id, float[] features) {
+  public record LoadSongFeaturesSuccessResponse(String result, String id, double[] features) {
 
-    public LoadSongFeaturesSuccessResponse(String id, float[] features) {
+    public LoadSongFeaturesSuccessResponse(String id, double[] features) {
       this("success", id, features);
     }
 
@@ -109,11 +109,11 @@ public class LoadSongFeaturesHandler implements Route {
   /**
    * Helper that gets the current song of a user and returns a Song object with relevant info.
    *
-   * @param username - the username of the user whose song to get
+   * @param userId - the userId of the user whose song to get
    * @param accessToken - the access token for the user
    * @return their current song as a Song object
    */
-  public Song getCurrentSong(String username, String accessToken) {
+  public Song getCurrentSong(String userId, String accessToken) {
     SpotifyApi spotifyApi = new SpotifyApi.Builder()
         .setAccessToken(accessToken)
         .build();
@@ -138,7 +138,7 @@ public class LoadSongFeaturesHandler implements Route {
           spotifyApi.getAudioFeaturesForTrack(id).build();
       AudioFeatures audioFeatures = getAudioFeaturesForTrackRequest.execute();
 
-      float[] features = new float[6];
+      double[] features = new double[6];
       features[0] = audioFeatures.getAcousticness();
       features[1] = audioFeatures.getDanceability();
       features[2] = audioFeatures.getEnergy();
@@ -146,7 +146,7 @@ public class LoadSongFeaturesHandler implements Route {
       features[4] = audioFeatures.getSpeechiness();
       features[5] = audioFeatures.getValence();
 
-      return new Song(title, id, artists, features, username);
+      return new Song(userId, title, id, artists, features);
     } catch (IOException | SpotifyWebApiException | ParseException e) {
       throw new RuntimeException(e);
     }
