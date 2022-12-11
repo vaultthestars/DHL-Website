@@ -94,7 +94,8 @@ public class Song implements KdTreeNode {
       return false;
     }
     Song point1 = (Song) o;
-    return this.dimension == point1.getDimension() && Arrays.equals(this.getPoint(), point1.getPoint());
+    return this.dimension == point1.getDimension()
+        && Arrays.equals(this.getPoint(), point1.getPoint());
   }
 
   @Override

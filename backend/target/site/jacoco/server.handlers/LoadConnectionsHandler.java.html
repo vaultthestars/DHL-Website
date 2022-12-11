@@ -33,10 +33,10 @@ public class LoadConnectionsHandler implements Route {
     try {
       // call kd-tree methods from UserDatabase &amp; store connections &amp; historicalConnections in user
       // objects
-<span class="nc" id="L36">      this.userDatabase.loadSongPoints();</span>
-<span class="nc" id="L37">      this.userDatabase.loadHistoricalSongPoints();</span>
+<span class="nc" id="L36">      this.userDatabase.loadCurrentSongPoints();</span>
+<span class="nc" id="L37">      this.userDatabase.loadUserPoints();</span>
 <span class="nc" id="L38">      this.userDatabase.buildSongTree();</span>
-<span class="nc" id="L39">      this.userDatabase.buildHistoricalSongTree();</span>
+<span class="nc" id="L39">      this.userDatabase.buildUserTree();</span>
 <span class="nc" id="L40">      this.userDatabase.loadConnections();</span>
 <span class="nc" id="L41">      this.userDatabase.loadHistoricalConnections();</span>
 <span class="nc" id="L42">      return new LoadConnectionsSuccessResponse().serialize();</span>

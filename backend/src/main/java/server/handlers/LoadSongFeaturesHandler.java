@@ -16,6 +16,7 @@ import se.michaelthelin.spotify.requests.authorization.authorization_code.Author
 import se.michaelthelin.spotify.requests.data.player.GetUsersCurrentlyPlayingTrackRequest;
 import se.michaelthelin.spotify.requests.data.tracks.GetAudioFeaturesForTrackRequest;
 import se.michaelthelin.spotify.requests.data.tracks.GetTrackRequest;
+import server.Constants;
 import spark.Request;
 import spark.Response;
 import spark.Route;
@@ -42,8 +43,9 @@ public class LoadSongFeaturesHandler implements Route {
     String id = "4ewazQLXFTDC8XvCbhvtXs"; // Glimpse of us by Joji (mock song ID)
 
     // mock user refresh token
-  
-    String ddcsRefreshToken = "AQCfudjNUN1Iww0-BCNsHvyf4ggc9cmcySPtsDVj6nJN6NIf5YcactC5VRGfOk-ZaggVuaw3oaN98HmqPh_zCPq6HA-_gKein9j5zr4LcvbK5PUuNSlZXRTH40-3PsaNBuA";
+
+    String ddcsRefreshToken =
+        "AQCfudjNUN1Iww0-BCNsHvyf4ggc9cmcySPtsDVj6nJN6NIf5YcactC5VRGfOk-ZaggVuaw3oaN98HmqPh_zCPq6HA-_gKein9j5zr4LcvbK5PUuNSlZXRTH40-3PsaNBuA";
     String accessToken = this.getAuthToken(ddcsRefreshToken);
     System.out.print(accessToken);
 
@@ -82,24 +84,26 @@ public class LoadSongFeaturesHandler implements Route {
   }
 
   /**
-   * Helper method that takes in a user's refresh token and makes a call to the Spotify API
-   * to return a valid access token
+   * Helper method that takes in a user's refresh token and makes a call to the Spotify API to
+   * return a valid access token
+   *
    * @param refreshToken - refresh token (obtained when a user logins in with their Spotify account)
    * @return access token
    */
   private String getAuthToken(String refreshToken) {
     try {
-        String clientId = "213450855ac44f5aa842c2359939fded";
-        String clientSecret = "9771ae6d19724806b33c585b57068127";
-        SpotifyApi spotifyApi = new SpotifyApi.Builder()
-            .setClientId(clientId)
-            .setClientSecret(clientSecret)
-            .setRefreshToken(refreshToken)
-            .build();
-        AuthorizationCodeRefreshRequest authorizationCodeRefreshRequest = spotifyApi.authorizationCodeRefresh()
-            .build();
-        AuthorizationCodeCredentials authorizationCodeCredentials = authorizationCodeRefreshRequest.execute();
-        return authorizationCodeCredentials.getAccessToken();
+
+      SpotifyApi spotifyApi =
+          new SpotifyApi.Builder()
+              .setClientId(Constants.CLIENT_ID)
+              .setClientSecret(Constants.CLIENT_SECRET)
+              .setRefreshToken(refreshToken)
+              .build();
+      AuthorizationCodeRefreshRequest authorizationCodeRefreshRequest =
+          spotifyApi.authorizationCodeRefresh().build();
+      AuthorizationCodeCredentials authorizationCodeCredentials =
+          authorizationCodeRefreshRequest.execute();
+      return authorizationCodeCredentials.getAccessToken();
     } catch (IOException | SpotifyWebApiException | ParseException e) {
       System.out.println("Error: " + e.getMessage());
       throw new RuntimeException(e);
@@ -114,20 +118,16 @@ public class LoadSongFeaturesHandler implements Route {
    * @return their current song as a Song object
    */
   public Song getCurrentSong(String username, String accessToken) {
-    SpotifyApi spotifyApi = new SpotifyApi.Builder()
-        .setAccessToken(accessToken)
-        .build();
-    GetUsersCurrentlyPlayingTrackRequest getUsersCurrentlyPlayingTrackRequest = spotifyApi
-        .getUsersCurrentlyPlayingTrack()
-        .build();
+    SpotifyApi spotifyApi = new SpotifyApi.Builder().setAccessToken(accessToken).build();
+    GetUsersCurrentlyPlayingTrackRequest getUsersCurrentlyPlayingTrackRequest =
+        spotifyApi.getUsersCurrentlyPlayingTrack().build();
     try {
       CurrentlyPlaying currentlyPlaying = getUsersCurrentlyPlayingTrackRequest.execute();
       String title = currentlyPlaying.getItem().getName();
       String id = currentlyPlaying.getItem().getId();
 
       List<String> artists = new ArrayList<>();
-      GetTrackRequest getTrackRequest = spotifyApi.getTrack(id)
-          .build();
+      GetTrackRequest getTrackRequest = spotifyApi.getTrack(id).build();
       Track track = getTrackRequest.execute();
       ArtistSimplified[] artistsSimp = track.getArtists();
       for (ArtistSimplified artist : artistsSimp) {
@@ -152,6 +152,3 @@ public class LoadSongFeaturesHandler implements Route {
     }
   }
 }
-
-
-
