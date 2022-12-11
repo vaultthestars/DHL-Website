@@ -51,6 +51,17 @@
   text-align: center;
 }
 
+.tuneinlogo {
+  scale: 40%;
+  position: relative;
+  top: -5px;
+}
+
+.spotifybutton{
+  position: absolute;
+  right: 300px;
+}
+
 .App-logo {
   height: 40vmin;
   pointer-events: none;
@@ -64,7 +75,7 @@
 
 .App-header {
   background-color: #29186d;
-  min-height: 110px;
+  height: 110px;
   display: flex;
   flex-direction: column;
   align-items: center;
