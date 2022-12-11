@@ -139,7 +139,15 @@ public class User implements KdTreeNode, Cloneable {
   }
 
   public void updateHistoricalSongPoint(double[] newSongPoint) {
-    // TODO: implement with incremental / running average formula
+    // current average point + [(new point - current average point) / membershipLength]
+    this.membershipLength++;
+    double[] newHistoricalSongPoint = new double[6];
+    for (int i = 0; i < newSongPoint.length; i++) {
+      newHistoricalSongPoint[i] = newSongPoint[i] - this.getHistoricalSongPoint()[i];
+      newHistoricalSongPoint[i] = newHistoricalSongPoint[i] / this.getMembershipLength();
+      newHistoricalSongPoint[i] = newHistoricalSongPoint[i] + this.getHistoricalSongPoint()[i];
+    }
+    this.setHistoricalSongPoint(newHistoricalSongPoint);
   }
 
   @Override
