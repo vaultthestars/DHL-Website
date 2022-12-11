@@ -79,7 +79,7 @@ function App() {
       </div>
       <img className = "tuneinlogo" src="https://i.ibb.co/rFTJDTr/tuneinlogo2.png"/>
       </p>      
-      <GraphVis />
+      {/* <GraphVis /> */}
     </div>
   );
 }
