@@ -20,27 +20,27 @@ public class KdTreeTest {
   /** Sets up the k-d Tree using an odd number of 2d points. */
   public void setUpOddPoints() {
     List<KdTreeNode> points = new ArrayList<>();
-    points.add(new Point(new float[] {4, 1}));
-    points.add(new Point(new float[] {0, 5}));
-    points.add(new Point(new float[] {3, 6}));
-    points.add(new Point(new float[] {6, 5}));
-    points.add(new Point(new float[] {7, 0}));
-    points.add(new Point(new float[] {6, 2}));
-    points.add(new Point(new float[] {6, 4}));
+    points.add(new Point(new double[] {4, 1}));
+    points.add(new Point(new double[] {0, 5}));
+    points.add(new Point(new double[] {3, 6}));
+    points.add(new Point(new double[] {6, 5}));
+    points.add(new Point(new double[] {7, 0}));
+    points.add(new Point(new double[] {6, 2}));
+    points.add(new Point(new double[] {6, 4}));
     this.kdTree = new KdTree<>(points, 0);
   }
 
   /** Sets up the k-d Tree using an even number of 2d points. */
   public void setUpEvenPoints() {
     List<KdTreeNode> points = new ArrayList<>();
-    points.add(new Point(new float[] {4, 1}));
-    points.add(new Point(new float[] {0, 5}));
-    points.add(new Point(new float[] {3, 6}));
-    points.add(new Point(new float[] {6, 5}));
-    points.add(new Point(new float[] {7, 0}));
-    points.add(new Point(new float[] {6, 2}));
-    points.add(new Point(new float[] {6, 4}));
-    points.add(new Point(new float[] {1, 0}));
+    points.add(new Point(new double[] {4, 1}));
+    points.add(new Point(new double[] {0, 5}));
+    points.add(new Point(new double[] {3, 6}));
+    points.add(new Point(new double[] {6, 5}));
+    points.add(new Point(new double[] {7, 0}));
+    points.add(new Point(new double[] {6, 2}));
+    points.add(new Point(new double[] {6, 4}));
+    points.add(new Point(new double[] {1, 0}));
     this.kdTree = new KdTree<>(points, 0);
   }
 
@@ -151,7 +151,7 @@ public class KdTreeTest {
   public void testEmptyTreeSearch() {
     setUpEmptyTree();
 
-    Point targetPoint = new Point(new float[] {4, 1});
+    Point targetPoint = new Point(new double[] {4, 1});
     PriorityQueue<KdTreeNode> neighbors =
         kdTree.kdTreeSearch(
             "neighbors", 5, targetPoint, new DistanceSorter(targetPoint), new HashSet<>());
@@ -168,7 +168,7 @@ public class KdTreeTest {
   public void testKIs0() {
     setUpEvenPoints();
 
-    Point targetPoint = new Point(new float[] {4, 1});
+    Point targetPoint = new Point(new double[] {4, 1});
     PriorityQueue<KdTreeNode> neighbors =
         kdTree.kdTreeSearch(
             "neighbors", 0, targetPoint, new DistanceSorter(targetPoint), new HashSet<>());
@@ -184,7 +184,7 @@ public class KdTreeTest {
   public void testRIs0AtPoint() {
     setUpEvenPoints();
 
-    Point targetPoint = new Point(new float[] {4, 1});
+    Point targetPoint = new Point(new double[] {4, 1});
     PriorityQueue<KdTreeNode> radius =
         kdTree.kdTreeSearch(
             "radius", 0, targetPoint, new DistanceSorter(targetPoint), new HashSet<>());
@@ -202,7 +202,7 @@ public class KdTreeTest {
   public void testRIs0NoPoint() {
     setUpOddPoints();
 
-    Point targetPoint = new Point(new float[] {5, 5});
+    Point targetPoint = new Point(new double[] {5, 5});
     PriorityQueue<KdTreeNode> radius =
         kdTree.kdTreeSearch(
             "radius", 0, targetPoint, new DistanceSorter(targetPoint), new HashSet<>());
@@ -218,7 +218,7 @@ public class KdTreeTest {
   public void testNeighborsIgnore() {
     setUpOddPoints();
 
-    Point targetPoint = new Point(new float[] {4, 1});
+    Point targetPoint = new Point(new double[] {4, 1});
     HashSet<KdTreeNode> ignore = new HashSet<>();
     ignore.add(targetPoint);
 
@@ -237,7 +237,7 @@ public class KdTreeTest {
   public void testNeighborsNoIgnore() {
     setUpOddPoints();
 
-    Point targetPoint = new Point(new float[] {4, 1});
+    Point targetPoint = new Point(new double[] {4, 1});
 
     PriorityQueue<KdTreeNode> neighborsNoIgnore =
         kdTree.kdTreeSearch(
@@ -255,7 +255,7 @@ public class KdTreeTest {
   public void testRadiusIgnore() {
     setUpOddPoints();
 
-    Point targetPoint = new Point(new float[] {4, 1});
+    Point targetPoint = new Point(new double[] {4, 1});
     HashSet<KdTreeNode> ignore = new HashSet<>();
     ignore.add(targetPoint);
 
@@ -274,7 +274,7 @@ public class KdTreeTest {
   public void testRadiusNoIgnore() {
     setUpOddPoints();
 
-    Point targetPoint = new Point(new float[] {4, 1});
+    Point targetPoint = new Point(new double[] {4, 1});
 
     PriorityQueue<KdTreeNode> radiusNoIgnore =
         kdTree.kdTreeSearch(
