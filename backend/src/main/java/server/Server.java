@@ -79,9 +79,11 @@ public class Server {
 
     // mock Points for now to build kd trees
 
+    Database db = new Database();
+
     // Setting up the handler for the GET endpoints
     Spark.get("load-connections", new LoadConnectionsHandler(userDatabase));
-    Spark.get("get-user", new GetUserHandler(userDatabase));
+    Spark.get("get-user", new GetUserHandler(db));
     Spark.get("load-song-features", new LoadSongFeaturesHandler(userDatabase));
 
 

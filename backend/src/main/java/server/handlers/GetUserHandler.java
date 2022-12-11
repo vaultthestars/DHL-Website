@@ -8,23 +8,22 @@ import spark.Request;
 import spark.Response;
 import spark.Route;
 import user.User;
-import user.UserDatabase;
+
 
 public class GetUserHandler implements Route {
 
-  UserDatabase userDatabase;
+  Database database;
 
-  public GetUserHandler(UserDatabase userDatabase) {
-    this.userDatabase = userDatabase;
+  public GetUserHandler(Database database) {
+    this.database = database;
   }
 
   @Override
   public Object handle(Request request, Response response) throws Exception {
     try {
-      String username = request.queryParams("username");
-      User user = this.userDatabase.getUser(username);
-      Database db = new Database();
-      db.updateUser("denise_danielle_tamesis@brown.edu");
+      String userId = request.queryParams("userId");
+      User user = this.database.retrieveUser(userId);
+
       return new GetUserSuccessResponse(user).serialize();
     } catch (Exception e) {
       return new ErrBadJsonResponse();

@@ -66,8 +66,14 @@ public class Database {
 
   }
 
-  public List<User> retrieveAllUsers(){
-    try {
+  public void updateCurrentSongs(){
+//    for (DocumentReference docRef : this.database.collection("users")){
+//
+//    }
+
+  }
+
+  public List<User> retrieveAllUsers() throws ExecutionException, InterruptedException {
       List<User> users = new ArrayList<>();
       // asynchronously retrieve all documents
       ApiFuture<QuerySnapshot> future = this.database.collection("users").get();
@@ -77,18 +83,10 @@ public class Database {
         users.add(document.toObject(User.class));
         System.out.println(document.getId() + " => " + document.toObject(User.class));
       }
-
       return users;
-
-    } catch (ExecutionException | InterruptedException e) {
-      System.out.println(e.getMessage());
-      throw new RuntimeException(e);
-    }
   }
 
-
-  public User retrieveUser(String docId) {
-    try {
+  public User retrieveUser(String docId) throws ExecutionException, InterruptedException {
       DocumentReference docRef = this.database.collection("users").document(docId);
       // asynchronously retrieve the document
       ApiFuture<DocumentSnapshot> future = docRef.get();
@@ -101,10 +99,6 @@ public class Database {
         System.out.println("No such document!");
         throw new RuntimeException();
       }
-    } catch (ExecutionException | InterruptedException e) {
-      System.out.println(e.getMessage());
-      throw new RuntimeException(e);
-    }
 
   }
 
