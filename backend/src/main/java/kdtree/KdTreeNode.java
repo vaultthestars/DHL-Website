@@ -5,9 +5,9 @@ public interface KdTreeNode {
   /**
    * Getter to return the point data.
    *
-   * @return Array of floats representing the point (i.e. x,y,z)
+   * @return Array of doubles representing the point (i.e. x,y,z)
    */
-  float[] getPoint();
+  double[] getPoint();
 
   /**
    * Getter to return the dimension of the point at the node.
@@ -21,7 +21,7 @@ public interface KdTreeNode {
    * KdTreeNode.
    *
    * @param node KdTreeNode to find the euclidean distance to.
-   * @return float representing the euclidean distance.
+   * @return double representing the euclidean distance.
    */
   double euclideanDistance(KdTreeNode node);
 }

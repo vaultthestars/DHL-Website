@@ -13,15 +13,37 @@
  */
 
 import * as React from 'react';
+import { getFirestore, doc, setDoc, getDoc } from "firebase/firestore"; 
+import { initializeApp } from "firebase/app";
+import { convertCompilerOptionsFromJson } from 'typescript';
+import { render } from '@testing-library/react';
+
+
 
 interface SpotifyLoginButtonProps {
   clientId: string;
   redirectUri: string;
   clientSecret: string;
+  setUser2: Function;
+  spotifyLinked: boolean;
 }
 
+const firebaseConfig = {
+  apiKey: "AIzaSyAGp8uTjHb6-vxrlbdM5QzFYA69Se9OPeA",
+  authDomain: "test-tunedin.firebaseapp.com",
+  projectId: "test-tunedin",
+  storageBucket: "test-tunedin.appspot.com",
+  messagingSenderId: "619555539594",
+  appId: "1:619555539594:web:9869f144517a225d543b73",
+  measurementId: "G-9PLN5MP4W9"
+};
+
+const app = initializeApp(firebaseConfig);
+// Initialize Cloud Firestore and get a reference to the service
+const db = getFirestore(app);
+
 export const SpotifyLoginButton: React.FC<SpotifyLoginButtonProps> = (parameters) => {
-  const { clientId, redirectUri, clientSecret} = parameters;
+  const { clientId, redirectUri, clientSecret, setUser2, spotifyLinked} = parameters;
   
   let refreshToken: string = "";
   let accessToken: string = "";
@@ -34,13 +56,13 @@ export const SpotifyLoginButton: React.FC<SpotifyLoginButtonProps> = (parameters
   };
 
   React.useEffect(() => {
-    getTokens()
+    getTokens()     
   })
 
-  const onSuccess = (refreshToken: string, accessToken: string) => {
-    console.log("OH MY GODDDD")
-    console.log(accessToken)
-    console.log(refreshToken)
+  const onSuccess = async (refreshToken: string, accessToken: string) => {
+    // console.log("OH MY GODDDD")
+    // console.log(accessToken)
+    // console.log(refreshToken)
   };
 
   const onFailure = (error: string) => {
@@ -49,15 +71,12 @@ export const SpotifyLoginButton: React.FC<SpotifyLoginButtonProps> = (parameters
   };
 
   const getTokens = () => {
-    
     const params = new URLSearchParams(window.location.search);
     const code = params.get('code');
-    console.log(code)
+    // console.log(code)
     // Use the code to get the refresh and access tokens
     const url = `https://accounts.spotify.com/api/token`;
     const base64ClientIdAndSecret = btoa(`${clientId}:${clientSecret}`)
-    console.log("base64" + base64ClientIdAndSecret)
-    console.log("unencrpyt" + atob(base64ClientIdAndSecret))
     const options = {
       method: 'POST',
       headers: {
@@ -70,22 +89,45 @@ export const SpotifyLoginButton: React.FC<SpotifyLoginButtonProps> = (parameters
     fetch(url, options)
       .then((response) => response.json())
       .then((data) => {
-        if (refreshToken == "") {
+        if (refreshToken == "" && refreshToken != undefined) {
           refreshToken = data.refresh_token;}
-        if (accessToken == "") {
+          let iNSERT_UID_HERE = localStorage.getItem("UID");
+          if (iNSERT_UID_HERE != null) {
+          setDoc(doc(db, "users", iNSERT_UID_HERE), {
+            refreshToken: refreshToken,
+          }, { merge: true });
+          localStorage.setItem("spotify", "done")
+          setUser2("done")}
+        if (accessToken == "" && accessToken != undefined) {
           accessToken = data.access_token;}
-        console.log("refresh")
-        console.log("LOOK AT THIS IT IS A REFREH TOKEN OMFG" + refreshToken)
-        console.log("access")
-        console.log("accessToken IS RIGHT HERE" + accessToken)
+        // console.log("refresh")
+        // console.log("LOOK AT THIS IT IS A REFREH TOKEN OMFG" + refreshToken)
+        // console.log("access")
+        // console.log("accessToken IS RIGHT HERE" + accessToken)
         onSuccess(refreshToken, accessToken);
       })
       .catch((error) => {
-        onFailure(error);
+        //onFailure(error);
       });
   };
 
-  return (
-    <button onClick={handleClick}>Login with Spotify</button>
-  );
+
+
+  let localUID = localStorage.getItem("UID");
+
+  if ((localStorage.getItem("spotify") == "done" && localUID != null) || spotifyLinked ) {
+    setUser2("done")
+    return (
+      <p>Spotify linked.</p>
+    )
+  } else if (localUID != null && spotifyLinked == false) {
+    return (
+      <button onClick={handleClick}>Link TunedIn with Spotify</button>
+    );
+  } else {
+    return (
+      <p>state1</p>
+    )
+  }
+
 };
