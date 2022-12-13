@@ -26,6 +26,10 @@
   background-position: 12px 11px;
 }
 
+.spotifybuttonbackground{
+  fill:rgb(32, 201, 150);
+}
+
 .customSlider {
   /* max width of your slider */
   max-width: 300px;
@@ -59,7 +63,8 @@
 
 .spotifybutton{
   position: absolute;
-  right: 300px;
+  right: 10px;
+  top: 300px;
 }
 
 .App-logo {
@@ -184,6 +189,14 @@ body{
 .wrapper .sidebar .profile{
   margin-bottom: 30px;
   text-align: center;
+}
+
+.wrapper .hidden{
+  display: none;
+}
+
+.wrapper .sidebar .hidden{
+  display: none;
 }
 
 .wrapper .sidebar .defaultbar img{

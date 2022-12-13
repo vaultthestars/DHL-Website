@@ -23,14 +23,26 @@ import { isVisible } from '@testing-library/user-event/dist/utils';
 //[DONE]: Make the sidebar change when you zoom in
 //[DONE]: Add number displays in the sidebar
 //[DONE]: Make a pretty logo and slap it in
-//TODO: Add variables for everything we're actually going to use
+//[DONE]: Add the current user
+//[DONE]: Add matches and matches navigation
+//[DONE]: Add variables for everything we're actually going to use
 //TODO: Make google thing vanish after you've logged in
 //TODO: Make the website actually look the way we want it to
-//TODO: Add the current user
 //TODO: Get frontend to communicate with backend
+//TODO: FIX THE INFINITE LOOP PLEASE
 
-let userdata: Map<number, Array<number>> = new Map<number, Array<number>>();
+let usersongparams: Map<number, Array<number>> = new Map<number, Array<number>>();
 //What do we want? The user name, the current song, and the current artist.
+
+let userdatastrings: Map<number, Array<string>> = new Map<number, Array<string>>();
+
+let matchesdata: Map<number, Array<Array<number>>> = new Map<number, Array<Array<number>>>();
+
+//Other things we want: Username, song name, artist, 
+
+//matches: 
+//Current: match 0, match 1, match 2, match 3, match 4
+//Alltime: match 0, match 1, match 2, match 3, match 4
 
 // auth token or refresh token maps to a
 //USER:
@@ -70,7 +82,27 @@ parameternames.set(5,"Valence");
 //Acousticness, Danceability, Energy, Instrumentalness, Speechiness, Valence
 
 for(let i = 0; i < maxnum; i++){
-    userdata.set(i,[Math.random(),Math.random(),Math.random(),Math.random(),Math.random(),Math.random()])
+    usersongparams.set(i,[Math.random(),Math.random(),Math.random(),Math.random(),Math.random(),Math.random()])
+    //roughly 4 parameters
+    //What do we want? The user name, the current song, and the current artist.
+    userdatastrings.set(i,[genrandomstring(10),genrandomstring(10),genrandomstring(10),genrandomstring(10)])
+    matchesdata.set(i,[[Math.floor(maxnum*Math.random()),Math.floor(maxnum*Math.random()),Math.floor(maxnum*Math.random()),Math.floor(maxnum*Math.random()),Math.floor(maxnum*Math.random())],
+    [Math.floor(maxnum*Math.random()),Math.floor(maxnum*Math.random()),Math.floor(maxnum*Math.random()),Math.floor(maxnum*Math.random()),Math.floor(maxnum*Math.random())]])
+}
+
+function genrandomstring(length: number): string{
+    let result: string = '';
+    const consonants: string = 'bcdfghjklmnpqrstvwxyz';
+    const vowels: string = 'aeiou';
+    for ( var i = 0; i < length; i++ ) {
+        if(i%2 == 0){
+            result += consonants.charAt(Math.floor(Math.random() * 20));
+        }
+        else{
+            result += vowels.charAt(Math.floor(Math.random() * 5));
+        }
+    }
+    return result;
 }
 
 function initdist(initdata: Map<number, Array<number>>): Array<Array<number>>{
@@ -116,10 +148,34 @@ function linsort(pt: Array<number>, SortParameter: number, loggedin: boolean, cu
 }
 
 function getdata(index: number, index2: number): number{
-    if(userdata.get(index) != undefined){
-        let energarr: number[] | undefined = userdata.get(index)
+    if(usersongparams.get(index) != undefined){
+        let energarr: number[] | undefined = usersongparams.get(index)
         if(energarr){
             return energarr[index2];
+        }
+    }
+    return 0;
+}
+
+function getdatastrings(index: number, index2: number): string{
+    let datarr: string[] | undefined = userdatastrings.get(index)
+        if(datarr){
+            return datarr[index2];
+        }
+    return 'DATA NOT FOUND';
+}
+
+function getdatamatches(userindex: number, time: boolean, matchindex: number):  number{
+    let timeindex = 0;
+    if(time){
+        timeindex = 1;
+    }
+    let datarr: number[][] | undefined = matchesdata.get(timeindex)
+    if(datarr && datarr != undefined){
+        if(datarr[timeindex] && datarr[timeindex] != undefined){
+            if(datarr[timeindex][matchindex] && datarr[timeindex][matchindex] != undefined){
+                return datarr[timeindex][matchindex];
+            }
         }
     }
     return 0;
@@ -191,9 +247,9 @@ function getparamname(index: number): string{
     return "";
 }
 
-function renderstroke(zoomed: boolean){
+function renderstroke(zoomed: boolean, datanum: number){
     if(zoomed){
-        return "rgb(100,50,255)"
+        return "hsla(" + 200+90*datanum + ", 50%, 50%, 1)"
     }
     else{
         return "none"
@@ -246,20 +302,37 @@ function slidenum(bool: boolean){
     }
 }
 
+function sidebarloggedin(str: string): string{
+    console.log(str)
+    if (str == ""){
+        return "hidden";
+    }
+    return "sidebar";
+}
+
+function fullyloggedin(bool: boolean, retstring: string): string{
+    if(bool){
+        return retstring
+    }
+    else{
+        return "hidden"
+    }
+}
+
 //TODO: add repulsive force
 //TODO: add stats display!
 
 //Make the GOL in react: https://dev.to/toluagboola/build-the-game-of-life-with-react-and-typescript-5e0d
 
-export default function GraphVis() {
-    let initarray: number[][] = initdist(userdata);
+export default function GraphVis(googleuser: string, spotifylinked: boolean) {
+    let initarray: number[][] = initdist(usersongparams);
     const [CircleData, setCircleData] = useState<number[][]>(initarray);
     const [SelectIndex, setSelectIndex] = useState<number>(0);
     const [Timer, setTimer] = useState<number>(0);
     const [SortIndex, setSortIndex] = useState<number>(1);
     const [SortParameter, setSortParameter] = useState<number>(0);
     const [Speed, setSpeed] = useState<number>(10);
-    const [ShowCircLabels, SetShowCircLabels] = useState<boolean>(false);
+    const [ShowCircLabels, SetShowCircLabels] = useState<boolean>(true);
     const [camcenter, Setcamcenter] = useState<number[]>([1,0,0]); //scale, position x, position y
     const [zoomed, Setzoomed] = useState<boolean>(false);
     const [zoomval, Setzoomval] = useState<number>(0);
@@ -276,7 +349,7 @@ export default function GraphVis() {
             //In reality we might want to center which user is you!
             camtarg([4,CircleData[SelectIndex][1],CircleData[SelectIndex][2]],
                 [1,0,0],zoomed)))
-        setTimer((Timer + 0.001) % 1)
+        setTimer((Timer + 0.003) % 1)
         Setzoomval(1-((camcenter[0]-2)/2))
         document.documentElement.style.setProperty('--sidebar-mode', zoomval.toString());
         document.documentElement.style.setProperty('--timeslidermode', slidenum(alltime).toString());
@@ -286,8 +359,8 @@ export default function GraphVis() {
     const xoffset = 25;
     //Make some sort of time update thing that lets you update circles and send their positions somewhere
     return <div className = "wrapper">
-                <div className = "sidebar">
-                    <div className="defaultbar">
+                <div className = {sidebarloggedin(googleuser)}>
+                    <div className={fullyloggedin(spotifylinked,"defaultbar")}>
                         <h2>Who's on your wavelength?</h2>
                         <img className = "wavepic" src="https://i.ibb.co/V2Dmsx4/tuneinlogo.png" 
                         alt="tunein_logo"/>
@@ -310,9 +383,7 @@ export default function GraphVis() {
                                     x = "10"
                                     y = "7"
                                     opacity = {(zoomval).toString()}
-                                    onClick= {() => {  
-                                        //Do something? idk. Maybe send the camera to that user, that would make sense
-                                    }}>
+                                    >
                                 </rect>
                                 <text x= "20" y="24"
                                 onClick={()=>
@@ -327,6 +398,7 @@ export default function GraphVis() {
                                     }
                                 }> all-time</text>
                                 {[0,1,2,3,4].map((x)=>{
+                                    let matchindex = x;
                                     return <rect 
                                     width = "175"
                                     height = "50"
@@ -336,17 +408,30 @@ export default function GraphVis() {
                                     ry="5"
                                     opacity = {(zoomval).toString()}
                                     onClick= {() => {  
-                                        console.log("AYOOOOO")
-                                        //Do something? idk. Maybe send the camera to that user, that would make sense
+                                        setSelectIndex(getdatamatches(SelectIndex, alltime, matchindex))
+                                        Setzoomed(true)
                                     }}>
                                     </rect>
                                 })}
+                                {[0,1,2,3,4].map((x2)=>{
+                                    let matchindex = x2;
+                                    return <text 
+                                    x= "30"
+                                    y= {(75+70*x2).toString()}
+                                    opacity = {(zoomval).toString()}
+                                    onClick= {() => {  
+                                        setSelectIndex(getdatamatches(SelectIndex, alltime, matchindex))
+                                        Setzoomed(true)
+                                    }}>
+                                    {getdatastrings(getdatamatches(SelectIndex, alltime, matchindex),0)}
+                                    </text>
+                                })}
                             </svg>
                     </div>
-                    {[0].map(()=>{if(zoomval < 0.9){return <div className="userbar">
-                        <h2>CURRENT SONG</h2>
-                        <h3>by current artist</h3>
-                        <p>username</p>
+                    {[0].map(()=>{if(zoomval < 0.9){return <div className={fullyloggedin(spotifylinked,"userbar")}>
+                        <h2>{"Song: " + getdatastrings(SelectIndex,1)}</h2>
+                        <h3>{"artist: " + getdatastrings(SelectIndex,2)}</h3>
+                        <p>{"user: " + getdatastrings(SelectIndex,0)}</p>
                         {/* TODO: Replace all of this with a simple map! */}
                         {/* [DONE]]: Add actual number labels for each circle! */}
                         {/* [DONE]]: Shift circles over to the right */}
@@ -391,7 +476,7 @@ export default function GraphVis() {
                         return <circle 
                         key= "usercircleoutline" 
                         cx= {camcenter[0]*(CircleData[curruser][1]-camcenter[1])+centerx} cy= {camcenter[0]*(CircleData[curruser][2]-camcenter[2])+300} 
-                        r={camcenter[0]*(20+10*num) + 4*Math.sin(0.1*mag(CircleData[curruser])+tau*Timer)} 
+                        r={camcenter[0]*(20+10*num) + 4*Math.sin(0.1*CircleData[curruser][0]+tau*Timer)} 
                         fill="none"
                         stroke = "hsla(0 100% 100%)"
                         strokeWidth = "1"
@@ -404,9 +489,9 @@ export default function GraphVis() {
                         return <circle 
                         key= "selectedcircleoutline" 
                         cx= {camcenter[0]*(CircleData[SelectIndex][1]-camcenter[1])+centerx} cy= {camcenter[0]*(CircleData[SelectIndex][2]-camcenter[2])+300} 
-                        r={camcenter[0]*20 + 20 + 20*num + 4*Math.sin(0.1*mag(CircleData[SelectIndex])+tau*Timer)} 
+                        r={camcenter[0]*20 + 20 + 20*num + 10*Math.sin(0.1*CircleData[curruser][0]+tau*Timer)} 
                         fill="none"
-                        stroke = {renderstroke(zoomed)}
+                        stroke = {renderstroke(zoomed,getdata(SelectIndex,SortParameter))}
                         strokeWidth = "2"
                         >
                         </circle>
@@ -421,7 +506,7 @@ export default function GraphVis() {
                         }} 
                         key= {entry[0]} 
                         cx= {camcenter[0]*(entry[1]-camcenter[1])+centerx} cy= {camcenter[0]*(entry[2]-camcenter[2])+300} 
-                        r={camcenter[0]*20 + 4*Math.sin(0.1*mag(entry)+tau*Timer)} fill={"hsla(" + 200+90*getdata(entry[0],SortParameter) + ", 50%, 50%, 1)"}
+                        r={camcenter[0]*20 + 4*Math.sin(0.1*entry[0]+tau*Timer)} fill={"hsla(" + 200+90*getdata(entry[0],SortParameter) + ", 50%, 50%, 1)"}
                         stroke = "none"
                         strokeWidth = "5"
                         >
@@ -435,7 +520,7 @@ export default function GraphVis() {
                         y= "10"
                         rx="5"
                         ry="5"
-                        opacity = {camcenter[0]-3}
+                        opacity = {camcenter[0]-1}
                         onClick= {() => {  
                             // update the circle positions
                             Setzoomed(false);
@@ -445,7 +530,7 @@ export default function GraphVis() {
                         className = "whitetext"
                         x= "42"
                         y= "42"
-                        opacity = {camcenter[0]-3}
+                        opacity = {camcenter[0]-1}
                         onClick= {() => {  
                             // update the circle positions
                             Setzoomed(false);
@@ -454,13 +539,19 @@ export default function GraphVis() {
                         </text>}
                     {CircleData.map((entry) => 
                         {if(ShowCircLabels){
-                            return (<text x={entry[1]+centerx-5*digs(entry[0])} y={entry[2]+300+5} 
+                            return (<text 
+                        //         cx= {camcenter[0]*(CircleData[curruser][1]-camcenter[1])+centerx} cy= {camcenter[0]*(CircleData[curruser][2]-camcenter[2])+300} 
+                        // r={camcenter[0]*(20+10*num) + 4*Math.sin(0.1*CircleData[curruser][0]+tau*Timer)} 
+                                x={camcenter[0]*(entry[1]-24-camcenter[1])+centerx} 
+                                y={camcenter[0]*(entry[2]-22-camcenter[2])+300} 
+                                fontSize={camcenter[0]*10}
                         className="small"
                         onClick= {() => {
                             console.log("circle " + entry[0] + " clicked");
                             setSelectIndex(entry[0])
                         }} >
-                        {entry[0]}</text>)}}
+                        {/* DISPLAY USERNAME */}
+                        {getdatastrings(entry[0],0)}</text>)}}
                     )}
                 </svg>
                 <div className = "button stuff">

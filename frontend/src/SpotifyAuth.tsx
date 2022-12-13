@@ -17,6 +17,7 @@ import { getFirestore, doc, setDoc, getDoc } from "firebase/firestore";
 import { initializeApp } from "firebase/app";
 import { convertCompilerOptionsFromJson } from 'typescript';
 import { render } from '@testing-library/react';
+import {firebaseConfig} from './private/firebaseconfig'
 
 
 
@@ -27,16 +28,6 @@ interface SpotifyLoginButtonProps {
   setUser2: Function;
   spotifyLinked: boolean;
 }
-
-const firebaseConfig = {
-  apiKey: "AIzaSyAGp8uTjHb6-vxrlbdM5QzFYA69Se9OPeA",
-  authDomain: "test-tunedin.firebaseapp.com",
-  projectId: "test-tunedin",
-  storageBucket: "test-tunedin.appspot.com",
-  messagingSenderId: "619555539594",
-  appId: "1:619555539594:web:9869f144517a225d543b73",
-  measurementId: "G-9PLN5MP4W9"
-};
 
 const app = initializeApp(firebaseConfig);
 // Initialize Cloud Firestore and get a reference to the service
@@ -52,9 +43,7 @@ export const SpotifyLoginButton: React.FC<SpotifyLoginButtonProps> = (parameters
     const url = `https://accounts.spotify.com/authorize?response_type=code&client_id=${clientId}&scope=user-read-private%20user-read-email&redirect_uri=${redirectUri}`;
     // go to the url
     window.location.replace(url);
-
   };
-
   React.useEffect(() => {
     getTokens()     
   })
@@ -115,6 +104,9 @@ export const SpotifyLoginButton: React.FC<SpotifyLoginButtonProps> = (parameters
 
   let localUID = localStorage.getItem("UID");
 
+  const xval = 10;
+  const yval = 5;
+
   if ((localStorage.getItem("spotify") == "done" && localUID != null) || spotifyLinked ) {
     setUser2("done")
     return (
@@ -122,7 +114,22 @@ export const SpotifyLoginButton: React.FC<SpotifyLoginButtonProps> = (parameters
     )
   } else if (localUID != null && spotifyLinked == false) {
     return (
-      <button onClick={handleClick}>Link TunedIn with Spotify</button>
+      //Here is where the styling will go
+      <svg width = "220" height = "50">
+        <rect className="spotifybuttonbackground"
+        width = "200"
+        height = "40"
+        rx="5"
+        ry="5"
+        x = {xval.toString()}
+        y = {yval.toString()}
+        onClick={handleClick}
+        />
+        <text className = "whitetext" x= {(xval+6).toString()} y= {(yval+25).toString()}
+        onClick = {handleClick}> 
+        Link TunedIn with Spotify </text>
+      </svg>
+      // <button onClick={handleClick}>Link TunedIn with Spotify</button>
     );
   } else {
     return (
