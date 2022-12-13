@@ -49,9 +49,12 @@ public class LoadSongFeaturesHandler implements Route {
     // future.get() blocks on response
     List<QueryDocumentSnapshot> documents = future.get().getDocuments();
     for (QueryDocumentSnapshot document : documents) {
-      User user = document.toObject(User.class);
-      String authToken = this.getAuthToken(user.getRefreshToken());
-      Song song = this.getCurrentSong(user.getUserId(),authToken);
+      String userId = (String)document.getData().get("userId");
+      System.out.println("userId: " + userId);
+      String authToken = this.getAuthToken(this.database.retrieveRefreshToken(userId));
+      System.out.println("Auth: " + authToken);
+      Song song = this.getCurrentSong(userId,authToken);
+      System.out.println(song);
       this.database.updateUserSong(song);
     }
 
@@ -117,9 +120,15 @@ public class LoadSongFeaturesHandler implements Route {
         .getUsersCurrentlyPlayingTrack()
         .build();
     try {
+      System.out.println("pre-current fetch");
       CurrentlyPlaying currentlyPlaying = getUsersCurrentlyPlayingTrackRequest.execute();
+      System.out.println("post-fetch");
+      System.out.println(currentlyPlaying.getItem().toString());
       String title = currentlyPlaying.getItem().getName();
+      System.out.println("post get item name");
       String id = currentlyPlaying.getItem().getId();
+      System.out.println("Song Title: " + title);
+      System.out.println("Id: " + id);
 
       List<String> artists = new ArrayList<>();
       GetTrackRequest getTrackRequest = spotifyApi.getTrack(id).build();
@@ -140,6 +149,8 @@ public class LoadSongFeaturesHandler implements Route {
       features[3] = audioFeatures.getInstrumentalness();
       features[4] = audioFeatures.getSpeechiness();
       features[5] = audioFeatures.getValence();
+
+      System.out.println("Features " + features);
 
       return new Song(userId, title, id, artists, features);
     } catch (IOException | SpotifyWebApiException | ParseException e) {

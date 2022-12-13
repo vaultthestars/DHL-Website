@@ -45,9 +45,9 @@ public class UserFactory implements CreatorFromRow<User> {
 //    } catch (NumberFormatException e) {
 //      throw new FactoryFailureException(row);
 //    }
-//    return new User("sam", "sam minars", "mock token",
-//        3,new Song("sam","rules","123",new ArrayList<>(),new double[6]),new String[5],new double[6],new String[5]);
+    return new User("sam", "sam minars", "mock token",
+        3,new Song("sam","rules","123",new ArrayList<>(),new double[6]),new String[5],new double[6],new String[5]);
 
-  return new User();
+//  return new User();
   }
 }

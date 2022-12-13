@@ -2,11 +2,17 @@ package server.handlers;
 
 import com.squareup.moshi.JsonAdapter;
 import com.squareup.moshi.Moshi;
+import com.squareup.moshi.Types;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 import server.Database;
 import server.ErrBadJsonResponse;
 import spark.Request;
 import spark.Response;
 import spark.Route;
+import user.Song;
 import user.User;
 
 
@@ -22,17 +28,16 @@ public class GetUserHandler implements Route {
   public Object handle(Request request, Response response) throws Exception {
     try {
       String userId = request.queryParams("id");
-      User user = this.database.retrieveUser(userId);
-
-      return new GetUserSuccessResponse(user).serialize();
+      Map<String, Object> docMap = this.database.retrieveUser(userId);
+       return new GetUserSuccessResponse(docMap).serialize();
     } catch (Exception e) {
       return new ErrBadJsonResponse();
     }
   }
 
-  public record GetUserSuccessResponse(String result, User user) {
+  public record GetUserSuccessResponse(String result, Map<String, Object> user) {
 
-    public GetUserSuccessResponse(User user) {
+    public GetUserSuccessResponse(Map<String, Object> user) {
       this("success", user);
     }
 

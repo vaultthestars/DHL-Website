@@ -11,9 +11,13 @@ import com.google.cloud.firestore.WriteResult;
 import com.google.firebase.FirebaseApp;
 import com.google.firebase.FirebaseOptions;
 import com.google.firebase.cloud.FirestoreClient;
+import com.google.gson.JsonObject;
+import com.squareup.moshi.Moshi;
+import com.squareup.moshi.Types;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -61,7 +65,7 @@ public class Database {
 
   }
 
-  public void updateUserSong(Song song) {
+  public void updateUserSong(Song song) throws ExecutionException, InterruptedException {
     // Update an existing document
     DocumentReference docRef = this.database.collection("users").document(song.getUserId());
     Map<String, Object> songMap = new HashMap();
@@ -69,8 +73,9 @@ public class Database {
     songMap.put("title", song.getTitle());
     songMap.put("id", song.getId());
     songMap.put("artists", song.getArtists());
-    songMap.put("features", song.getFeatures());
+    songMap.put("features", Arrays.toString(song.getFeatures()));
 
+    System.out.println(songMap);
 
     // (async) Update one field
     ApiFuture<WriteResult> future = docRef.update("currentSong", songMap);
@@ -83,11 +88,13 @@ public class Database {
     DocumentReference docRef = this.database.collection("users").document(docId);
     // asynchronously retrieve the document
     ApiFuture<DocumentSnapshot> future = docRef.get();
+    System.out.println("async call");
 
     // future.get() blocks on response
     DocumentSnapshot document = future.get();
+
     if (document.exists()) {
-      return document.toObject(User.class).getRefreshToken();
+      return (String) document.getData().get("refreshToken");
     } else {
       System.out.println("No such document!");
       throw new RuntimeException();
@@ -115,7 +122,8 @@ public class Database {
       return users;
   }
 
-  public User retrieveUser(String docId) throws ExecutionException, InterruptedException {
+  public Map<String, Object> retrieveUser(String docId)
+      throws ExecutionException, InterruptedException, IOException {
       DocumentReference docRef = this.database.collection("users").document(docId);
       // asynchronously retrieve the document
       ApiFuture<DocumentSnapshot> future = docRef.get();
@@ -125,10 +133,8 @@ public class Database {
       DocumentSnapshot document = future.get();
 
       if (document.exists()) {
-        System.out.println(document.getData());
-        User user = document.toObject(User.class);
-        System.out.println(user);
-        return document.toObject(User.class);
+        System.out.println(document.getData().get("displayName"));
+        return document.getData();
       } else {
         System.out.println("No such document!");
         throw new RuntimeException();

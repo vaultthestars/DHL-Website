@@ -57,7 +57,7 @@ public class Song implements KdTreeNode {
   }
 
   public double[] getFeatures() {
-    return this.features.clone();
+    return this.features;
   }
 
   public void setFeatures(double[] features) {

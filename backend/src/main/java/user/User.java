@@ -17,10 +17,6 @@ public class User implements KdTreeNode, Cloneable {
   private double[] historicalSongPoint;
   private String[] historicalConnections;
 
-  public User(){
-
-  }
-
   public User(String userId, String displayName, String refreshToken, int membershipLength,
       Song currentSong, String[] connections, double[] historicalSongPoint,
       String[] historicalConnections) {
