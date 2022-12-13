@@ -14,8 +14,11 @@ import com.google.firebase.cloud.FirestoreClient;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.ExecutionException;
+import user.Song;
 import user.User;
 
 /**
@@ -43,6 +46,12 @@ public class Database {
 
   }
 
+  public Firestore getFireStore(){
+    return this.database;
+  }
+
+  // TODO write error response classes for the exceptions thrown by these methods
+
   public void storeUser(){
 //    City city =
 //        new City("Los Angeles", "CA", "USA", false, 3900000L, Arrays.asList("west_coast", "socal"));
@@ -52,17 +61,37 @@ public class Database {
 
   }
 
-  public void updateUser(String email) throws ExecutionException, InterruptedException {
-
+  public void updateUserSong(Song song) {
     // Update an existing document
-    DocumentReference docRef = this.database.collection("users").document(email);
+    DocumentReference docRef = this.database.collection("users").document(song.getUserId());
+    Map<String, Object> songMap = new HashMap();
+    songMap.put("userId", song.getUserId());
+    songMap.put("title", song.getTitle());
+    songMap.put("id", song.getId());
+    songMap.put("artists", song.getArtists());
+    songMap.put("features", song.getFeatures());
+
 
     // (async) Update one field
-    ApiFuture<WriteResult> future = docRef.update("membershipLength", 3);
+    ApiFuture<WriteResult> future = docRef.update("currentSong", songMap);
+//    WriteResult result = future.get();
+//    System.out.println("Write result: " + result);
 
+  }
 
-    WriteResult result = future.get();
-    System.out.println("Write result: " + result);
+  public String retrieveRefreshToken(String docId) throws ExecutionException, InterruptedException {
+    DocumentReference docRef = this.database.collection("users").document(docId);
+    // asynchronously retrieve the document
+    ApiFuture<DocumentSnapshot> future = docRef.get();
+
+    // future.get() blocks on response
+    DocumentSnapshot document = future.get();
+    if (document.exists()) {
+      return document.toObject(User.class).getRefreshToken();
+    } else {
+      System.out.println("No such document!");
+      throw new RuntimeException();
+    }
 
   }
 
@@ -81,7 +110,7 @@ public class Database {
       List<QueryDocumentSnapshot> documents = future.get().getDocuments();
       for (QueryDocumentSnapshot document : documents) {
         users.add(document.toObject(User.class));
-        System.out.println(document.getId() + " => " + document.toObject(User.class));
+
       }
       return users;
   }
@@ -90,10 +119,15 @@ public class Database {
       DocumentReference docRef = this.database.collection("users").document(docId);
       // asynchronously retrieve the document
       ApiFuture<DocumentSnapshot> future = docRef.get();
+      System.out.println("async call");
 
       // future.get() blocks on response
       DocumentSnapshot document = future.get();
+
       if (document.exists()) {
+        System.out.println(document.getData());
+        User user = document.toObject(User.class);
+        System.out.println(user);
         return document.toObject(User.class);
       } else {
         System.out.println("No such document!");

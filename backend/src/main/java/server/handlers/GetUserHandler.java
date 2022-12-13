@@ -21,7 +21,7 @@ public class GetUserHandler implements Route {
   @Override
   public Object handle(Request request, Response response) throws Exception {
     try {
-      String userId = request.queryParams("userId");
+      String userId = request.queryParams("id");
       User user = this.database.retrieveUser(userId);
 
       return new GetUserSuccessResponse(user).serialize();

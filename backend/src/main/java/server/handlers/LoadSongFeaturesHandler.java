@@ -1,5 +1,8 @@
 package server.handlers;
 
+import com.google.api.core.ApiFuture;
+import com.google.cloud.firestore.QueryDocumentSnapshot;
+import com.google.cloud.firestore.QuerySnapshot;
 import com.squareup.moshi.Moshi;
 import java.io.IOException;
 import java.util.ArrayList;
@@ -17,18 +20,20 @@ import se.michaelthelin.spotify.requests.data.player.GetUsersCurrentlyPlayingTra
 import se.michaelthelin.spotify.requests.data.tracks.GetAudioFeaturesForTrackRequest;
 import se.michaelthelin.spotify.requests.data.tracks.GetTrackRequest;
 import server.Constants;
+import server.Database;
 import spark.Request;
 import spark.Response;
 import spark.Route;
 import user.Song;
-import user.UserDatabase;
+import user.User;
+
 
 public class LoadSongFeaturesHandler implements Route {
 
-  private UserDatabase userDatabase;
+  private Database database;
 
-  public LoadSongFeaturesHandler(UserDatabase userDatabase) {
-    this.userDatabase = userDatabase;
+  public LoadSongFeaturesHandler(Database database) {
+    this.database = database;
   }
 
   @Override
@@ -40,36 +45,23 @@ public class LoadSongFeaturesHandler implements Route {
     // features of current song
     // update song field of user object to contain new song object
 
-    String id = "4ewazQLXFTDC8XvCbhvtXs"; // Glimpse of us by Joji (mock song ID)
+    ApiFuture<QuerySnapshot> future = this.database.getFireStore().collection("users").get();
+    // future.get() blocks on response
+    List<QueryDocumentSnapshot> documents = future.get().getDocuments();
+    for (QueryDocumentSnapshot document : documents) {
+      User user = document.toObject(User.class);
+      String authToken = this.getAuthToken(user.getRefreshToken());
+      Song song = this.getCurrentSong(user.getUserId(),authToken);
+      this.database.updateUserSong(song);
+    }
 
-    // mock user refresh token
-
-    String ddcsRefreshToken =
-        "AQCfudjNUN1Iww0-BCNsHvyf4ggc9cmcySPtsDVj6nJN6NIf5YcactC5VRGfOk-ZaggVuaw3oaN98HmqPh_zCPq6HA-_gKein9j5zr4LcvbK5PUuNSlZXRTH40-3PsaNBuA";
-    String accessToken = this.getAuthToken(ddcsRefreshToken);
-    System.out.print(accessToken);
-
-    SpotifyApi spotifyApi = new SpotifyApi.Builder().setAccessToken(accessToken).build();
-    GetAudioFeaturesForTrackRequest getAudioFeaturesForTrackRequest =
-        spotifyApi.getAudioFeaturesForTrack(id).build();
-
-    AudioFeatures audioFeatures = getAudioFeaturesForTrackRequest.execute();
-
-    double[] songFeatures = new double[6];
-    songFeatures[0] = audioFeatures.getAcousticness();
-    songFeatures[1] = audioFeatures.getDanceability();
-    songFeatures[2] = audioFeatures.getEnergy();
-    songFeatures[3] = audioFeatures.getInstrumentalness();
-    songFeatures[4] = audioFeatures.getSpeechiness();
-    songFeatures[5] = audioFeatures.getValence();
-
-    return new LoadSongFeaturesSuccessResponse(id, songFeatures).serialize();
+    return new LoadSongFeaturesSuccessResponse().serialize();
   }
 
-  public record LoadSongFeaturesSuccessResponse(String result, String id, double[] features) {
+  public record LoadSongFeaturesSuccessResponse(String result) {
 
-    public LoadSongFeaturesSuccessResponse(String id, double[] features) {
-      this("success", id, features);
+    public LoadSongFeaturesSuccessResponse() {
+      this("success");
     }
 
     String serialize() {
@@ -154,4 +146,5 @@ public class LoadSongFeaturesHandler implements Route {
       throw new RuntimeException(e);
     }
   }
-}
+  }
+

@@ -28,8 +28,8 @@ public class UserDatabase {
    * @param user - the user to be registered
    */
   public void register(User user) {
-    if (!this.users.containsKey(user.getUsername())) {
-      this.users.put(user.getUsername(), user);
+    if (!this.users.containsKey(user.getUserId())) {
+      this.users.put(user.getUserId(), user);
     }
   }
 
@@ -39,8 +39,8 @@ public class UserDatabase {
    * @param user - the user to be erased
    */
   public void erase(User user) {
-    if (this.users.containsKey(user.getUsername())) {
-      this.users.remove(user.getUsername());
+    if (this.users.containsKey(user.getUserId())) {
+      this.users.remove(user.getUserId());
     }
   }
 
@@ -112,7 +112,7 @@ public class UserDatabase {
           String[] connections = new String[5];
           int i = 0;
           for (Song song : connectionsQueue) {
-            connections[i] = song.getUsername();
+            connections[i] = song.getuserId();
             i++;
           }
           user.setConnections(connections);
@@ -129,7 +129,7 @@ public class UserDatabase {
           String[] connections = new String[5];
           int i = 0;
           for (User usr : connectionsQueue) {
-            connections[i] = usr.getUsername();
+            connections[i] = usr.getUserId();
             i++;
           }
           user.setHistoricalConnections(connections);

@@ -17,6 +17,10 @@ public class User implements KdTreeNode, Cloneable {
   private double[] historicalSongPoint;
   private String[] historicalConnections;
 
+  public User(){
+
+  }
+
   public User(String userId, String displayName, String refreshToken, int membershipLength,
       Song currentSong, String[] connections, double[] historicalSongPoint,
       String[] historicalConnections) {
@@ -57,11 +61,11 @@ public class User implements KdTreeNode, Cloneable {
     return result;
   }
 
-  public String getuserId() {
+  public String getUserId() {
     return this.userId;
   }
 
-  public void setuserId(String userId) {
+  public void setUserId(String userId) {
     this.userId = userId;
   }
 
@@ -126,7 +130,7 @@ public class User implements KdTreeNode, Cloneable {
     try {
       User clone = (User) super.clone();
       // TODO: copy mutable state here, so the clone can't change the internals of the original
-      clone.setuserId(this.getuserId());
+      clone.setUserId(this.getUserId());
       clone.setMembershipLength(this.getMembershipLength());
       clone.setCurrentSong(this.getCurrentSong());
       clone.setConnections(this.getConnections());
