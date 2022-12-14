@@ -100,6 +100,13 @@ public class Database {
 
   }
 
+  public void updateUserConnections(User user){
+    DocumentReference docRef = this.database.collection("users").document(user.getUserId());
+    docRef.update("connections", Arrays.toString(user.getConnections()));
+    docRef.update("historicalConnections", Arrays.toString(user.getHistoricalConnections()));
+    docRef.update("historicalSongPoint", Arrays.toString(user.getHistoricalSongPoint()));
+  }
+
   public String retrieveRefreshToken(String docId) throws ExecutionException, InterruptedException {
     DocumentReference docRef = this.database.collection("users").document(docId);
     // asynchronously retrieve the document
@@ -183,7 +190,7 @@ public class Database {
     String[] connections = new String[5];
     int i = 0;
     for (Song song : connectionsQueue) {
-      connections[i] = song.getDisplayName();
+      connections[i] = song.getUserId();
       i++;
     }
     user.setConnections(connections);
@@ -196,7 +203,7 @@ public class Database {
     String[] connections = new String[5];
     int i = 0;
     for (User usr : connectionsQueue) {
-      connections[i] = usr.getDisplayName();
+      connections[i] = usr.getUserId();
       i++;
     }
     user.setHistoricalConnections(connections);

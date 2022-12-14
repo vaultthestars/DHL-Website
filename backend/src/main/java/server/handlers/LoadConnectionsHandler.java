@@ -56,6 +56,7 @@ public class LoadConnectionsHandler implements Route {
         this.database.buildUserTree();
         this.database.loadConnections(user);
         this.database.loadHistoricalConnections(user);
+        this.database.updateUserConnections(user);
       }
       return new LoadConnectionsSuccessResponse().serialize();
     } catch (Exception e) {
