@@ -19,9 +19,13 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.PriorityQueue;
 import java.util.concurrent.ExecutionException;
+import kdtree.DistanceSorter;
+import kdtree.KdTree;
 import user.Song;
 import user.User;
 
@@ -29,7 +33,11 @@ import user.User;
  * Wrapper class for Firestore Database
  */
 public class Database {
- private Firestore database;
+  private Firestore database;
+  private List<Song> currentSongPoints;
+  private List<User> userPoints;
+  private KdTree<Song> currentSongTree;
+  private KdTree<User> userTree;
 
   public Database() {
     try{
@@ -56,13 +64,21 @@ public class Database {
 
   // TODO write error response classes for the exceptions thrown by these methods
 
-  public void storeUser(){
-//    City city =
-//        new City("Los Angeles", "CA", "USA", false, 3900000L, Arrays.asList("west_coast", "socal"));
-//    ApiFuture<WriteResult> future = db.collection("cities").document("LA").set(city);
-//// block on response if required
-//    System.out.println("Update time : " + future.get().getUpdateTime());
 
+  public List<Song> getCurrentSongPoints() {
+    return currentSongPoints;
+  }
+
+  public void setCurrentSongPoints(List<Song> currentSongPoints) {
+    this.currentSongPoints = currentSongPoints;
+  }
+
+  public List<User> getUserPoints() {
+    return userPoints;
+  }
+
+  public void setUserPoints(List<User> userPoints) {
+    this.userPoints = userPoints;
   }
 
   public void updateUserSong(Song song) throws ExecutionException, InterruptedException {
@@ -102,12 +118,6 @@ public class Database {
 
   }
 
-  public void updateCurrentSongs(){
-//    for (DocumentReference docRef : this.database.collection("users")){
-//
-//    }
-
-  }
 
   public List<User> retrieveAllUsers() throws ExecutionException, InterruptedException {
       List<User> users = new ArrayList<>();
@@ -140,6 +150,56 @@ public class Database {
         throw new RuntimeException();
       }
 
+  }
+
+  /** Creates SongPoint objects from updated user data and stores in daySongPoints */
+  public void loadCurrentSongPoints(User user) {
+    this.currentSongPoints = new ArrayList<Song>();
+    this.currentSongPoints.add(user.getCurrentSong());
+
+  }
+
+  /** Creates SongPoint objects from updated user data and stores in historicalSongPoints */
+  public void loadUserPoints(User user) {
+    this.userPoints = new ArrayList<User>();
+    this.userPoints.add(user);
+  }
+
+  /** Builds 6-d tree with song points from today */
+  public void buildSongTree() {
+    this.currentSongTree = new KdTree<Song>(this.getCurrentSongPoints(), 1);
+  }
+
+  /** Builds 6-d tree with historical song points */
+  public void buildUserTree() {
+    this.userTree = new KdTree<User>(this.getUserPoints(), 1);
+  }
+
+  /** Loads connections into each User object using kd-tree */
+  public void loadConnections(User user) {
+    Song currentSong = user.getCurrentSong();
+    PriorityQueue<Song> connectionsQueue = this.currentSongTree.kdTreeSearch(
+                  "neighbors", 5, currentSong, new DistanceSorter(currentSong), new HashSet<>());
+    String[] connections = new String[5];
+    int i = 0;
+    for (Song song : connectionsQueue) {
+      connections[i] = song.getDisplayName();
+      i++;
+    }
+    user.setConnections(connections);
+  }
+
+  /** Loads historical connections into each User object using kd-tree */
+  public void loadHistoricalConnections(User user) {
+    PriorityQueue<User> connectionsQueue = this.userTree.kdTreeSearch(
+                  "neighbors", 5, user, new DistanceSorter(user), new HashSet<>());
+    String[] connections = new String[5];
+    int i = 0;
+    for (User usr : connectionsQueue) {
+      connections[i] = usr.getDisplayName();
+      i++;
+    }
+    user.setHistoricalConnections(connections);
   }
 
 

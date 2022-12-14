@@ -1,23 +1,36 @@
 package server.handlers;
 
+import com.google.api.core.ApiFuture;
+import com.google.cloud.firestore.QueryDocumentSnapshot;
+import com.google.cloud.firestore.QuerySnapshot;
+import com.google.firebase.database.GenericTypeIndicator;
 import com.squareup.moshi.Moshi;
+
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
+import java.util.Map;
+
+import server.Database;
 import server.ErrBadJsonResponse;
 import spark.Request;
 import spark.Response;
 import spark.Route;
-import user.UserDatabase;
+import user.Song;
+import user.User;
+
 
 public class LoadConnectionsHandler implements Route {
 
-  private UserDatabase userDatabase;
+  private Database database;
 
   /**
    * Constructor for handler that takes in userDatabase to access nodes for kd-tree
    *
-   * @param userDatabase - the database housing users to build tree
+   * @param database - the database housing users to build tree
    */
-  public LoadConnectionsHandler(UserDatabase userDatabase) {
-    this.userDatabase = userDatabase;
+  public LoadConnectionsHandler(Database database) {
+    this.database = database;
   }
 
   /**
@@ -31,14 +44,19 @@ public class LoadConnectionsHandler implements Route {
   @Override
   public Object handle(Request request, Response response) throws Exception {
     try {
-      // call kd-tree methods from UserDatabase & store connections & historicalConnections in user
-      // objects
-      this.userDatabase.loadCurrentSongPoints();
-      this.userDatabase.loadUserPoints();
-      this.userDatabase.buildSongTree();
-      this.userDatabase.buildUserTree();
-      this.userDatabase.loadConnections();
-      this.userDatabase.loadHistoricalConnections();
+      // asynchronously retrieve all documents
+      ApiFuture<QuerySnapshot> future = this.database.getFireStore().collection("users").get();
+      // future.get() blocks on response
+      List<QueryDocumentSnapshot> documents = future.get().getDocuments();
+      for (QueryDocumentSnapshot doc : documents) {
+        User user = this.generateUser(doc);
+        this.database.loadCurrentSongPoints(user);
+        this.database.loadUserPoints(user);
+        this.database.buildSongTree();
+        this.database.buildUserTree();
+        this.database.loadConnections(user);
+        this.database.loadHistoricalConnections(user);
+      }
       return new LoadConnectionsSuccessResponse().serialize();
     } catch (Exception e) {
       e.printStackTrace();
@@ -66,5 +84,50 @@ public class LoadConnectionsHandler implements Route {
         throw e;
       }
     }
+  }
+
+  private User generateUser(QueryDocumentSnapshot document)  {
+      String userId = document.getString("userId");
+      String displayName = document.getString("displayName");
+      String refreshToken = document.getString("refreshToken");
+      int membershipLength = document.get("membershipLength", Integer.class);
+
+      Map<String, Object> docMap =  document.getData();
+      Map<String, Object> songMap = (Map) docMap.get("currentSong");
+      
+      String feat = (String) songMap.get("features");
+      feat = feat.replace("[","");
+      feat = feat.replace("]","");
+      String[] featArray = feat.split("[,]");
+      double[] doubleFeatArray = Arrays.stream(featArray).mapToDouble(Double::parseDouble).toArray();
+
+      Song currentSong = new Song((String) songMap.get("userId"), (String) songMap.get("title"),
+          (String) songMap.get("id"), (List<String>) songMap.get("artists"),doubleFeatArray);
+
+      String connections = document.getString("connections");
+      connections = connections.replace("[","");
+      connections = connections.replace("]","");
+      String[] connectArray = connections .split("[,]");
+      String historicalSongPoint = document.getString("historicalSongPoint");
+      historicalSongPoint = historicalSongPoint.replace("[","");
+      historicalSongPoint = historicalSongPoint.replace("]","");
+      String[] histSongPointArray = historicalSongPoint.split("[,]");
+      double[] doubleHistSongPointArray = Arrays.stream(histSongPointArray).mapToDouble(Double::parseDouble).toArray();
+      String historicalConnections = document.getString("historicalConnections");
+      historicalConnections = historicalConnections.replace("[","");
+      historicalConnections = historicalConnections.replace("]","");
+      String[] histConnectArray = historicalConnections.split("[,]");
+
+//      System.out.println(userId);
+//      System.out.println(displayName);
+//      System.out.println(refreshToken);
+//      System.out.println(membershipLength);
+//      System.out.println(connections);
+//      System.out.println(historicalSongPoint);
+//      System.out.println(historicalConnections);
+
+      return new User(userId,displayName,refreshToken,membershipLength,currentSong,connectArray,doubleHistSongPointArray,histConnectArray);
+
+
   }
 }

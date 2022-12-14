@@ -112,7 +112,7 @@ public class UserDatabase {
           String[] connections = new String[5];
           int i = 0;
           for (Song song : connectionsQueue) {
-            connections[i] = song.getuserId();
+            connections[i] = song.getUserId();
             i++;
           }
           user.setConnections(connections);

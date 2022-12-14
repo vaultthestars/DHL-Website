@@ -7,6 +7,7 @@ import com.squareup.moshi.Moshi;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.ExecutionException;
 import org.apache.hc.core5.http.ParseException;
 import se.michaelthelin.spotify.SpotifyApi;
 import se.michaelthelin.spotify.exceptions.SpotifyWebApiException;
@@ -53,9 +54,8 @@ public class LoadSongFeaturesHandler implements Route {
       System.out.println("userId: " + userId);
       String authToken = this.getAuthToken(this.database.retrieveRefreshToken(userId));
       System.out.println("Auth: " + authToken);
-      Song song = this.getCurrentSong(userId,authToken);
-      System.out.println(song);
-      this.database.updateUserSong(song);
+      this.getCurrentSong(userId,authToken);
+
     }
 
     return new LoadSongFeaturesSuccessResponse().serialize();
@@ -112,50 +112,57 @@ public class LoadSongFeaturesHandler implements Route {
    * @param accessToken - the access token for the user
    * @return their current song as a Song object
    */
-  public Song getCurrentSong(String userId, String accessToken) {
+  public void getCurrentSong(String userId, String accessToken)
+      throws IOException, ParseException, SpotifyWebApiException, ExecutionException, InterruptedException {
     SpotifyApi spotifyApi = new SpotifyApi.Builder()
         .setAccessToken(accessToken)
         .build();
     GetUsersCurrentlyPlayingTrackRequest getUsersCurrentlyPlayingTrackRequest = spotifyApi
         .getUsersCurrentlyPlayingTrack()
         .build();
-    try {
       System.out.println("pre-current fetch");
       CurrentlyPlaying currentlyPlaying = getUsersCurrentlyPlayingTrackRequest.execute();
       System.out.println("post-fetch");
-      System.out.println(currentlyPlaying.getItem().toString());
-      String title = currentlyPlaying.getItem().getName();
-      System.out.println("post get item name");
-      String id = currentlyPlaying.getItem().getId();
-      System.out.println("Song Title: " + title);
-      System.out.println("Id: " + id);
 
-      List<String> artists = new ArrayList<>();
-      GetTrackRequest getTrackRequest = spotifyApi.getTrack(id).build();
-      Track track = getTrackRequest.execute();
-      ArtistSimplified[] artistsSimp = track.getArtists();
-      for (ArtistSimplified artist : artistsSimp) {
-        artists.add(artist.getName());
+      if(currentlyPlaying.getIs_playing()) {
+        System.out.println(currentlyPlaying.getItem().toString());
+        String title = currentlyPlaying.getItem().getName();
+        System.out.println("post get item name");
+        String id = currentlyPlaying.getItem().getId();
+        System.out.println("Song Title: " + title);
+        System.out.println("Id: " + id);
+
+        List<String> artists = new ArrayList<>();
+        GetTrackRequest getTrackRequest = spotifyApi.getTrack(id).build();
+        Track track = getTrackRequest.execute();
+        ArtistSimplified[] artistsSimp = track.getArtists();
+        for (ArtistSimplified artist : artistsSimp) {
+          artists.add(artist.getName());
+        }
+
+        GetAudioFeaturesForTrackRequest getAudioFeaturesForTrackRequest =
+            spotifyApi.getAudioFeaturesForTrack(id).build();
+        AudioFeatures audioFeatures = getAudioFeaturesForTrackRequest.execute();
+
+        double[] features = new double[6];
+        features[0] = audioFeatures.getAcousticness();
+        features[1] = audioFeatures.getDanceability();
+        features[2] = audioFeatures.getEnergy();
+        features[3] = audioFeatures.getInstrumentalness();
+        features[4] = audioFeatures.getSpeechiness();
+        features[5] = audioFeatures.getValence();
+
+        System.out.println("Features " + features);
+        this.database.updateUserSong(new Song(userId, title, id, artists, features));
+
+      } else {
+        this.getMostRecentTrack();
       }
 
-      GetAudioFeaturesForTrackRequest getAudioFeaturesForTrackRequest =
-          spotifyApi.getAudioFeaturesForTrack(id).build();
-      AudioFeatures audioFeatures = getAudioFeaturesForTrackRequest.execute();
+  }
 
-      double[] features = new double[6];
-      features[0] = audioFeatures.getAcousticness();
-      features[1] = audioFeatures.getDanceability();
-      features[2] = audioFeatures.getEnergy();
-      features[3] = audioFeatures.getInstrumentalness();
-      features[4] = audioFeatures.getSpeechiness();
-      features[5] = audioFeatures.getValence();
+  public void getMostRecentTrack(){
 
-      System.out.println("Features " + features);
-
-      return new Song(userId, title, id, artists, features);
-    } catch (IOException | SpotifyWebApiException | ParseException e) {
-      throw new RuntimeException(e);
-    }
   }
   }
 

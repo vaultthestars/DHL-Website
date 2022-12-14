@@ -82,7 +82,7 @@ public class Server {
     Database db = new Database();
 
     // Setting up the handler for the GET endpoints
-    //Spark.get("load-connections", new LoadConnectionsHandler(userDatabase));
+    Spark.get("load-connections", new LoadConnectionsHandler(db));
     Spark.get("get-user", new GetUserHandler(db));
     Spark.get("load-song-features", new LoadSongFeaturesHandler(db));
 
