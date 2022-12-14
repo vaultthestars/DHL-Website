@@ -96,14 +96,15 @@ public class LoadConnectionsHandler implements Route {
       Map<String, Object> docMap =  document.getData();
       Map<String, Object> songMap = (Map) docMap.get("currentSong");
       
-      String feat = (String) songMap.get("features");
-      feat = feat.replace("[","");
-      feat = feat.replace("]","");
-      String[] featArray = feat.split("[,]");
-      double[] doubleFeatArray = Arrays.stream(featArray).mapToDouble(Double::parseDouble).toArray();
+//      String feat = (String) songMap.get("features");
+//      feat = feat.replace("[","");
+//      feat = feat.replace("]","");
+//      String[] featArray = feat.split("[,]");
+//      double[] doubleFeatArray = Arrays.stream(featArray).mapToDouble(Double::parseDouble).toArray();
 
       Song currentSong = new Song((String) songMap.get("userId"), (String) songMap.get("title"),
-          (String) songMap.get("id"), (List<String>) songMap.get("artists"),doubleFeatArray);
+          (String) songMap.get("id"), (List<String>) songMap.get("artists"),
+          (double[]) songMap.get("features"));
 
       String connections = document.getString("connections");
       connections = connections.replace("[","");

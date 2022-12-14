@@ -8,6 +8,7 @@ import com.google.cloud.firestore.Firestore;
 import com.google.cloud.firestore.QueryDocumentSnapshot;
 import com.google.cloud.firestore.QuerySnapshot;
 import com.google.cloud.firestore.WriteResult;
+import com.google.common.primitives.Doubles;
 import com.google.firebase.FirebaseApp;
 import com.google.firebase.FirebaseOptions;
 import com.google.firebase.cloud.FirestoreClient;
@@ -89,7 +90,8 @@ public class Database {
     songMap.put("title", song.getTitle());
     songMap.put("id", song.getId());
     songMap.put("artists", song.getArtists());
-    songMap.put("features", Arrays.toString(song.getFeatures()));
+    List<Double> featuresList = Doubles.asList(song.getFeatures());
+    songMap.put("features", featuresList);
 
     System.out.println(songMap);
 
@@ -111,7 +113,7 @@ public class Database {
     DocumentReference docRef = this.database.collection("users").document(docId);
     // asynchronously retrieve the document
     ApiFuture<DocumentSnapshot> future = docRef.get();
-    System.out.println("async call");
+    System.out.println("refresh token async call");
 
     // future.get() blocks on response
     DocumentSnapshot document = future.get();
@@ -163,7 +165,6 @@ public class Database {
   public void loadCurrentSongPoints(User user) {
     this.currentSongPoints = new ArrayList<Song>();
     this.currentSongPoints.add(user.getCurrentSong());
-
   }
 
   /** Creates SongPoint objects from updated user data and stores in historicalSongPoints */
