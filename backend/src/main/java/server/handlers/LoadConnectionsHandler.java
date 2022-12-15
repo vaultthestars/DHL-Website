@@ -5,7 +5,6 @@ import com.google.cloud.firestore.QueryDocumentSnapshot;
 import com.google.cloud.firestore.QuerySnapshot;
 import com.squareup.moshi.Moshi;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
