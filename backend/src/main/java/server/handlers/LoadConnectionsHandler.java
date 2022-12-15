@@ -3,11 +3,8 @@ package server.handlers;
 import com.google.api.core.ApiFuture;
 import com.google.cloud.firestore.QueryDocumentSnapshot;
 import com.google.cloud.firestore.QuerySnapshot;
-import com.google.firebase.database.GenericTypeIndicator;
 import com.squareup.moshi.Moshi;
 
-import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 
@@ -49,7 +46,7 @@ public class LoadConnectionsHandler implements Route {
       // future.get() blocks on response
       List<QueryDocumentSnapshot> documents = future.get().getDocuments();
       for (QueryDocumentSnapshot doc : documents) {
-        User user = this.generateUser(doc);
+        this.generateUser(doc);
 //        this.database.loadCurrentSongPoints(user);
 //        this.database.loadUserPoints(user);
 //        this.database.buildSongTree();
@@ -87,7 +84,7 @@ public class LoadConnectionsHandler implements Route {
     }
   }
 
-  private User generateUser(QueryDocumentSnapshot document)  {
+  private void generateUser(QueryDocumentSnapshot document)  {
       String userId = document.getString("userId");
       String displayName = document.getString("displayName");
       String refreshToken = document.getString("refreshToken");
@@ -103,15 +100,11 @@ public class LoadConnectionsHandler implements Route {
 //      double[] doubleFeatArray = Arrays.stream(featArray).mapToDouble(Double::parseDouble).toArray();
 
       List<Double> featList= (List<Double>) songMap.get("features");
-//      double[] featArray = [];
-
-
-
       Song currentSong = new Song((String) songMap.get("userId"), (String) songMap.get("title"),
           (String) songMap.get("id"), (List<String>) songMap.get("artists"),
-          featArray);
+          this.listToArray(featList));
 
-      String[] connections = (String[]) document.get("connections");
+      List<String> connections = document.get("connections", List.class);
 //      connections = connections.replace("[","");
 //      connections = connections.replace("]","");
 //      String[] connectArray = connections .split("[,]");
@@ -133,10 +126,18 @@ public class LoadConnectionsHandler implements Route {
       System.out.println(membershipLength);
       System.out.println(connections);
       System.out.println(historicalSongPoint);
-      System.out.println(historicalConnections);
+     // System.out.println(historicalConnections);
 
-      return new User(userId,displayName,refreshToken,membershipLength,currentSong,connections,historicalSongPoint,historicalConnections);
+      //return new User(userId,displayName,refreshToken,membershipLength,currentSong,connections,historicalSongPoint,historicalConnections);
 
+  }
 
+  private double[] listToArray(List<Double> lst){
+    double[] array = new double[6];
+    for(int i = 0; i < lst.size(); i++){
+      System.out.println(i);
+      array[i]= lst.get(i);
+    }
+    return array;
   }
 }
