@@ -43,10 +43,10 @@ public class Database {
   public Database() {
     try{
       FileInputStream serviceAccount =
-          new FileInputStream("private/tunedIn_firebase.json");
+          new FileInputStream("private/tunein-backup.json");
       FirebaseOptions options = FirebaseOptions.builder()
           .setCredentials(GoogleCredentials.fromStream(serviceAccount))
-          .setProjectId(Constants.PROJECT_ID)
+          .setProjectId("tunein-926c2")
           .build();
       FirebaseApp.initializeApp(options);
 

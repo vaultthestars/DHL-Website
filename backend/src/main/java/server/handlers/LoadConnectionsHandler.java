@@ -89,6 +89,9 @@ public class LoadConnectionsHandler implements Route {
       String displayName = document.getString("displayName");
       String refreshToken = document.getString("refreshToken");
       int membershipLength = document.get("membershipLength", Integer.class);
+      System.out.println(userId);
+      System.out.println(displayName);
+      System.out.println(refreshToken);
 
       Map<String, Object> docMap =  document.getData();
       Map<String, Object> songMap = (Map) docMap.get("currentSong");
@@ -102,20 +105,20 @@ public class LoadConnectionsHandler implements Route {
       List<Double> featList= (List<Double>) songMap.get("features");
       Song currentSong = new Song((String) songMap.get("userId"), (String) songMap.get("title"),
           (String) songMap.get("id"), (List<String>) songMap.get("artists"),
-          this.listToArray(featList));
+          this.listToDoubleArray(featList));
 
-      List<String> connections = document.get("connections", List.class);
+      //List<String> connections = document.get("connections",List.class);
 //      connections = connections.replace("[","");
 //      connections = connections.replace("]","");
 //      String[] connectArray = connections .split("[,]");
 
-      double[] historicalSongPoint = (double[]) document.get("historicalSongPoint");
+      //List historicalSongPoint = document.get;
 //      historicalSongPoint = historicalSongPoint.replace("[","");
 //      historicalSongPoint = historicalSongPoint.replace("]","");
 //      String[] histSongPointArray = historicalSongPoint.split("[,]");
 //      double[] doubleHistSongPointArray = Arrays.stream(histSongPointArray).mapToDouble(Double::parseDouble).toArray();
 
-      String[] historicalConnections = (String[]) document.get("historicalConnections");
+     // List<String> historicalConnections = (List<String>) document.get("historicalConnections");
 //      historicalConnections = historicalConnections.replace("[","");
 //      historicalConnections = historicalConnections.replace("]","");
 //      String[] histConnectArray = historicalConnections.split("[,]");
@@ -124,18 +127,24 @@ public class LoadConnectionsHandler implements Route {
       System.out.println(displayName);
       System.out.println(refreshToken);
       System.out.println(membershipLength);
-      System.out.println(connections);
-      System.out.println(historicalSongPoint);
-     // System.out.println(historicalConnections);
-
+//      System.out.println(this.listToStrArray(connections));
+//      System.out.println(this.listToDoubleArray(historicalSongPoint));
+//      System.out.println(this.listToStrArray(historicalConnections));
       //return new User(userId,displayName,refreshToken,membershipLength,currentSong,connections,historicalSongPoint,historicalConnections);
 
   }
 
-  private double[] listToArray(List<Double> lst){
+  private double[] listToDoubleArray(List<Double> lst){
     double[] array = new double[6];
-    for(int i = 0; i < lst.size(); i++){
-      System.out.println(i);
+    for(int i = 0; i < lst.size() ; i++){
+      array[i]= lst.get(i);
+    }
+    return array;
+  }
+
+  private String[] listToStrArray(List<String> lst){
+    String[] array = new String[6];
+    for(int i = 0; i < lst.size() ; i++){
       array[i]= lst.get(i);
     }
     return array;
