@@ -104,9 +104,12 @@ public class Database {
 
   public void updateUserConnections(User user){
     DocumentReference docRef = this.database.collection("users").document(user.getUserId());
-    docRef.update("connections", Arrays.toString(user.getConnections()));
-    docRef.update("historicalConnections", Arrays.toString(user.getHistoricalConnections()));
-    docRef.update("historicalSongPoint", Arrays.toString(user.getHistoricalSongPoint()));
+    List<String> connections = Arrays.asList(user.getConnections());
+    docRef.update("connections", connections);
+    List<String> historicalConnections = Arrays.asList(user.getHistoricalConnections());
+    docRef.update("historicalConnections", historicalConnections);
+    List<Double> historicalSongPoint = Doubles.asList(user.getHistoricalSongPoint());
+    docRef.update("historicalSongPoint", historicalSongPoint);
   }
 
   public String retrieveRefreshToken(String docId) throws ExecutionException, InterruptedException {

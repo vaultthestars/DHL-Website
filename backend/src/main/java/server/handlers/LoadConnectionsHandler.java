@@ -50,13 +50,13 @@ public class LoadConnectionsHandler implements Route {
       List<QueryDocumentSnapshot> documents = future.get().getDocuments();
       for (QueryDocumentSnapshot doc : documents) {
         User user = this.generateUser(doc);
-        this.database.loadCurrentSongPoints(user);
-        this.database.loadUserPoints(user);
-        this.database.buildSongTree();
-        this.database.buildUserTree();
-        this.database.loadConnections(user);
-        this.database.loadHistoricalConnections(user);
-        this.database.updateUserConnections(user);
+//        this.database.loadCurrentSongPoints(user);
+//        this.database.loadUserPoints(user);
+//        this.database.buildSongTree();
+//        this.database.buildUserTree();
+//        this.database.loadConnections(user);
+//        this.database.loadHistoricalConnections(user);
+//        this.database.updateUserConnections(user);
       }
       return new LoadConnectionsSuccessResponse().serialize();
     } catch (Exception e) {
@@ -102,33 +102,40 @@ public class LoadConnectionsHandler implements Route {
 //      String[] featArray = feat.split("[,]");
 //      double[] doubleFeatArray = Arrays.stream(featArray).mapToDouble(Double::parseDouble).toArray();
 
+      List<Double> featList= (List<Double>) songMap.get("features");
+//      double[] featArray = [];
+
+
+
       Song currentSong = new Song((String) songMap.get("userId"), (String) songMap.get("title"),
           (String) songMap.get("id"), (List<String>) songMap.get("artists"),
-          (double[]) songMap.get("features"));
+          featArray);
 
-      String connections = document.getString("connections");
-      connections = connections.replace("[","");
-      connections = connections.replace("]","");
-      String[] connectArray = connections .split("[,]");
-      String historicalSongPoint = document.getString("historicalSongPoint");
-      historicalSongPoint = historicalSongPoint.replace("[","");
-      historicalSongPoint = historicalSongPoint.replace("]","");
-      String[] histSongPointArray = historicalSongPoint.split("[,]");
-      double[] doubleHistSongPointArray = Arrays.stream(histSongPointArray).mapToDouble(Double::parseDouble).toArray();
-      String historicalConnections = document.getString("historicalConnections");
-      historicalConnections = historicalConnections.replace("[","");
-      historicalConnections = historicalConnections.replace("]","");
-      String[] histConnectArray = historicalConnections.split("[,]");
+      String[] connections = (String[]) document.get("connections");
+//      connections = connections.replace("[","");
+//      connections = connections.replace("]","");
+//      String[] connectArray = connections .split("[,]");
 
-//      System.out.println(userId);
-//      System.out.println(displayName);
-//      System.out.println(refreshToken);
-//      System.out.println(membershipLength);
-//      System.out.println(connections);
-//      System.out.println(historicalSongPoint);
-//      System.out.println(historicalConnections);
+      double[] historicalSongPoint = (double[]) document.get("historicalSongPoint");
+//      historicalSongPoint = historicalSongPoint.replace("[","");
+//      historicalSongPoint = historicalSongPoint.replace("]","");
+//      String[] histSongPointArray = historicalSongPoint.split("[,]");
+//      double[] doubleHistSongPointArray = Arrays.stream(histSongPointArray).mapToDouble(Double::parseDouble).toArray();
 
-      return new User(userId,displayName,refreshToken,membershipLength,currentSong,connectArray,doubleHistSongPointArray,histConnectArray);
+      String[] historicalConnections = (String[]) document.get("historicalConnections");
+//      historicalConnections = historicalConnections.replace("[","");
+//      historicalConnections = historicalConnections.replace("]","");
+//      String[] histConnectArray = historicalConnections.split("[,]");
+
+      System.out.println(userId);
+      System.out.println(displayName);
+      System.out.println(refreshToken);
+      System.out.println(membershipLength);
+      System.out.println(connections);
+      System.out.println(historicalSongPoint);
+      System.out.println(historicalConnections);
+
+      return new User(userId,displayName,refreshToken,membershipLength,currentSong,connections,historicalSongPoint,historicalConnections);
 
 
   }
