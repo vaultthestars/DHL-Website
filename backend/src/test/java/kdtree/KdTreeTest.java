@@ -6,10 +6,6 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import kdtree.DistanceSorter;
-import kdtree.KdTree;
-import kdtree.KdTreeNode;
-import kdtree.Point;
 import java.util.*;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;

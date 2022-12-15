@@ -4,10 +4,8 @@ import com.google.api.core.ApiFuture;
 import com.google.cloud.firestore.QueryDocumentSnapshot;
 import com.google.cloud.firestore.QuerySnapshot;
 import com.squareup.moshi.Moshi;
-
 import java.util.List;
 import java.util.Map;
-
 import server.Database;
 import server.ErrBadJsonResponse;
 import spark.Request;
@@ -15,7 +13,6 @@ import spark.Response;
 import spark.Route;
 import user.Song;
 import user.User;
-
 
 public class LoadConnectionsHandler implements Route {
 
@@ -47,12 +44,12 @@ public class LoadConnectionsHandler implements Route {
       List<QueryDocumentSnapshot> documents = future.get().getDocuments();
       for (QueryDocumentSnapshot doc : documents) {
         User user = this.generateUser(doc);
-//        this.database.loadCurrentSongPoints(user);
-//        this.database.loadUserPoints(user);
-//        this.database.buildSongTree();
-//        this.database.buildUserTree();
-//        this.database.loadConnections(user);
-//        this.database.loadHistoricalConnections(user);
+        //        this.database.loadCurrentSongPoints(user);
+        //        this.database.loadUserPoints(user);
+        //        this.database.buildSongTree();
+        //        this.database.buildUserTree();
+        //        this.database.loadConnections(user);
+        //        this.database.loadHistoricalConnections(user);
       }
       return new LoadConnectionsSuccessResponse().serialize();
     } catch (Exception e) {
@@ -83,31 +80,41 @@ public class LoadConnectionsHandler implements Route {
     }
   }
 
-  private User generateUser(QueryDocumentSnapshot document)  {
-      String userId = document.getString("userId");
-      String displayName = document.getString("displayName");
-      String refreshToken = document.getString("refreshToken");
-      int membershipLength = document.get("membershipLength", Integer.class);
+  private User generateUser(QueryDocumentSnapshot document) {
+    String userId = document.getString("userId");
+    String displayName = document.getString("displayName");
+    String refreshToken = document.getString("refreshToken");
+    int membershipLength = document.get("membershipLength", Integer.class);
 
-      Map<String, Object> docMap =  document.getData();
+    Map<String, Object> docMap = document.getData();
 
-      Map<String, Object> songMap = (Map) docMap.get("currentSong");
-      List<Double> featList= (List<Double>) songMap.get("features");
-      Song currentSong = new Song((String) songMap.get("userId"), (String) songMap.get("title"),
-          (String) songMap.get("id"), (List<String>) songMap.get("artists"),
-          this.listToDoubleArray(featList));
+    Map<String, Object> songMap = (Map) docMap.get("currentSong");
+    List<Double> featList = (List<Double>) songMap.get("features");
+    Song currentSong =
+        new Song(
+            (String) songMap.get("userId"),
+            (String) songMap.get("title"),
+            (String) songMap.get("id"),
+            (List<String>) songMap.get("artists"),
+            this.listToDoubleArray(featList));
 
-      List<String> connections = (List<String>) docMap.get("connections");
-      List<Double> historicalSongPoint = (List<Double>) docMap.get("historicalSongPoint");
-      List<String> historicalConnections = (List<String>) docMap.get("historicalConnections");
+    List<String> connections = (List<String>) docMap.get("connections");
+    List<Double> historicalSongPoint = (List<Double>) docMap.get("historicalSongPoint");
+    List<String> historicalConnections = (List<String>) docMap.get("historicalConnections");
 
-      return new User(userId,displayName,refreshToken,
-          membershipLength,currentSong,this.listToStrArray(connections),
-          this.listToDoubleArray(historicalSongPoint),this.listToStrArray(historicalConnections));
+    return new User(
+        userId,
+        displayName,
+        refreshToken,
+        membershipLength,
+        currentSong,
+        this.listToStrArray(connections),
+        this.listToDoubleArray(historicalSongPoint),
+        this.listToStrArray(historicalConnections));
   }
 
-  private double[] listToDoubleArray(List<Double> lst){
-    if(lst != null){
+  private double[] listToDoubleArray(List<Double> lst) {
+    if (lst != null) {
       double[] array = new double[6];
       for (int i = 0; i < lst.size(); i++) {
         array[i] = lst.get(i);
@@ -119,15 +126,14 @@ public class LoadConnectionsHandler implements Route {
   }
 
   private String[] listToStrArray(List<String> lst) {
-    if(lst != null){
+    if (lst != null) {
       String[] array = new String[5];
-      for(int i = 0; i < lst.size() ; i++){
-        array[i]= lst.get(i);
+      for (int i = 0; i < lst.size(); i++) {
+        array[i] = lst.get(i);
       }
       return array;
     } else {
       return new String[5];
     }
   }
-
 }

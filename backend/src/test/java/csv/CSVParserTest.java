@@ -11,7 +11,6 @@ import java.io.StringReader;
 import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.Test;
-import user.Song;
 import user.User;
 import user.UserFactory;
 
@@ -210,7 +209,7 @@ public class CSVParserTest {
     String[] expectedColumns = new String[] {"Name", "Age", "Sex"};
     assertArrayEquals(expectedColumns, this.testParser.getColumnTitles());
   }
-<<<<<<< HEAD
+
   //
   //  /** Tests userFactory from csv data. */
   //  @Test
@@ -243,47 +242,6 @@ public class CSVParserTest {
   //        };
   //    assertArrayEquals(expectedColumns, this.testParser.getColumnTitles());
   //  }
-=======
-
-  /** Tests userFactory from csv data. */
-  @Test
-  public void testUsersCase() throws IOException, FactoryFailureException {
-    setWithUserFactory();
-
-    Song firstUserSong = new Song("Blade of Flame", "z7w9sLpW5s",
-        new ArrayList<String>(List.of("Morgan", "Luiz")),
-        new float[] {
-              (float) 0.39, (float) 0.17, (float) 0.63, (float) 0.48, (float) 0.95, (float) 0.92
-            },
-        "bradleywiseman");
-
-    User firstUser =
-        new User(
-            "bradleywiseman",
-            2,
-            firstUserSong,
-            new String[] {"star22", "max", "maria.t7", "pablo365", "musicluv3r"},
-            new float[] {
-              (float) 0.62, (float) 0.40, 0.00F, (float) 0.05, (float) 0.39, (float) 0.34
-            },
-            new String[] {"will.smith", "harry_styles", "pablo365", "maria.t7", "bradleywiseman"});
-    assertEquals(firstUser, this.testParser.getParsedData().get(0));
-    assertEquals(14, this.testParser.getParsedData().size());
-    String[] expectedColumns =
-        new String[] {
-          "username",
-          "membershipLength",
-            "songTitle",
-            "songId",
-            "songArtists",
-          "songPoint",
-          "connections",
-          "historicalSongPoint",
-          "historicalConnections"
-        };
-    assertArrayEquals(expectedColumns, this.testParser.getColumnTitles());
-  }
->>>>>>> 443c7ff683a3e8f3d83931b0f26e6cb1e1ad5527
 
   //
   //  /** Testing exceptions */

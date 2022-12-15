@@ -551,8 +551,8 @@ export default function GraphVis(googleuser: string, spotifylinked: boolean) {
                                 })}
                             </svg>
                     </div>
-                    {/* userbar, aka zoomed in sidebar panel */}
-                    <div key = "userbar" className={fullyloggedin(spotifylinked,"userbar")}>
+                    {/* userbar, aka zoomed in sidebar panel */}  
+                    <div key = "userbar" className={fullyloggedin(zoomed,"userbar")}>
                         {/* main song string info */}
                         <h2>{"Song: " + getdatastrings(SelectIndex,1)}</h2>
                         <h3>{"artist: " + getdatastrings(SelectIndex,2)}</h3>
