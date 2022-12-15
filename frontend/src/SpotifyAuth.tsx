@@ -19,14 +19,13 @@ import { convertCompilerOptionsFromJson } from 'typescript';
 import { render } from '@testing-library/react';
 import {firebaseConfig} from './private/firebaseconfig'
 
-
-
 interface SpotifyLoginButtonProps {
   clientId: string;
   redirectUri: string;
   clientSecret: string;
   setUser2: Function;
   spotifyLinked: boolean;
+  setspotifyLinked: Function;
 }
 
 const app = initializeApp(firebaseConfig);
@@ -34,19 +33,28 @@ const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 
 export const SpotifyLoginButton: React.FC<SpotifyLoginButtonProps> = (parameters) => {
-  const { clientId, redirectUri, clientSecret, setUser2, spotifyLinked} = parameters;
+  const { clientId, redirectUri, clientSecret, setUser2, spotifyLinked, setspotifyLinked} = parameters;
   
   let refreshToken: string = "";
   let accessToken: string = "";
 
   const handleClick = () => {
-    const url = `https://accounts.spotify.com/authorize?response_type=code&client_id=${clientId}&scope=user-read-private%20user-read-email&redirect_uri=${redirectUri}`;
+    const url = `https://accounts.spotify.com/authorize?response_type=code&client_id=${clientId}&scope=user-read-private%20user-read-email%20user-read-currently-playing%20user-read-recently-played&redirect_uri=${redirectUri}`;
+    // "scope=user-read-private%20user-read-email%20user-read-currently-playing%20user-read-recently-played%20user-read-playback-state&"
     // go to the url
     window.location.replace(url);
   };
+
+  //THIS COULD BE CAUSING ISSUES
   React.useEffect(() => {
-    getTokens()     
-  })
+    const interval = setInterval(() => {
+      if (!spotifyLinked){
+        getTokens()     
+      }
+  }
+  , 1000);
+   return () => clearInterval(interval);
+  },[])
 
   const onSuccess = async (refreshToken: string, accessToken: string) => {
     // console.log("OH MY GODDDD")
@@ -84,7 +92,7 @@ export const SpotifyLoginButton: React.FC<SpotifyLoginButtonProps> = (parameters
           if (iNSERT_UID_HERE != null) {
           setDoc(doc(db, "users", iNSERT_UID_HERE), {
             refreshToken: refreshToken,
-          }, { merge: true });
+          }, { merge: true }); 
           localStorage.setItem("spotify", "done")
           setUser2("done")}
         if (accessToken == "" && accessToken != undefined) {
@@ -108,7 +116,8 @@ export const SpotifyLoginButton: React.FC<SpotifyLoginButtonProps> = (parameters
   const yval = 5;
 
   if ((localStorage.getItem("spotify") == "done" && localUID != null) || spotifyLinked ) {
-    setUser2("done")
+    setspotifyLinked(true)
+    setUser2("done") //WHAT IS THIS?????
     return (
       <p>Spotify linked.</p>
     )

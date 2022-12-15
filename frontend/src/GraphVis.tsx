@@ -5,10 +5,11 @@ import Slider from './Slider'
 import ReactSlider from "react-slider";
 import * as d3 from 'd3';
 import ReactDOM from 'react-dom';
-import { svg } from 'd3';
+import { range, svg } from 'd3';
 import { isVisible } from '@testing-library/user-event/dist/utils';
 
-//npm i --save-dev @types/react-slider
+//NOTE: login function is currently set to be permanently logged in for the sake of testing and because
+//firebase is down.
 
 //For whatever reason, this is causing us a lot of problems. Trying to create a map gives us a warning that the map items could be null, which is a huge
 //pain in the ass. Try doing it with arrays instead.
@@ -19,59 +20,75 @@ import { isVisible } from '@testing-library/user-event/dist/utils';
 //[DONE]: Change background color
 //[DONE]: Add camera controls
 //[DONE]: Make button fade in dynamically
-
 //[DONE]: Make the sidebar change when you zoom in
 //[DONE]: Add number displays in the sidebar
 //[DONE]: Make a pretty logo and slap it in
 //[DONE]: Add the current user
 //[DONE]: Add matches and matches navigation
 //[DONE]: Add variables for everything we're actually going to use
-//TODO: Make google thing vanish after you've logged in
-//TODO: Make the website actually look the way we want it to
+//[DONE]: Account for when the google user is not logged in but the spotify is already linked
+//[DONE]: Make google thing vanish after you've logged in
+//[DONE]: Make the website actually look the way we want it to
+//[DONE]: FIX THE INFINITE LOOP PLEASE
+//[DONE]: make a button to change the sorting parameter!
+
+//FRONTEND TODO:
+//TODO: Turn off the user outline circles when you aren't logged in
+//TODO: Add a pretty gradient bar on the side to denote how things are being sorted from bottom to top
+//TODO: CLEAN UP AND TEST
+
+//INTEGRATION TODO:
+//TODO: Set these when you log in!
 //TODO: Get frontend to communicate with backend
-//TODO: FIX THE INFINITE LOOP PLEASE
+    //TODO: Make current user index update when you log in! Edit the initdist functions
 
+// A map from a user's number/index to the numerical data of their last listened to last song, in the following order:
+// Acousticness, Danceability, Energy, Instrumentalness, Speechiness, Valence
 let usersongparams: Map<number, Array<number>> = new Map<number, Array<number>>();
-//What do we want? The user name, the current song, and the current artist.
 
+// A map from a user's number/index to their string data, in the following order:
+// Username, name of most recently listened to song, artist of most recently listened to song
 let userdatastrings: Map<number, Array<string>> = new Map<number, Array<string>>();
 
+// The current user's top 5 user matches, in the following order:
+// Current top 5 matches, All time top 5 matches
 let matchesdata: Map<number, Array<Array<number>>> = new Map<number, Array<Array<number>>>();
 
-//Other things we want: Username, song name, artist, 
+// Number of mocked users to display. Can go up to 1000 without significant slowdowns.
+let maxnum = 150;
 
-//matches: 
-//Current: match 0, match 1, match 2, match 3, match 4
-//Alltime: match 0, match 1, match 2, match 3, match 4
-
-// auth token or refresh token maps to a
-//USER:
-    // username
-    // current song name
-    // current song artist
-    // current song data
-    // historical song data
-
-// Store this in a big hash map from auth tokens to user objects
-
-let maxnum = 250;
-
+// x-center of the svg window
 let centerx = 600;
 
+// The radius of the filtering circle around each point 
+// that is used to cut down on how many repulsive forces we must calculate
+const calcdist = 200
+
+// A scalar for the repulsive force each bubble exerts on the others
 let repulseval = 1.5;
 
+// The distance between bubbles at which the repulsive force begins
 let repulsedist = 40;
 
+// A map indexing the visual sorting method of the bubbles on the page with a number key. 
+// Currently we only use a linear sort from top to bottom for the sake of visual clarity.
 const sortstyle: Map<number, (inpt: Array<number>, SortParameter: number, loggedin: boolean, curruser: number) => Array<number>> = new Map<number, (inpt: Array<number>) => Array<number>>();
+
+// A map indexing the name of the visual sorting method with a number key. We use this primarily for dev tools
 const sortname: Map<number, string> = new Map<number, string>();
+
+// A map indexing the name of each song data parameter(acousticness, energy, etc) with a number key for the user.
 const parameternames: Map<number, string> = new Map<number, string>();
 
+// Filling the sort style map with our sort functions
 sortstyle.set(0,radsort);
 sortstyle.set(1,linsort);
 
+// Filling the sort name map with the names of our sort functions
 sortname.set(0,"radial sort");
 sortname.set(1,"linear sort");
 
+// Filling the parameter name map with the names of our song data parameters
 parameternames.set(0,"Acousticness");
 parameternames.set(1,"Danceability");
 parameternames.set(2,"Energy");
@@ -79,126 +96,199 @@ parameternames.set(3,"Instrumentalness");
 parameternames.set(4,"Speechiness");
 parameternames.set(5,"Valence");
 
-//Acousticness, Danceability, Energy, Instrumentalness, Speechiness, Valence
-
+// This for loop takes the value of maxnum and randomly generates that many mocked users for our frontend
 for(let i = 0; i < maxnum; i++){
     usersongparams.set(i,[Math.random(),Math.random(),Math.random(),Math.random(),Math.random(),Math.random()])
-    //roughly 4 parameters
-    //What do we want? The user name, the current song, and the current artist.
-    userdatastrings.set(i,[genrandomstring(10),genrandomstring(10),genrandomstring(10),genrandomstring(10)])
+    userdatastrings.set(i,[genrandomstring(10),genrandomstring(10),genrandomstring(10)])
     matchesdata.set(i,[[Math.floor(maxnum*Math.random()),Math.floor(maxnum*Math.random()),Math.floor(maxnum*Math.random()),Math.floor(maxnum*Math.random()),Math.floor(maxnum*Math.random())],
     [Math.floor(maxnum*Math.random()),Math.floor(maxnum*Math.random()),Math.floor(maxnum*Math.random()),Math.floor(maxnum*Math.random()),Math.floor(maxnum*Math.random())]])
 }
 
+// A function for generating a random string with alternating vowels and consonants for our fake usernames and fake song names.
+// I didn't have to alternate vowels and consonants, but it's more entertaining when the names are pronounceable.
+// Makes long hours of debugging feel less grey.
 function genrandomstring(length: number): string{
     let result: string = '';
     const consonants: string = 'bcdfghjklmnpqrstvwxyz';
     const vowels: string = 'aeiou';
     for ( var i = 0; i < length; i++ ) {
         if(i%2 == 0){
+            // If i is even, add a consonant.
             result += consonants.charAt(Math.floor(Math.random() * 20));
         }
         else{
+            // If i is odd, add a vowel.
             result += vowels.charAt(Math.floor(Math.random() * 5));
         }
     }
     return result;
 }
 
-function initdist(initdata: Map<number, Array<number>>): Array<Array<number>>{
+// A function takes maxnum and randomly generates that many user coordinates across our screen.
+// The general template for a set of "user coordinates" is as follows:
+// [<user index number>, <user x position>, <user y position>]
+// The x and y position are used and updated to make the user bubbles move across the screen,
+// while the user index is used to identify each bubble with an actual user's data
+function initdist(): Array<Array<number>>{
     let returnarr: Array<Array<number>> = new Array<Array<number>>();
-    for(let i = 0; i < initdata.size; i++){
+    for(let i = 0; i < maxnum; i++){
+        // Add a randomly generated user coordinate to the stack
         returnarr.push([i,1500*(Math.random()-0.5),600*(Math.random()-0.5)])
     }
     return returnarr;
 }
 
-//Ok so this seems to be working, the initial distribution and everything.
-//TODO: Make the actual behavior for the circles! bumping and grouping together
-//[DONE]
-function leftshift(arr: Array<Array<number>>){
-    return arr.map((smallarr) => [smallarr[0],smallarr[1]+10,smallarr[2]])
+// A function that takes in a coordinate array and returns its magnitude from the origin.
+// Useful later on when calculating attractive and repulsive distance between bubbles and their targets.
+function mag(userarr: Array<number>): number{
+    return Math.sqrt(Math.pow(userarr[1],2)+Math.pow(userarr[2],2));
 }
 
-function mag(arr: Array<number>): number{
-    return Math.sqrt(Math.pow(arr[1],2)+Math.pow(arr[2],2));
-}
-
+// A function for the hyperbolic secant, a handy little easing function that I use for literally everything.
+// Sech(x) is close to zero for all x where |x| > 4, but when x gets closer within that range, sech(x)
+// forms a symmetrical bump that has a maximum height of 1 at x = 0.
+// This is great for when you're trying to get a point to approach some target- if you made the point always
+// take a step of magnitude 1 in the direction of the target, when it gets to the target it will jitter back
+// and forth endlessly, since it will constantly overshoot each time.
+// If we instead set the step size to be 1 - sech(dist), where dist is the distance between the point and the target,
+// we can make it so that the point still takes steps of size 1 until it gets sufficiently close, at which point its step size
+// will slowly decrease as it approaches the target, aka the point slows to a smooth stop.
 function sech(x: number): number{
+    // Such a short function for such a lengthy explanation! Haha
     return 1/Math.cosh(x);
 }
 
-function radsort(pt: Array<number>, SortParameter: number): Array<number>{
-    // key, x, y
-    // literally just normalize the point so that its magnitude is equal to its energy(times 50)
-    // take individual coordinates and multiply by a scalar
+// Simply put: 
+// A sorting function that takes a user coordinate and a song data value associated with it and returns
+// a point on the circle with radius proportional to that data value. 
+// In actuality/nuances: this function doesn't directly take in the song data value, it takes in the index that 
+// points to the value of that point's song data value and uses that to get the data value.
+// Result: points with low data values go to the middle of the screen, while points with higher data values remain further away
+function radsort(pt: Array<number>, SortParameterIndex: number): Array<number>{
     let scalar: number = 0;
         if(mag(pt) != 0){
-            scalar = 300*getdata(pt[0],SortParameter)/mag(pt);
+            // Here, we scale up our point to be 800 times further away from the origin to fit the screen dimensions.
+            // This is necessary because our song data value is always within the range [0,1], and a unit circle is tiny onscreen.
+            scalar = 800*getdata(pt[0],SortParameterIndex)/mag(pt);
         }
         return [pt[0], scalar*pt[1], scalar*pt[2]]
 }
 
-function linsort(pt: Array<number>, SortParameter: number, loggedin: boolean, curruser: number): Array<number>{
+// Simply put: A sorting function that takes in a user coordinate and a song data value associated with it and returns 
+// a point with the same x coordinate, but the y coordinate is determined by the song data value.
+// In actuality/nuances: Like the previous function, we only take in the sort parameter index, not the actual data value itself
+// We also make sure that the points' x values don't accidentally go off screen, since all points repulse each other.
+// Finally, if a user is logged in and this is their point, we make sure that it is centered horizontally so it is easier to see.
+// Result: points with low data values sit lower on the screen, while points with higher data values sit higher on the screen.
+function linsort(pt: Array<number>, SortParameterIndex: number, loggedin: boolean, curruser: number): Array<number>{
+    // Maximum horizontal distance a point is allowed to get from the middle of the screen. 
+    // Thought about making this interactively scale with the window size but ultimately decided 
+    // it wasn't worth creating an entire React myRef variable for something this subtle.
+    const maxwidth = 400;
     let x = pt[1];
+    // correct for if the point ends up out of horizontal bounds
+    if (pt[1] < (-1)*maxwidth){
+        x = (-1)*maxwidth;
+    }
+    else if (pt[1] > maxwidth){
+        x = maxwidth
+    }
+    // Center the point horizontally if it is the current user
     if(loggedin && pt[0] == curruser){
         x = 0;
     }
-    return [pt[0], x,300-(600*getdata(pt[0],SortParameter))] //trying to do it with 0 y instead of pt[2]
+    return [pt[0], x,300-(600*getdata(pt[0],SortParameterIndex))] //trying to do it with 0 y instead of pt[2]
 }
 
-function getdata(index: number, index2: number): number{
-    if(usersongparams.get(index) != undefined){
-        let energarr: number[] | undefined = usersongparams.get(index)
-        if(energarr){
-            return energarr[index2];
+// Simple boilerplate function for fetching the paramindex'th song data value of the userindex'th user.
+// Returns NaN if no entry exists for that key
+function getdata(userindex: number, paramindex: number): number{
+    if(usersongparams.get(userindex) != undefined){
+        let paramarr: number[] | undefined = usersongparams.get(userindex)
+        if(paramarr){
+            return paramarr[paramindex];
         }
     }
-    return 0;
+    return NaN;
 }
 
-function getdatastrings(index: number, index2: number): string{
-    let datarr: string[] | undefined = userdatastrings.get(index)
+// Simple boilerplate function for fetching the stringdex'th string data value of the userindex'th user.
+// Returns 'DATA NOT FOUND' if no entry exists for that key
+function getdatastrings(userindex: number, stringdex: number): string{
+    let datarr: string[] | undefined = userdatastrings.get(userindex)
         if(datarr){
-            return datarr[index2];
+            return datarr[stringdex];
         }
     return 'DATA NOT FOUND';
 }
 
+// Simple boilerplate function for fetching the matchindex'th match of the userindex'th user.
+// This will either be out of all time top 5 matches, or current top 5 matches, depending on the "time" boolean.
+// Returns NaN if no entry exists for any of the requested values.
 function getdatamatches(userindex: number, time: boolean, matchindex: number):  number{
     let timeindex = 0;
     if(time){
         timeindex = 1;
     }
-    let datarr: number[][] | undefined = matchesdata.get(timeindex)
-    if(datarr && datarr != undefined){
-        if(datarr[timeindex] && datarr[timeindex] != undefined){
-            if(datarr[timeindex][matchindex] && datarr[timeindex][matchindex] != undefined){
+    let datarr: number[][] | undefined = matchesdata.get(userindex)
+    if(datarr != undefined){
+        if(datarr[timeindex] != undefined){
+            if(datarr[timeindex][matchindex] != undefined){
                 return datarr[timeindex][matchindex];
             }
         }
     }
-    return 0;
+    return NaN;
 }
 
+// Simple boilerplate function for getting the name of the index'th sorting function. 
+// Returns 'SORT NAME NOT FOUND' if no value could be found.
+function getsortname(index: number): string{
+    let returnstring = sortname.get(index)
+    if(returnstring != undefined){
+        return returnstring
+    }
+    return 'SORT NAME NOT FOUND';
+}
+
+// Simple boilerplate function for getting the name of the index'th song parameter. 
+// Returns 'PARAMETER NAME NOT FOUND' if no value could be found.
+function getparamname(index: number): string{
+    let returnstring = parameternames.get(index)
+    if(returnstring != undefined){
+        return returnstring
+    }
+    return "PARAMETER NAME NOT FOUND";
+}
+
+
+
+// Back to fun stuff! Given a point p1 and another point p2, this function returns a bump vector pointing away from p2.
+// The bump vector's size relies on the distance between p1 and p2, and is calculated with our lovely sech(x) function.
 function repulse(p1: Array<number>, p2: Array<number>): Array<number>{
+    // The distance between points p1 and p2
     let magdiff = mag([p1[0],p1[1]-p2[1],p1[2]-p2[2]]);
     if(magdiff == 0){
-        return [p1[0],0,0]
+        return [0,0]
     }
     else{
-        //MIGHT HAVE TO TWEAK THIS VALUE
+        // Use the sech function to calculate the scale of the repulsion vector based on the distance between the two points
         let scalar = sech((1/repulsedist)*magdiff)/magdiff
-        return [p1[0], scalar * (p1[1]-p2[1]), scalar*(p1[2]-p2[2])]
+        // Return a vector
+        return [scalar * (p1[1]-p2[1]), scalar*(p1[2]-p2[2])]
     }
 }
 
+// Given a single point, a sorting parameter, a list of all points onscreen, a function to sort by, and a scaling factor for speed, 
+// this function calculates the attractive force between the point and its target(determined by the sorting function), as well
+// as all of the repulsive forces acting on it. Adds these vectors together and spits out the point's new position.
 function towardsort(pt: Array<number>, SortParameter: number, allpts: Array<Array<number>>, sortfunc: (inputarr: Array<number>, SortParameter: number, loggedin: boolean, curruser: number) => Array<number>, speed: number, loggedin: boolean, curruser: number): Array<number>{
-    let newpt: Array<number> = sortfunc(pt, SortParameter, loggedin, curruser)
-    //Move from pt to newpt
-    //So we need to add repulsive force within here, probably add a second vector called repulsion and then add the two
-    let vector: Array<number> = [pt[0],newpt[1]-pt[1],newpt[2]-pt[2]]
+    // Get the coordinates of the point we want
+    const targpt: Array<number> = sortfunc(pt, SortParameter, loggedin, curruser)
+    // Make a vector from the points' distances
+    const vector: Array<number> = [pt[0],targpt[1]-pt[1],targpt[2]-pt[2]]
     let scalar: number = 0
+    // Scale our vector according to our speed variable
     if(mag(vector)!=0){
         if(mag(vector)<speed*0.1){
             scalar = 1;
@@ -207,22 +297,31 @@ function towardsort(pt: Array<number>, SortParameter: number, allpts: Array<Arra
             scalar = speed*0.1/mag(vector);
         }
     }
+
+    // Initializing repulsive force vector
     let repx = 0;
     let repy = 0;
 
+    // Add up all of the repulsive forces between pt and all other points in allpts
     for(let i = 0; i < allpts.length; i++){
-        repx = repx + repulse(pt, allpts[i])[1]
-        repy = repy + repulse(pt, allpts[i])[2]
+        // Only be repulsed by a point if it's within a radius of calcdist. Cuts down on computing time.
+        if(mag([0,pt[1]-allpts[i][1],pt[2]-allpts[i][2]]) < calcdist){
+            repx = repx + repulse(pt, allpts[i])[0]
+            repy = repy + repulse(pt, allpts[i])[1]
+        }
     }
+    // Nudge the point according to attractive and repulsive forces
     return [vector[0],
     pt[1]+scalar*vector[1] + repulseval*repx,
     pt[2]+scalar*vector[2] + repulseval*repy]
 }
 
+// Take all points onscreen and move them by one step based on their attractive and repulsive forces
 function sortshift(pts: Array<Array<number>>, SortParameter: number, sortfunc: (inputarr: Array<number>, SortParameter: number, loggedin: boolean, curruser: number) => Array<number>, speed: number, loggedin: boolean, curruser: number):Array<Array<number>>{
     return pts.map((pt)=>towardsort(pt,SortParameter, pts, sortfunc, speed, loggedin, curruser))
 }
 
+// Take all points onscreen and move them by one step based on their attractive and repulsive forces
 function getsortmethod(index: number): ((inpt: Array<number>, SortParameter: number, loggedin: boolean, curruser: number)=> Array<number>){
     let returnfunc = sortstyle.get(index)
     if(returnfunc != undefined){
@@ -231,24 +330,10 @@ function getsortmethod(index: number): ((inpt: Array<number>, SortParameter: num
     return radsort;
 }
 
-function getsortname(index: number): string{
-    let returnstring = sortname.get(index)
-    if(returnstring != undefined){
-        return returnstring
-    }
-    return "";
-}
-
-function getparamname(index: number): string{
-    let returnstring = parameternames.get(index)
-    if(returnstring != undefined){
-        return returnstring
-    }
-    return "";
-}
-
-function renderstroke(zoomed: boolean, datanum: number){
-    if(zoomed){
+// Simple function for returning the stroke color of the circles surrounding a selected user based on 
+// whether or not the user has been selected on screen
+function renderstroke(showselected: boolean, datanum: number){
+    if(showselected){
         return "hsla(" + 200+90*datanum + ", 50%, 50%, 1)"
     }
     else{
@@ -256,8 +341,11 @@ function renderstroke(zoomed: boolean, datanum: number){
     }
 }
 
+// Tau is always useful! We use it in our useEffect loop to make our points pulse on screen via a sine function.
 const tau = 2*Math.PI;
 
+// A function that returns the number of digits in a number(base 10). Used for determining the size of the text box needed to
+// display certain numbers onscreen. Mostly relevant for debugging purposes.
 function digs(x: number){
     if (x==0){
         return 1;
@@ -267,32 +355,34 @@ function digs(x: number){
     }
 }
 
-function paramstring(SelectIndex: number): string{
-    let returnstring = "";
-    parameternames.forEach((value: string, key: number) => {returnstring = returnstring + ( " " + value + ": " + getdata(SelectIndex, key))})
-    return returnstring
-}
-
+// A function that takes the current camera state(an array with format [<zoom factor>,<x center>,<y center>]) 
+// and a target camera state and moves the current camera state one step towards the desired camera state.
+// This is used for moving the camera whenever you select and zoom out from points. Also uses our lovely sech function!
 function updatecamcenter(campt: number[], targpt: number[]): number[]{
-    // so we need wherever it is and wherever it needs to go. Use a 1-sech(x) system
-    // Again, we want a scalar and a nudge vector
+    // Make a vector from the difference between targpt and campt
     let nudgevec = [targpt[0]-campt[0],targpt[1]-campt[1],targpt[2]-campt[2]]
     if (mag(nudgevec)==0){
         return campt
     }
     else{
+        // Scale and nudge the camera towards the target
         let scalar = 0.05*(1-sech((1/1)*mag(nudgevec)))
         return [campt[0]+scalar*nudgevec[0],campt[1]+scalar*nudgevec[1],campt[2]+scalar*nudgevec[2]]
     }
 }
 
-function camtarg(A: number[],B: number[],zoomed: boolean): number[]{
-    if (zoomed){
+// Super simple function that takes in two points and a boolean and returns the first if the boolean is true, second if false.
+// Used for setting the target of our camera based on if a point is selected or not.
+function camtarg(A: number[],B: number[],selected: boolean): number[]{
+    if (selected){
         return A;
     }
     return B;
 }
 
+// Super simple function for returning a 1 or 0 based on a boolean. 
+// Annoying but necessary for setting the transform/display mode of our sidebar elements when we
+// select and unselect a user.
 function slidenum(bool: boolean){
     if (bool){
         return 1
@@ -302,31 +392,49 @@ function slidenum(bool: boolean){
     }
 }
 
+// Another simple function for determining whether or not we should display the sidebar.
+// Only returns "sidebar" element class name when the current google user ID passed in is nonempty.
 function sidebarloggedin(str: string): string{
-    console.log(str)
     if (str == ""){
         return "hidden";
     }
     return "sidebar";
 }
 
-function fullyloggedin(bool: boolean, retstring: string): string{
+// A nearly identical function used for showing and hiding sidebar elements based on whether or not we've logged in to spotify.
+// Takes in the success class name as a parameter since we use this on two elements with different class names.
+function fullyloggedin(bool: boolean, classname: string): string{
     if(bool){
-        return retstring
+        return classname
     }
     else{
         return "hidden"
     }
 }
 
-//TODO: add repulsive force
-//TODO: add stats display!
+// Our main rendering function. Returns everything below the header in our app.
+// Takes in the current google user ID and whether or not spotify is linked, as these affect which elements are rendered.
 
-//Make the GOL in react: https://dev.to/toluagboola/build-the-game-of-life-with-react-and-typescript-5e0d
+// Here's an outline of the general structure of this function since it's so large:
+// -State variables
+// -UseEffect main loop
+// -Other variables
+// Huuuuge return statement:
+// -Main wrapper
+//      -Sidebar wrapper
+//          -Default sidebar(zoomed out state)
+//          -User sidebar(zoomed in state)
+//      -Main user visualizer wrapper
+//          -Current user circle outline
+//          -Selected user circle outline
+//          -All user bubbles
+//          -Use bubble labels
+//          -On-screen buttons(change parameter to sort by, zoom out)
+//      -Developer tool buttons
 
 export default function GraphVis(googleuser: string, spotifylinked: boolean) {
-    let initarray: number[][] = initdist(usersongparams);
-    const [CircleData, setCircleData] = useState<number[][]>(initarray);
+    // All of our wonderful react state variables
+    const [CircleData, setCircleData] = useState<number[][]>(initdist());
     const [SelectIndex, setSelectIndex] = useState<number>(0);
     const [Timer, setTimer] = useState<number>(0);
     const [SortIndex, setSortIndex] = useState<number>(1);
@@ -338,68 +446,82 @@ export default function GraphVis(googleuser: string, spotifylinked: boolean) {
     const [zoomval, Setzoomval] = useState<number>(0);
     const [alltime, Setalltime] = useState<boolean>(false);
 
-    //TODO: Set these when you log in!
-
-    const [loggedin, Setloggedin] = useState<boolean>(true);
+    // Current user index. Currently set to default value of 0.
     const [curruser, Setcurruser] = useState<number>(0);
-    
+
+    // Main useEffect loop! Had to use a setInterval to stop React from reaching its max update depth and freaking out.
     useEffect(() => {
-        setCircleData(sortshift(CircleData, SortParameter, getsortmethod(SortIndex), Speed, loggedin, curruser))
-        Setcamcenter(updatecamcenter(camcenter,
-            //In reality we might want to center which user is you!
+        const interval = setInterval(() => {
+            setCircleData(sortshift(CircleData, SortParameter, getsortmethod(SortIndex), Speed, spotifylinked, curruser))
+            Setcamcenter(updatecamcenter(camcenter,
             camtarg([4,CircleData[SelectIndex][1],CircleData[SelectIndex][2]],
-                [1,0,0],zoomed)))
-        setTimer((Timer + 0.003) % 1)
-        Setzoomval(1-((camcenter[0]-2)/2))
-        document.documentElement.style.setProperty('--sidebar-mode', zoomval.toString());
-        document.documentElement.style.setProperty('--timeslidermode', slidenum(alltime).toString());
-    }, CircleData)
-    
-    const nums = [0,1,2,3,4,5];
-    const xoffset = 25;
-    //Make some sort of time update thing that lets you update circles and send their positions somewhere
-    return <div className = "wrapper">
-                <div className = {sidebarloggedin(googleuser)}>
-                    <div className={fullyloggedin(spotifylinked,"defaultbar")}>
+                 [1,0,0],zoomed)))
+            setTimer((Timer + 0.003) % 1)
+             Setzoomval(1-((camcenter[0]-2)/2))
+            document.documentElement.style.setProperty('--sidebar-mode', zoomval.toString());
+            document.documentElement.style.setProperty('--timeslidermode', slidenum(alltime).toString());
+          }, 10);
+           return () => clearInterval(interval);
+    }, [CircleData])
+
+    // Main return statement
+    return <div key = "wrapper" className = "wrapper">
+                {/* Sidebar background */}
+                <div key = "sidebardiv" className = {sidebarloggedin(googleuser)}>
+                    {/* defaultbar, aka zoomed out sidebar panel */}
+                    <div key = "defaultbar" className = {fullyloggedin(spotifylinked,"defaultbar")}>
                         <h2>Who's on your wavelength?</h2>
+                        {/* lovely wave logo made in Desmos */}
                         <img className = "wavepic" src="https://i.ibb.co/V2Dmsx4/tuneinlogo.png" 
                         alt="tunein_logo"/>
+                        {/* user matches display window */}
                         <svg className = "matchesdisplay" width = "100%" height = "387.5">
-                                 <rect className="timesliderbg"
+                                {/* time slider toggles */}
+                                 <rect 
+                                    key = "timesliderbg"
+                                    className="timesliderbg"
                                     width = "175"
                                     height = "25"
                                     x= "11"
-                                    y= "7"
+                                    y= "10"
                                     rx="5"
                                     ry="5"
                                     opacity = {(zoomval).toString()}
                                     >
                                 </rect>
-                                <rect className="timeslider"
+                                <rect
+                                    key = "timeslider" 
+                                    className="timeslider"
                                     width = "75"
                                     height = "25"
                                     rx="5"
                                     ry="5"
                                     x = "10"
-                                    y = "7"
+                                    y = "10"
                                     opacity = {(zoomval).toString()}
                                     >
                                 </rect>
-                                <text x= "20" y="24"
+                                <text 
+                                key = "currenttime"
+                                x= "20" y="27"
                                 onClick={()=>
                                     {console.log("HEY");
                                     Setalltime(false)
                                     }
                                 }> current</text>
-                                <text x= "120" y="24"
+                                <text 
+                                key = "alltime"
+                                x= "120" y="27"
                                 onClick={()=>
                                     {console.log("YAH");
                                     Setalltime(true)
                                     }
                                 }> all-time</text>
+                                {/* user matches display */}
                                 {[0,1,2,3,4].map((x)=>{
                                     let matchindex = x;
                                     return <rect 
+                                    key = {"matchesbar_"+x.toString()}
                                     width = "175"
                                     height = "50"
                                     x= "11"
@@ -416,6 +538,7 @@ export default function GraphVis(googleuser: string, spotifylinked: boolean) {
                                 {[0,1,2,3,4].map((x2)=>{
                                     let matchindex = x2;
                                     return <text 
+                                    key = {"matchuser_"+x2.toString()}
                                     x= "30"
                                     y= {(75+70*x2).toString()}
                                     opacity = {(zoomval).toString()}
@@ -428,53 +551,53 @@ export default function GraphVis(googleuser: string, spotifylinked: boolean) {
                                 })}
                             </svg>
                     </div>
-                    {[0].map(()=>{if(zoomval < 0.9){return <div className={fullyloggedin(spotifylinked,"userbar")}>
+                    {/* userbar, aka zoomed in sidebar panel */}
+                    <div key = "userbar" className={fullyloggedin(spotifylinked,"userbar")}>
+                        {/* main song string info */}
                         <h2>{"Song: " + getdatastrings(SelectIndex,1)}</h2>
                         <h3>{"artist: " + getdatastrings(SelectIndex,2)}</h3>
                         <p>{"user: " + getdatastrings(SelectIndex,0)}</p>
-                        {/* TODO: Replace all of this with a simple map! */}
-                        {/* [DONE]]: Add actual number labels for each circle! */}
-                        {/* [DONE]]: Shift circles over to the right */}
-                        {/* TODO: Make easing? maybe. Maybe not */}
-                        <svg className = "paramdisplay" width = "100%" height = "500">
-                            {nums.map((x)=>{
-                                return <circle cx = {(200+xoffset).toString()} cy = {(40+70*x).toString()} r= "25" stroke = "#000000" strokeWidth = "5" 
+                        {/* song data value display */}
+                        <svg id="paramdisplay" className = "paramdisplay" width = "100%" height = "500">
+                            {[0,1,2,3,4,5].map((x)=>{
+                                return <circle 
+                                key = {"paramcirclebg_"+x.toString()}
+                                cx = "225" cy = {(40+70*x).toString()} r= "25" stroke = "#000000" strokeWidth = "5" 
                                 fill = {"hsla(1,0%,100%," + (1-zoomval).toString() + ")"}
-                                stroke-opacity = {(1-zoomval).toString()}
+                                strokeOpacity = {(1-zoomval).toString()}
                                 />
                             })}
-                            {nums.map((x)=>{
+                            {[0,1,2,3,4,5].map((x)=>{
                                 return <path
-                                d={"M " + (200+xoffset).toString() + " " + (15 + 70*x).toString() + " a 25 25 0 0 1 0 50 a 25 25 0 0 1 0 -50"}
+                                key = {"percentagearc_"+x.toString()}
+                                d={"M 225 " + (15 + 70*x).toString() + " a 25 25 0 0 1 0 50 a 25 25 0 0 1 0 -50"}
                                 fill="none"
                                 stroke={"hsla(" + 90*getdata(SelectIndex,x) + ", 100%, 40%, 1)"}
-                                stroke-width="5"
-                                stroke-dasharray={getdata(SelectIndex,x)*157.079632679 + ", 157.079632679"}
+                                strokeWidth="5"
+                                strokeDasharray={getdata(SelectIndex,x)*157.079632679 + ", 157.079632679"}
                                 opacity = {(1-zoomval).toString()}
                                 />
                             })}
-                            {nums.map((x)=>{
-                                return <text fontSize="18" x = {(182+xoffset).toString()} y = {45+70*x} opacity = {(1-zoomval).toString()}>
+                            {[0,1,2,3,4,5].map((x)=>{
+                                return <text key = {"userdata_"+x.toString()}
+                                fontSize="18" x = "207" y = {45+70*x} opacity = {(1-zoomval).toString()}>
                                     {Math.round(getdata(SelectIndex,x)*100) + "%"}</text>
                             })}
-                            {nums.map((x)=>{
-                                return <text className = "whitetext" x= "20" y= {(50 + 70*x).toString()}> {getparamname(x)+":"} </text>
+                            {[0,1,2,3,4,5].map((x)=>{
+                                return <text key = {"parameterlabel_"+x.toString()}
+                                className = "whitetext" x= "20" y= {(50 + 70*x).toString()}> {getparamname(x)+":"} </text>
                             })}
                         </svg>
                     </div>
-                }
-
-                })}
                 </div>
-                {/* <p>{paramstring(SelectIndex)}
-                </p> */}
+                {/* user bubble display */}
                 <svg className="svgwindow" fill = "true"
                  width="100%" height="600" >
-                    {/* render the circles */}
+                    {/* current user outline circles */}
                     {[0,1,2,3].map((num) => 
-                        {if (loggedin){
+                        {if (spotifylinked){
                         return <circle 
-                        key= "usercircleoutline" 
+                        key= {"usercircleoutline_"+num.toString()} 
                         cx= {camcenter[0]*(CircleData[curruser][1]-camcenter[1])+centerx} cy= {camcenter[0]*(CircleData[curruser][2]-camcenter[2])+300} 
                         r={camcenter[0]*(20+10*num) + 4*Math.sin(0.1*CircleData[curruser][0]+tau*Timer)} 
                         fill="none"
@@ -484,10 +607,11 @@ export default function GraphVis(googleuser: string, spotifylinked: boolean) {
                         </circle>
                         }}
                     )}
+                    {/* selected user outline circles */}
                     {[0,1].map((num) => 
                         {
                         return <circle 
-                        key= "selectedcircleoutline" 
+                        key= {"selectedcircleoutline_"+num.toString()} 
                         cx= {camcenter[0]*(CircleData[SelectIndex][1]-camcenter[1])+centerx} cy= {camcenter[0]*(CircleData[SelectIndex][2]-camcenter[2])+300} 
                         r={camcenter[0]*20 + 20 + 20*num + 10*Math.sin(0.1*CircleData[curruser][0]+tau*Timer)} 
                         fill="none"
@@ -497,108 +621,114 @@ export default function GraphVis(googleuser: string, spotifylinked: boolean) {
                         </circle>
                         }
                     )}
+                    {/* all user bubbles */}
                     {CircleData.map((entry) => 
                         <circle 
-                        onClick= {() => {
-                            Setzoomed(true);
-                            console.log("circle " + entry[0] + " clicked");
-                            setSelectIndex(entry[0])
-                        }} 
                         key= {entry[0]} 
                         cx= {camcenter[0]*(entry[1]-camcenter[1])+centerx} cy= {camcenter[0]*(entry[2]-camcenter[2])+300} 
                         r={camcenter[0]*20 + 4*Math.sin(0.1*entry[0]+tau*Timer)} fill={"hsla(" + 200+90*getdata(entry[0],SortParameter) + ", 50%, 50%, 1)"}
                         stroke = "none"
                         strokeWidth = "5"
-                        >
-                        </circle>
+                        onClick= {() => {
+                            Setzoomed(true);
+                            console.log("circle " + entry[0] + " clicked");
+                            setSelectIndex(entry[0])
+                        }}
+                        />
                     )}
-                    {}
-                    {<rect 
-                        width = "150"
-                        height = "50"
-                        x= "10"
-                        y= "10"
-                        rx="5"
-                        ry="5"
-                        opacity = {camcenter[0]-1}
-                        onClick= {() => {  
-                            // update the circle positions
-                            Setzoomed(false);
-                        }}>
-                        </rect>}
-                        {<text 
-                        className = "whitetext"
-                        x= "42"
-                        y= "42"
-                        opacity = {camcenter[0]-1}
-                        onClick= {() => {  
-                            // update the circle positions
-                            Setzoomed(false);
-                        }}>
-                            Zoom out
-                        </text>}
+                    {/* username tags for displayed bubbles */}
                     {CircleData.map((entry) => 
                         {if(ShowCircLabels){
                             return (<text 
-                        //         cx= {camcenter[0]*(CircleData[curruser][1]-camcenter[1])+centerx} cy= {camcenter[0]*(CircleData[curruser][2]-camcenter[2])+300} 
-                        // r={camcenter[0]*(20+10*num) + 4*Math.sin(0.1*CircleData[curruser][0]+tau*Timer)} 
+                                key = {"username_"+entry[0].toString()}
                                 x={camcenter[0]*(entry[1]-24-camcenter[1])+centerx} 
-                                y={camcenter[0]*(entry[2]-22-camcenter[2])+300} 
+                                y={camcenter[0]*(entry[2]-24-camcenter[2])+300} 
                                 fontSize={camcenter[0]*10}
                         className="small"
                         onClick= {() => {
                             console.log("circle " + entry[0] + " clicked");
                             setSelectIndex(entry[0])
                         }} >
-                        {/* DISPLAY USERNAME */}
                         {getdatastrings(entry[0],0)}</text>)}}
                     )}
+                    {/* button for changing the parameter we sort by */}
+                    {<rect 
+                        key = "paramsortbutton"
+                        width = {(140+9*getparamname(SortParameter).length).toString()}
+                        height = "50"
+                        x= "10"
+                        y= "10"
+                        rx="5"
+                        ry="5"
+                        onClick= {() => {  
+                            // change the parameter sorting mode
+                            setSortParameter((SortParameter + 1) % parameternames.size);
+                        }}>
+                        </rect>}
+                        {<text 
+                        key = "paramsorttext"
+                        className = "whitetext"
+                        x= "20"
+                        y= "42"
+                        onClick= {() => {  
+                            // change the parameter sorting mode
+                            setSortParameter((SortParameter + 1) % parameternames.size);
+                        }}>
+                            {"Sorting by: " + getparamname(SortParameter)}
+                        </text>}
+                    {/* button for zooming the camera out after we've clicked a bubble */}
+                    {<rect 
+                        key = "zoomoutbutton"
+                        width = "150"
+                        height = "50"
+                        x= "10"
+                        y= "70"
+                        rx="5"
+                        ry="5"
+                        opacity = {camcenter[0]-1.1}
+                        onClick= {() => {  
+                            Setzoomed(false);
+                        }}>
+                        </rect>}
+                        {<text 
+                        key = "zoomouttext"
+                        className = "whitetext"
+                        x= "42"
+                        y= "102"
+                        opacity = {camcenter[0]-1.1}
+                        onClick= {() => {  
+                            Setzoomed(false);
+                        }}>
+                            Zoom out
+                        </text>}
                 </svg>
-                <div className = "button stuff">
+                {/* misc. developer tools. Kept for debugging purposes, nothing here is dangerous or alters the actual data,
+                 which is why I've simply hidden it instead of omitting it completely via some boolean function */}
+                <div key = "developer stuff" className = "hidden">
                     <button onClick= {() => {  
-                        // update the circle positions
-                        setCircleData(initarray);
+                        // Reset the position of all circles onscreen
+                        setCircleData(initdist());
                     }}>
                         {"Reset"}
                     </button>
                     <button onClick= {() => {  
-                        // update the circle positions
+                        // Toggle usernames on and off
                         SetShowCircLabels(!ShowCircLabels);
                     }}>
                         {"Toggle Circle Labels"}
                     </button>
                     {/* Note: We can't change the size of the circdata array, react won't allow it */}
                     <button onClick= {() => {  
-                            // update the circle positions
+                            // Change the sorting style between linear and radial, or some other sorting function if we decide to add more.
                             console.log(SortIndex)
                             setSortIndex((SortIndex + 1) % sortstyle.size);
                         }}>
                             {"Change display method"}
                     </button>
-                    <button onClick= {() => {  
-                            // update the circle positions
-                            setSortParameter((SortParameter + 1) % parameternames.size);
-                        }}>
-                            {"Change sorting parameter"}
-                    </button>
+                    {/* Simple display paragraph so we can see what method we're sorting everything by. 
+                    Currently unecessary since we're only sorting the points linearly*/}
                     <p>{"Sort style: " + getsortname(SortIndex) + " Sort parameter: " + getparamname(SortParameter)}</p>
                 </div>
-                {/* <div className = "beegslider">
-                    <ReactSlider
-                        className="horizontal-slider"
-                        thumbClassName="example-thumb"
-                        trackClassName="example-track"
-                        defaultValue={[50]}
-                        ariaLabel={["Thumb"]}
-                        ariaValuetext={state => `Thumb value ${state.valueNow}`}
-                        renderThumb={(props, state) => {setSpeed(0.1*state.valueNow); return <div {...props}>{state.valueNow}</div>}}
-                        pearling
-                        minDistance={10}
-                    />
-                </div> */}
             </div>
             
 }
-
-{/* {circledata.map((circx,circy)=>
-    <circle cx= "circx" cy= "circy" r="80" fill="none" stroke="#000000" stroke-width="10"/>)} */}

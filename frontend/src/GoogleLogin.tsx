@@ -20,7 +20,7 @@ export const signInWithGoogle = (setUser: { (value: SetStateAction<string>): voi
   let displayName = "";
   signInWithPopup(auth, provider)
     .then(async (result) => {
-      console.log(result);
+      // console.log(result);
       if(result.user.displayName != null){
         displayName = result.user.displayName;
         let UID = result.user.uid
@@ -31,11 +31,11 @@ export const signInWithGoogle = (setUser: { (value: SetStateAction<string>): voi
        if (!docSnap.exists()) {
         await setDoc(doc(db, "users", UID), {
             email: result.user.email,
-            connections: [],
+            connections: "",
             currentSong: {artist: [], dimension: "", features: [], id: "", title: "", userId: UID},
             displayName: displayName,
-            historicalConnections: [],
-            historicalSongPoint: [],
+            historicalConnections: "",
+            historicalSongPoint: "",
             membershipLength: 0, 
             userId: UID
         });
