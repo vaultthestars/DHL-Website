@@ -86,8 +86,8 @@ function App() {
       <img className = "tuneinlogo" src="https://i.ibb.co/rFTJDTr/tuneinlogo2.png"/>
       </p>
       {/* NOTE: Currently I'm pretending the user is automatically logged in for testing purposes*/}
-      {/* {GraphVis(CurrentGoogleUser,spotifyLinked)} */}
-      {GraphVis("HELLO I AM A USER",true)}
+      {GraphVis(CurrentGoogleUser,spotifyLinked)}
+      {/* {GraphVis("HELLO I AM A USER",true)} */}
       <div className = {hidebutton()}>
         <SpotifyLoginButton clientId={"213450855ac44f5aa842c2359939fded"} 
         redirectUri={'http://localhost:3000/callback/'} 

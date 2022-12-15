@@ -261,7 +261,14 @@ function getparamname(index: number): string{
     return "PARAMETER NAME NOT FOUND";
 }
 
-
+// Boilerplate function to get the sorting method function given its index
+function getsortmethod(index: number): ((inpt: Array<number>, SortParameter: number, loggedin: boolean, curruser: number)=> Array<number>){
+    let returnfunc = sortstyle.get(index)
+    if(returnfunc != undefined){
+        return returnfunc
+    }
+    return radsort;
+}
 
 // Back to fun stuff! Given a point p1 and another point p2, this function returns a bump vector pointing away from p2.
 // The bump vector's size relies on the distance between p1 and p2, and is calculated with our lovely sech(x) function.
@@ -319,15 +326,6 @@ function towardsort(pt: Array<number>, SortParameter: number, allpts: Array<Arra
 // Take all points onscreen and move them by one step based on their attractive and repulsive forces
 function sortshift(pts: Array<Array<number>>, SortParameter: number, sortfunc: (inputarr: Array<number>, SortParameter: number, loggedin: boolean, curruser: number) => Array<number>, speed: number, loggedin: boolean, curruser: number):Array<Array<number>>{
     return pts.map((pt)=>towardsort(pt,SortParameter, pts, sortfunc, speed, loggedin, curruser))
-}
-
-// Take all points onscreen and move them by one step based on their attractive and repulsive forces
-function getsortmethod(index: number): ((inpt: Array<number>, SortParameter: number, loggedin: boolean, curruser: number)=> Array<number>){
-    let returnfunc = sortstyle.get(index)
-    if(returnfunc != undefined){
-        return returnfunc
-    }
-    return radsort;
 }
 
 // Simple function for returning the stroke color of the circles surrounding a selected user based on 
