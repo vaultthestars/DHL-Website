@@ -40,13 +40,13 @@ public class Database {
   private KdTree<Song> currentSongTree;
   private KdTree<User> userTree;
 
-  public Database() {
+  public Database(String filepath, String projectId) {
     try{
       FileInputStream serviceAccount =
-          new FileInputStream("private/tunein-backup.json");
+          new FileInputStream(filepath);
       FirebaseOptions options = FirebaseOptions.builder()
           .setCredentials(GoogleCredentials.fromStream(serviceAccount))
-          .setProjectId("tunein-926c2")
+          .setProjectId(projectId)
           .build();
       FirebaseApp.initializeApp(options);
 
@@ -62,8 +62,6 @@ public class Database {
   public Firestore getFireStore(){
     return this.database;
   }
-
-  // TODO write error response classes for the exceptions thrown by these methods
 
 
   public List<Song> getCurrentSongPoints() {
@@ -83,7 +81,6 @@ public class Database {
   }
 
   public void updateUserSong(Song song) throws ExecutionException, InterruptedException {
-    // Update an existing document
     DocumentReference docRef = this.database.collection("users").document(song.getUserId());
     Map<String, Object> songMap = new HashMap();
     songMap.put("userId", song.getUserId());
@@ -92,14 +89,7 @@ public class Database {
     songMap.put("artists", song.getArtists());
     List<Double> featuresList = Doubles.asList(song.getFeatures());
     songMap.put("features", featuresList);
-
-    System.out.println(songMap);
-
-    // (async) Update one field
-    ApiFuture<WriteResult> future = docRef.update("currentSong", songMap);
-//    WriteResult result = future.get();
-//    System.out.println("Write result: " + result);
-
+    docRef.update("currentSong", songMap);
   }
 
   public void updateUserConnections(User user){
@@ -128,20 +118,6 @@ public class Database {
       throw new RuntimeException();
     }
 
-  }
-
-
-  public List<User> retrieveAllUsers() throws ExecutionException, InterruptedException {
-      List<User> users = new ArrayList<>();
-      // asynchronously retrieve all documents
-      ApiFuture<QuerySnapshot> future = this.database.collection("users").get();
-      // future.get() blocks on response
-      List<QueryDocumentSnapshot> documents = future.get().getDocuments();
-      for (QueryDocumentSnapshot document : documents) {
-        users.add(document.toObject(User.class));
-
-      }
-      return users;
   }
 
   public Map<String, Object> retrieveUser(String docId)

@@ -79,7 +79,7 @@ public class Server {
 
     // mock Points for now to build kd trees
 
-    Database db = new Database();
+    Database db = new Database("private/tunedIn_firebase.json", Constants.PROJECT_ID);
 
     // Setting up the handler for the GET endpoints
     Spark.get("load-connections", new LoadConnectionsHandler(db));
