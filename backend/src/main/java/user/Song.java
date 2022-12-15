@@ -15,6 +15,7 @@ public class Song implements KdTreeNode {
   private double[] features;
   private int dimension;
 
+
   public Song(String userId, String title, String id, List<String> artists, double[] features) {
     this.userId = userId;
     this.title = title;
@@ -57,19 +58,11 @@ public class Song implements KdTreeNode {
   }
 
   public double[] getFeatures() {
-    return this.features.clone();
+    return this.features;
   }
 
   public void setFeatures(double[] features) {
     this.features = features;
-  }
-
-  public String getuserId() {
-    return this.userId;
-  }
-
-  public void setuserId(String userId) {
-    this.userId = userId;
   }
 
   @Override
@@ -102,7 +95,8 @@ public class Song implements KdTreeNode {
       return false;
     }
     Song point1 = (Song) o;
-    return this.dimension == point1.getDimension() && Arrays.equals(this.getPoint(), point1.getPoint());
+    return this.dimension == point1.getDimension()
+        && Arrays.equals(this.getPoint(), point1.getPoint());
   }
 
   @Override

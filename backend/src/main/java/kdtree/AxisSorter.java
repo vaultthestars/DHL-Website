@@ -24,8 +24,8 @@ public class AxisSorter implements Comparator<KdTreeNode> {
    */
   @Override
   public int compare(KdTreeNode o1, KdTreeNode o2) {
-    float[] o1Vals = o1.getPoint();
-    float[] o2Vals = o2.getPoint();
-    return Float.compare(o1Vals[this.axis], o2Vals[this.axis]);
+    double[] o1Vals = o1.getPoint();
+    double[] o2Vals = o2.getPoint();
+    return Double.compare(o1Vals[this.axis], o2Vals[this.axis]);
   }
 }
