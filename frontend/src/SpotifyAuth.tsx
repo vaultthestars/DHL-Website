@@ -13,34 +13,53 @@
  */
 
 import * as React from 'react';
+import { getFirestore, doc, setDoc, getDoc } from "firebase/firestore"; 
+import { initializeApp } from "firebase/app";
+import { convertCompilerOptionsFromJson } from 'typescript';
+import { render } from '@testing-library/react';
+import {firebaseConfig} from './private/firebaseconfig'
 
 interface SpotifyLoginButtonProps {
   clientId: string;
   redirectUri: string;
   clientSecret: string;
+  setUser2: Function;
+  spotifyLinked: boolean;
+  setspotifyLinked: Function;
 }
 
+const app = initializeApp(firebaseConfig);
+// Initialize Cloud Firestore and get a reference to the service
+const db = getFirestore(app);
+
 export const SpotifyLoginButton: React.FC<SpotifyLoginButtonProps> = (parameters) => {
-  const { clientId, redirectUri, clientSecret} = parameters;
+  const { clientId, redirectUri, clientSecret, setUser2, spotifyLinked, setspotifyLinked} = parameters;
   
   let refreshToken: string = "";
   let accessToken: string = "";
 
   const handleClick = () => {
-    const url = `https://accounts.spotify.com/authorize?response_type=code&client_id=${clientId}&scope=user-read-private%20user-read-email&redirect_uri=${redirectUri}`;
+    const url = `https://accounts.spotify.com/authorize?response_type=code&client_id=${clientId}&scope=user-read-private%20user-read-email%20user-read-currently-playing%20user-read-recently-played&redirect_uri=${redirectUri}`;
+    // "scope=user-read-private%20user-read-email%20user-read-currently-playing%20user-read-recently-played%20user-read-playback-state&"
     // go to the url
     window.location.replace(url);
-
   };
 
+  //THIS COULD BE CAUSING ISSUES
   React.useEffect(() => {
-    getTokens()
-  })
+    const interval = setInterval(() => {
+      if (!spotifyLinked){
+        getTokens()     
+      }
+  }
+  , 1000);
+   return () => clearInterval(interval);
+  },[])
 
-  const onSuccess = (refreshToken: string, accessToken: string) => {
-    console.log("OH MY GODDDD")
-    console.log(accessToken)
-    console.log(refreshToken)
+  const onSuccess = async (refreshToken: string, accessToken: string) => {
+    // console.log("OH MY GODDDD")
+    // console.log(accessToken)
+    // console.log(refreshToken)
   };
 
   const onFailure = (error: string) => {
@@ -49,15 +68,12 @@ export const SpotifyLoginButton: React.FC<SpotifyLoginButtonProps> = (parameters
   };
 
   const getTokens = () => {
-    
     const params = new URLSearchParams(window.location.search);
     const code = params.get('code');
-    console.log(code)
+    // console.log(code)
     // Use the code to get the refresh and access tokens
     const url = `https://accounts.spotify.com/api/token`;
     const base64ClientIdAndSecret = btoa(`${clientId}:${clientSecret}`)
-    console.log("base64" + base64ClientIdAndSecret)
-    console.log("unencrpyt" + atob(base64ClientIdAndSecret))
     const options = {
       method: 'POST',
       headers: {
@@ -70,22 +86,64 @@ export const SpotifyLoginButton: React.FC<SpotifyLoginButtonProps> = (parameters
     fetch(url, options)
       .then((response) => response.json())
       .then((data) => {
-        if (refreshToken == "") {
+        if (refreshToken == "" && refreshToken != undefined) {
           refreshToken = data.refresh_token;}
-        if (accessToken == "") {
+          let iNSERT_UID_HERE = localStorage.getItem("UID");
+          if (iNSERT_UID_HERE != null) {
+          setDoc(doc(db, "users", iNSERT_UID_HERE), {
+            refreshToken: refreshToken,
+          }, { merge: true }); 
+          localStorage.setItem("spotify", "done")
+          setUser2("done")}
+        if (accessToken == "" && accessToken != undefined) {
           accessToken = data.access_token;}
-        console.log("refresh")
-        console.log("LOOK AT THIS IT IS A REFREH TOKEN OMFG" + refreshToken)
-        console.log("access")
-        console.log("accessToken IS RIGHT HERE" + accessToken)
+        // console.log("refresh")
+        // console.log("LOOK AT THIS IT IS A REFREH TOKEN OMFG" + refreshToken)
+        // console.log("access")
+        // console.log("accessToken IS RIGHT HERE" + accessToken)
         onSuccess(refreshToken, accessToken);
       })
       .catch((error) => {
-        onFailure(error);
+        //onFailure(error);
       });
   };
 
-  return (
-    <button onClick={handleClick}>Login with Spotify</button>
-  );
+
+
+  let localUID = localStorage.getItem("UID");
+
+  const xval = 10;
+  const yval = 5;
+
+  if ((localStorage.getItem("spotify") == "done" && localUID != null) || spotifyLinked ) {
+    setspotifyLinked(true)
+    setUser2("done") //WHAT IS THIS?????
+    return (
+      <p>Spotify linked.</p>
+    )
+  } else if (localUID != null && spotifyLinked == false) {
+    return (
+      //Here is where the styling will go
+      <svg width = "220" height = "50">
+        <rect className="spotifybuttonbackground"
+        width = "200"
+        height = "40"
+        rx="5"
+        ry="5"
+        x = {xval.toString()}
+        y = {yval.toString()}
+        onClick={handleClick}
+        />
+        <text className = "whitetext" x= {(xval+6).toString()} y= {(yval+25).toString()}
+        onClick = {handleClick}> 
+        Link TunedIn with Spotify </text>
+      </svg>
+      // <button onClick={handleClick}>Link TunedIn with Spotify</button>
+    );
+  } else {
+    return (
+      <p>state1</p>
+    )
+  }
+
 };
