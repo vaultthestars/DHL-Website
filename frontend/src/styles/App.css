@@ -33,9 +33,9 @@
 }
 
 .tuneinlogo {
-  scale: 40%;
-  position: relative;
-  top: 4px;
+  width:300px;
+  position: absolute;
+  top: -50px;
 }
 
 .spotifybutton{
@@ -152,7 +152,7 @@ body{
 .wrapper .sidebar .defaultbar img{
   display: block;
   position: absolute;
-  top: 25px;
+  top: 32px;
   right:0px;
   width: 240px;
   height: 225px;
@@ -196,6 +196,16 @@ body{
   position: absolute;
   top: 110px;
   left: 10px;
+}
+
+.wrapper .sidebar .defaultbar h3{
+  position:static;
+  top: 115px;
+  right: 50px;
+  opacity: var(--sidebar-mode);
+  color: #ffffff;
+  font-size: 14px;
+  margin: 5px 0 5px;
 }
 
 .wrapper .sidebar .defaultbar h2{
@@ -276,5 +286,11 @@ rect {
 .wrapper .svgwindow .whitetext{
   /* font: italic 40px serif; */
       font: normal 20px helvetica;
+      fill: rgb(255, 255, 255);
+}
+
+.wrapper .svgwindow .whitetextbig{
+  /* font: italic 40px serif; */
+      font: normal 50px helvetica;
       fill: rgb(255, 255, 255);
 }

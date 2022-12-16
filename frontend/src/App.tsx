@@ -80,7 +80,7 @@ function App() {
   return (
     <div className="App">
       <p className="App-header">
-      {CurrentGoogleUser}
+      {/* {CurrentGoogleUser} */}
       {(CurrentGoogleUser == "") && 
       <button className="google-button" onClick = {()=>{let x = signInWithGoogle(SetCurrentGoogleUser)}}>Sign in With Google</button>}
       <img className = "tuneinlogo" src="https://i.ibb.co/rFTJDTr/tuneinlogo2.png"/>
