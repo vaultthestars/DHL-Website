@@ -7,6 +7,10 @@ import * as d3 from 'd3';
 import ReactDOM from 'react-dom';
 import { range, svg } from 'd3';
 import { isVisible } from '@testing-library/user-event/dist/utils';
+import { updateuserdata } from './backendhandler';
+import { firebaseConfig } from './private/firebaseconfig';
+import { getFirestore } from 'firebase/firestore';
+import { initializeApp } from 'firebase/app';
 
 //NOTE: login function is currently set to be permanently logged in for the sake of testing and because
 //firebase is down.
@@ -95,14 +99,6 @@ parameternames.set(2,"Energy");
 parameternames.set(3,"Instrumentalness");
 parameternames.set(4,"Speechiness");
 parameternames.set(5,"Valence");
-
-// This for loop takes the value of maxnum and randomly generates that many mocked users for our frontend
-for(let i = 0; i < maxnum; i++){
-    usersongparams.set(i,[Math.random(),Math.random(),Math.random(),Math.random(),Math.random(),Math.random()])
-    userdatastrings.set(i,[genrandomstring(10),genrandomstring(10),genrandomstring(10)])
-    matchesdata.set(i,[[Math.floor(maxnum*Math.random()),Math.floor(maxnum*Math.random()),Math.floor(maxnum*Math.random()),Math.floor(maxnum*Math.random()),Math.floor(maxnum*Math.random())],
-    [Math.floor(maxnum*Math.random()),Math.floor(maxnum*Math.random()),Math.floor(maxnum*Math.random()),Math.floor(maxnum*Math.random()),Math.floor(maxnum*Math.random())]])
-}
 
 // A function for generating a random string with alternating vowels and consonants for our fake usernames and fake song names.
 // I didn't have to alternate vowels and consonants, but it's more entertaining when the names are pronounceable.
@@ -410,6 +406,29 @@ function fullyloggedin(bool: boolean, classname: string): string{
     }
 }
 
+//SETUP ORDER:
+//Run getsongfeatures once to load everyone's songs
+//Get a hashmap of user IDs to numbers
+//Enter a for loop for each user ID in the set, populate local hashmaps with the returned data
+//Get the current user's matches[this can really go anywhere in the list]
+
+// fetch("http://localhost:3232/load-song-features")
+
+let userIDs: Array<string> = new Array<string>();
+
+for(let i = 0; i < userIDs.length; i++){
+    updateuserdata(i, userIDs[i],usersongparams,userdatastrings,matchesdata).then()
+}
+
+
+// This for loop takes the value of maxnum and randomly generates that many mocked users for our frontend
+for(let i = 0; i < maxnum; i++){
+    usersongparams.set(i,[Math.random(),Math.random(),Math.random(),Math.random(),Math.random(),Math.random()])
+    userdatastrings.set(i,[genrandomstring(10),genrandomstring(10),genrandomstring(10)])
+    matchesdata.set(i,[[Math.floor(maxnum*Math.random()),Math.floor(maxnum*Math.random()),Math.floor(maxnum*Math.random()),Math.floor(maxnum*Math.random()),Math.floor(maxnum*Math.random())],
+    [Math.floor(maxnum*Math.random()),Math.floor(maxnum*Math.random()),Math.floor(maxnum*Math.random()),Math.floor(maxnum*Math.random()),Math.floor(maxnum*Math.random())]])
+}
+
 // Our main rendering function. Returns everything below the header in our app.
 // Takes in the current google user ID and whether or not spotify is linked, as these affect which elements are rendered.
 
@@ -443,6 +462,8 @@ export default function GraphVis(googleuser: string, spotifylinked: boolean) {
     const [zoomed, Setzoomed] = useState<boolean>(false);
     const [zoomval, Setzoomval] = useState<number>(0);
     const [alltime, Setalltime] = useState<boolean>(false);
+
+    //
 
     // Current user index. Currently set to default value of 0.
     const [curruser, Setcurruser] = useState<number>(0);
