@@ -13,14 +13,13 @@ export async function updateuserdata(userindex: number, userIds: Array<string>,u
                 //http://localhost:3232/get-user?id=pDtZBPn7kCYsYSRO83QhlpkBZkM2
                 respjson.json().then((respobj)=>{
                     let songnums:Array<number> = respobj.user.currentSong.features
-                    console.log(songnums)
+                    // console.log(songnums)
                     usersongparams.set(userindex,songnums)
                     
-                    // Username, name of most recently listened to song, artist of most recently listened to song
                     let songstrings: Array<string> = [respobj.user.displayName, respobj.user.currentSong.title, respobj.user.currentSong.artists[0]]
-                    console.log(songstrings)
+                    // console.log(songstrings)
                     userdatastrings.set(userindex, songstrings)
-
+                    
                     //All we have left is to do the matches
 
                     let currconnections: Array<number> = respobj.user.connections.map((userid:string)=>{return userIds.indexOf(userid)});
@@ -33,23 +32,3 @@ export async function updateuserdata(userindex: number, userIds: Array<string>,u
             })
     //WE want the user id to be the one that shows up in spotifyauth as localStorage.getItem("UID")
 }
-
-fetch("http://localhost:3232/load-song-features").then(()=>{
-        fetch("http://localhost:3232/load-connections").then(()=>{
-            // fetch("http://localhost:3232/get-user?id=" + localStorage.getItem("UID")).then((respjson)=>{
-            fetch("http://localhost:3232/get-user?id=pDtZBPn7kCYsYSRO83QhlpkBZkM2").then((respjson)=>{
-                //http://localhost:3232/get-user?id=pDtZBPn7kCYsYSRO83QhlpkBZkM2
-                respjson.json().then((respobj)=>{
-                    console.log(respobj.user.currentSong.features)
-                    //Sick! This seems to work
-                    // console.log(JSON.parse(respobj.user.currentSong.features))
-                })
-                // So we'll get a list in string form, check "features" or "artists" to see what this looks like.
-                // Parse out the elements if non empty, use those user Ids to fetch those users' display names.
-                // Take in a variable to get and set an external variable for this!!
-            })
-        })
-    })
-
-
-// TODO:  

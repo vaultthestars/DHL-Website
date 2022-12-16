@@ -45,15 +45,16 @@ export const SpotifyLoginButton: React.FC<SpotifyLoginButtonProps> = (parameters
     window.location.replace(url);
   };
 
-  React.useEffect(() => {
-    const interval = setInterval(() => {
-      if (!spotifyLinked){
-        getTokens()     
-      }
-  }
-  , 1000);
-   return () => clearInterval(interval);
-  },[])
+  // React.useEffect(() => {
+  //   const interval = setInterval(() => {
+  //     console.log(spotifyLinked)
+  //     if (!spotifyLinked){
+  //       getTokens()     
+  //     }
+  // }
+  // , 1000);
+  //  return () => clearInterval(interval);
+  // },[])
 
   const onSuccess = async (refreshToken: string, accessToken: string) => {
     // console.log("OH MY GODDDD")
@@ -92,8 +93,10 @@ export const SpotifyLoginButton: React.FC<SpotifyLoginButtonProps> = (parameters
           setDoc(doc(db, "users", iNSERT_UID_HERE), {
             refreshToken: refreshToken,
           }, { merge: true }); 
-          localStorage.setItem("spotify", "done")
-          setUser2(iNSERT_UID_HERE)}
+          localStorage.setItem("spotify", iNSERT_UID_HERE)
+          // console.log(localStorage)
+          setUser2(iNSERT_UID_HERE)
+        }
         if (accessToken == "" && accessToken != undefined) {
           accessToken = data.access_token;}
         // console.log("refresh")
@@ -114,13 +117,14 @@ export const SpotifyLoginButton: React.FC<SpotifyLoginButtonProps> = (parameters
   const xval = 10;
   const yval = 5;
 
-  if ((localStorage.getItem("spotify") == "done" && localUID != null) || spotifyLinked ) {
+  if ((localStorage.getItem("spotify") != "" && localUID != null) || spotifyLinked ) {
     setspotifyLinked(true)
-    setUser2(localUID) //WHAT IS THIS?????
+    setUser2(localUID)
     return (
       <p>Spotify linked.</p>
     )
   } else if (localUID != null && spotifyLinked == false) {
+    getTokens()
     return (
       //Here is where the styling will go
       <svg width = "220" height = "50">
@@ -140,6 +144,7 @@ export const SpotifyLoginButton: React.FC<SpotifyLoginButtonProps> = (parameters
       // <button onClick={handleClick}>Link TunedIn with Spotify</button>
     );
   } else {
+    getTokens()
     return (
       <p>state1</p>
     )

@@ -11,6 +11,7 @@ import { updateuserdata } from './backendhandler';
 import { firebaseConfig } from './private/firebaseconfig';
 import { getFirestore } from 'firebase/firestore';
 import { initializeApp } from 'firebase/app';
+import { domainToASCII } from 'url';
 
 //NOTE: login function is currently set to be permanently logged in for the sake of testing and because
 //firebase is down.
@@ -410,6 +411,17 @@ function fullyloggedin(bool: boolean, classname: string): string{
     }
 }
 
+// A function that returns some number of periods based on the current value of the global animation timer
+function dots(Timer: number): string{
+    if(Timer<1/3){
+        return "."
+    }
+    else if(Timer<2/3){
+        return ".."
+    }
+    return "..."
+}
+
 //SETUP ORDER:
 //Run getsongfeatures once to load everyone's songs
 //Get a hashmap of user IDs to numbers
@@ -418,15 +430,21 @@ function fullyloggedin(bool: boolean, classname: string): string{
 
 // fetch("http://localhost:3232/load-song-features")
 
-let userIDs: Array<string> = ["pDtZBPn7kCYsYSRO83QhlpkBZkM2","RaJCoYqztldz3vK5jxbFUkyKbAZ2",
-"TnmTYrO7ujYN0HtKAGZHla9No672"];
-
 //This returns a promise that will only resolve when all users' data have been updated
-async function setuserdata(): Promise<void[]>{
+async function setuserdata(userIDs:Array<string>, googleuserid: string): Promise<void[]>{
+    // console.log(googleuserid)
     const range: Array<number> = Array.from(Array(userIDs.length).keys())
     const promises: Array<Promise<void>> = range.map((i:number)=>{
         return updateuserdata(i, userIDs,usersongparams,userdatastrings,matchesdata)})
     return Promise.all(promises)
+}
+
+function getcurruserindex(userIDs: Array<string>,googleuser: string): number{
+    if(userIDs.includes(googleuser)){
+        return userIDs.indexOf(googleuser)
+    }
+    // console.log(userIDs + " does not contain " + googleuser)
+    return 0;
 }
 
 // Our main rendering function. Returns everything below the header in our app.
@@ -462,53 +480,87 @@ export default function GraphVis(googleuser: string, spotifylinked: boolean) {
     const [zoomed, Setzoomed] = useState<boolean>(false);
     const [zoomval, Setzoomval] = useState<number>(0);
     const [alltime, Setalltime] = useState<boolean>(false);
-    const [usersloaded, setusersloaded] = useState<boolean>(false);
 
     // Current user index. Currently set to default value of 0.
     const [curruser, Setcurruser] = useState<number>(0);
 
+    const [usersloaded, setusersloaded] = useState<boolean>(false);
     const [fetchingusers, setfetchingusers] = useState<boolean>(false);
-    if(!usersloaded && !fetchingusers){
-        setfetchingusers(true)
-        fetch("http://localhost:3232/get-all-user-ids").then((respjson)=>{respjson.json().then((respobj)=>{
-            userIDs = respobj.ids
-            setuserdata().then(()=>
-            {
-                setusersloaded(true)
-                //Why is this running multiple times? Ah. yes.
-                setCircleData(initdist(userIDs.length))
-            })
-            // console.log(userIDs)
-        })})
-    }
+    const [userIDs, setuserIDs] = useState<Array<string>>([]);
+    //Ok there's some weird stuff going on with userIDs now
 
     // Main useEffect loop! Had to use a setInterval to stop React from reaching its max update depth and freaking out.
     useEffect(() => {
         const interval = setInterval(() => {
+            setTimer((Timer + 0.003) % 1)
+            if(!usersloaded){
+                if (!fetchingusers){
+                    // console.log("we need to get stuff")
+                    setfetchingusers(true)
+                    fetch("http://localhost:3232/get-all-user-ids").then((respjson)=>{
+                        respjson.json().then((respobj)=>{
+                        const ids = respobj.ids
+                        setuserIDs(ids)
+                        setCircleData(initdist(ids.length))
+                        fetch("http://localhost:3232/load-song-features").then(()=>{
+                            setuserdata(ids, googleuser).then(()=>
+                            {
+                                setusersloaded(true)
+                            })
+                        })
+                        // console.log(userIDs)
+                    })
+                })
+                }
+            }
             if(usersloaded){
+                console.log("finding user " + googleuser + " in " + userIDs)
+                Setcurruser(getcurruserindex(userIDs,googleuser))
             setCircleData(sortshift(CircleData, SortParameter, getsortmethod(SortIndex), Speed, spotifylinked, curruser))
             Setcamcenter(updatecamcenter(camcenter,
             camtarg([4,CircleData[SelectIndex][1],CircleData[SelectIndex][2]],
                  [1,0,0],zoomed)))
-            setTimer((Timer + 0.003) % 1)
              Setzoomval(1-((camcenter[0]-2)/2))
             document.documentElement.style.setProperty('--sidebar-mode', zoomval.toString());
             document.documentElement.style.setProperty('--timeslidermode', slidenum(alltime).toString());
-            // console.log(CircleData)
             }
           }, 10);
            return () => clearInterval(interval);
-    }, [CircleData])
+    }, [Timer])
 
     // Main return statement
-    if (!usersloaded){
-        return <div key = "wrapper" className = "wrapper"/>
+    if (!usersloaded || userIDs.length == 0){
+        return <div key = "wrapper" className = "wrapper">
+            <svg className="svgwindow" fill = "true"
+                 width="100%" height="600" >
+                {[0,1,2,3].map((num) => 
+                        {
+                        return <circle 
+                        key= {"loadcircle_"+num.toString()} 
+                        cx= {700} cy= {300} 
+                        r={4*(40+5*num + 2*Math.sin(tau*Timer+(num*tau/4)))} 
+                        fill="none"
+                        stroke = "hsla(0 100% 100%)"
+                        strokeWidth = "1"
+                        >
+                        </circle>
+                        }
+                    )}
+                <text key = {"loadingtext"} className = "whitetextbig" x= "600" y= "314"> 
+                {"Loading"+ dots((3*Timer)%1)} 
+                </text>
+            </svg>
+        </div>
     }
-    return <div key = "wrapper" className = "wrapper">
+    else{
+        // console.log(userIDs)
+        // console.log(CircleData)
+        return <div key = "wrapper" className = "wrapper">
                 {/* Sidebar background */}
                 <div key = "sidebardiv" className = {sidebarloggedin(googleuser)}>
                     {/* defaultbar, aka zoomed out sidebar panel */}
                     <div key = "defaultbar" className = {fullyloggedin(spotifylinked,"defaultbar")}>
+                        <h3>{"Welcome, " + getdatastrings(curruser,0) + "!"}</h3>
                         <h2>Who's on your wavelength?</h2>
                         {/* lovely wave logo made in Desmos */}
                         <img className = "wavepic" src="https://i.ibb.co/V2Dmsx4/tuneinlogo.png" 
@@ -770,5 +822,6 @@ export default function GraphVis(googleuser: string, spotifylinked: boolean) {
                     <p>{"Sort style: " + getsortname(SortIndex) + " Sort parameter: " + getparamname(SortParameter)}</p>
                 </div>
             </div>
+    }
             
 }

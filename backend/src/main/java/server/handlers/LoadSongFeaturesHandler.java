@@ -41,7 +41,7 @@ public class LoadSongFeaturesHandler implements Route {
   public Object handle(Request request, Response response)
       throws ExecutionException, InterruptedException, ParseException, SpotifyWebApiException,
           IOException {
-    // TODO: for each user in the database, get their access token from firebase to get the features
+    // TODO: for each user in the database, get their access token from firebase to get thea features
     // of their current song
     // write helper that takes refresh token and returns auth token
     // write helper that takes access token and returns song object with title, artist, id &
