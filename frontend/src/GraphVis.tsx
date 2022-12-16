@@ -37,6 +37,7 @@ import { initializeApp } from 'firebase/app';
 //[DONE]: make a button to change the sorting parameter!
 
 //FRONTEND TODO:
+//TODO: Aria label the heck out of everything
 //TODO: Turn off the user outline circles when you aren't logged in
 //TODO: Add a pretty gradient bar on the side to denote how things are being sorted from bottom to top
 //TODO: CLEAN UP AND TEST
@@ -125,9 +126,9 @@ function genrandomstring(length: number): string{
 // [<user index number>, <user x position>, <user y position>]
 // The x and y position are used and updated to make the user bubbles move across the screen,
 // while the user index is used to identify each bubble with an actual user's data
-function initdist(): Array<Array<number>>{
+function initdist(num: number): Array<Array<number>>{
     let returnarr: Array<Array<number>> = new Array<Array<number>>();
-    for(let i = 0; i < maxnum; i++){
+    for(let i = 0; i < num; i++){
         // Add a randomly generated user coordinate to the stack
         returnarr.push([i,1500*(Math.random()-0.5),600*(Math.random()-0.5)])
     }
@@ -182,6 +183,9 @@ function linsort(pt: Array<number>, SortParameterIndex: number, loggedin: boolea
     // it wasn't worth creating an entire React myRef variable for something this subtle.
     const maxwidth = 400;
     let x = pt[1];
+    if(pt[0] < 0){
+        return [-1,-1000,-1000]
+    }
     // correct for if the point ends up out of horizontal bounds
     if (pt[1] < (-1)*maxwidth){
         x = (-1)*maxwidth;
@@ -414,19 +418,15 @@ function fullyloggedin(bool: boolean, classname: string): string{
 
 // fetch("http://localhost:3232/load-song-features")
 
-let userIDs: Array<string> = new Array<string>();
+let userIDs: Array<string> = ["pDtZBPn7kCYsYSRO83QhlpkBZkM2","RaJCoYqztldz3vK5jxbFUkyKbAZ2",
+"TnmTYrO7ujYN0HtKAGZHla9No672"];
 
-for(let i = 0; i < userIDs.length; i++){
-    updateuserdata(i, userIDs[i],usersongparams,userdatastrings,matchesdata).then()
-}
-
-
-// This for loop takes the value of maxnum and randomly generates that many mocked users for our frontend
-for(let i = 0; i < maxnum; i++){
-    usersongparams.set(i,[Math.random(),Math.random(),Math.random(),Math.random(),Math.random(),Math.random()])
-    userdatastrings.set(i,[genrandomstring(10),genrandomstring(10),genrandomstring(10)])
-    matchesdata.set(i,[[Math.floor(maxnum*Math.random()),Math.floor(maxnum*Math.random()),Math.floor(maxnum*Math.random()),Math.floor(maxnum*Math.random()),Math.floor(maxnum*Math.random())],
-    [Math.floor(maxnum*Math.random()),Math.floor(maxnum*Math.random()),Math.floor(maxnum*Math.random()),Math.floor(maxnum*Math.random()),Math.floor(maxnum*Math.random())]])
+//This returns a promise that will only resolve when all users' data have been updated
+async function setuserdata(): Promise<void[]>{
+    const range: Array<number> = Array.from(Array(userIDs.length).keys())
+    const promises: Array<Promise<void>> = range.map((i:number)=>{
+        return updateuserdata(i, userIDs,usersongparams,userdatastrings,matchesdata)})
+    return Promise.all(promises)
 }
 
 // Our main rendering function. Returns everything below the header in our app.
@@ -451,7 +451,7 @@ for(let i = 0; i < maxnum; i++){
 
 export default function GraphVis(googleuser: string, spotifylinked: boolean) {
     // All of our wonderful react state variables
-    const [CircleData, setCircleData] = useState<number[][]>(initdist());
+    const [CircleData, setCircleData] = useState<number[][]>([]);
     const [SelectIndex, setSelectIndex] = useState<number>(0);
     const [Timer, setTimer] = useState<number>(0);
     const [SortIndex, setSortIndex] = useState<number>(1);
@@ -462,15 +462,30 @@ export default function GraphVis(googleuser: string, spotifylinked: boolean) {
     const [zoomed, Setzoomed] = useState<boolean>(false);
     const [zoomval, Setzoomval] = useState<number>(0);
     const [alltime, Setalltime] = useState<boolean>(false);
-
-    //
+    const [usersloaded, setusersloaded] = useState<boolean>(false);
 
     // Current user index. Currently set to default value of 0.
     const [curruser, Setcurruser] = useState<number>(0);
 
+    const [fetchingusers, setfetchingusers] = useState<boolean>(false);
+    if(!usersloaded && !fetchingusers){
+        setfetchingusers(true)
+        fetch("http://localhost:3232/get-all-user-ids").then((respjson)=>{respjson.json().then((respobj)=>{
+            userIDs = respobj.ids
+            setuserdata().then(()=>
+            {
+                setusersloaded(true)
+                //Why is this running multiple times? Ah. yes.
+                setCircleData(initdist(userIDs.length))
+            })
+            console.log(userIDs)
+        })})
+    }
+
     // Main useEffect loop! Had to use a setInterval to stop React from reaching its max update depth and freaking out.
     useEffect(() => {
         const interval = setInterval(() => {
+            if(usersloaded){
             setCircleData(sortshift(CircleData, SortParameter, getsortmethod(SortIndex), Speed, spotifylinked, curruser))
             Setcamcenter(updatecamcenter(camcenter,
             camtarg([4,CircleData[SelectIndex][1],CircleData[SelectIndex][2]],
@@ -479,11 +494,16 @@ export default function GraphVis(googleuser: string, spotifylinked: boolean) {
              Setzoomval(1-((camcenter[0]-2)/2))
             document.documentElement.style.setProperty('--sidebar-mode', zoomval.toString());
             document.documentElement.style.setProperty('--timeslidermode', slidenum(alltime).toString());
+            console.log(CircleData)
+            }
           }, 10);
            return () => clearInterval(interval);
     }, [CircleData])
 
     // Main return statement
+    if (!usersloaded){
+        return <div key = "wrapper" className = "wrapper"/>
+    }
     return <div key = "wrapper" className = "wrapper">
                 {/* Sidebar background */}
                 <div key = "sidebardiv" className = {sidebarloggedin(googleuser)}>
@@ -641,9 +661,14 @@ export default function GraphVis(googleuser: string, spotifylinked: boolean) {
                         }
                     )}
                     {/* all user bubbles */}
-                    {CircleData.map((entry) => 
-                        <circle 
+                    {CircleData.map((entry) => {
+                        if (Number.isNaN(entry[1])){
+                            return null
+                        }
+                        else{
+                        return <circle 
                         key= {entry[0]} 
+                        className = {entry[0].toString()} 
                         cx= {camcenter[0]*(entry[1]-camcenter[1])+centerx} cy= {camcenter[0]*(entry[2]-camcenter[2])+300} 
                         r={camcenter[0]*20 + 4*Math.sin(0.1*entry[0]+tau*Timer)} fill={"hsla(" + 200+90*getdata(entry[0],SortParameter) + ", 50%, 50%, 1)"}
                         stroke = "none"
@@ -654,7 +679,9 @@ export default function GraphVis(googleuser: string, spotifylinked: boolean) {
                             setSelectIndex(entry[0])
                         }}
                         />
-                    )}
+                    }
+
+                    })}
                     {/* username tags for displayed bubbles */}
                     {CircleData.map((entry) => 
                         {if(ShowCircLabels){
@@ -724,12 +751,6 @@ export default function GraphVis(googleuser: string, spotifylinked: boolean) {
                 {/* misc. developer tools. Kept for debugging purposes, nothing here is dangerous or alters the actual data,
                  which is why I've simply hidden it instead of omitting it completely via some boolean function */}
                 <div key = "developer stuff" className = "hidden">
-                    <button onClick= {() => {  
-                        // Reset the position of all circles onscreen
-                        setCircleData(initdist());
-                    }}>
-                        {"Reset"}
-                    </button>
                     <button onClick= {() => {  
                         // Toggle usernames on and off
                         SetShowCircLabels(!ShowCircLabels);

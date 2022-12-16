@@ -6,14 +6,10 @@
 //[TODO]Pass these into our handler. Make sure that we have failsafes if they are empty!
 //[TODO]
 
-export async function updateuserdata(userindex: number, userId: string,usersongparams: Map<number, number[]>,
-    userdatastrings: Map<number, string[]>,matchesdata: Map<number,Array<Array<number>>>){
-    
-        //How should this work? We can either directly pass the stuff we want updated in, 
-    //or we can just return the response as a new thing.
-    //If we were to return the entire response, we'd probably have to 
+export async function updateuserdata(userindex: number, userIds: Array<string>,usersongparams: Map<number, number[]>,
+    userdatastrings: Map<number, string[]>,matchesdata: Map<number,Array<Array<number>>>): Promise<void>{
 
-    fetch("http://localhost:3232/get-user?id=pDtZBPn7kCYsYSRO83QhlpkBZkM2").then((respjson)=>{
+    return fetch("http://localhost:3232/get-user?id=" + userIds[userindex]).then((respjson)=>{
                 //http://localhost:3232/get-user?id=pDtZBPn7kCYsYSRO83QhlpkBZkM2
                 respjson.json().then((respobj)=>{
                     let songnums:Array<number> = respobj.user.currentSong.features
@@ -25,9 +21,14 @@ export async function updateuserdata(userindex: number, userId: string,usersongp
                     console.log(songstrings)
                     userdatastrings.set(userindex, songstrings)
 
-                    //All we have left is
-                    console.log("")
-                    //Sick! This seems to work
+                    //All we have left is to do the matches
+
+                    let currconnections: Array<number> = respobj.user.connections.map((userid:string)=>{return userIds.indexOf(userid)});
+                    let histconnections: Array<number> = respobj.user.historicalConnections.map((userid:string)=>{return userIds.indexOf(userid)})
+                    let matches: Array<Array<number>> = [currconnections, histconnections]
+                    // console.log(matches)
+                    //So what we have to do is get the index numbers of these matches. 
+                    matchesdata.set(userindex,matches)
                 })
             })
     //WE want the user id to be the one that shows up in spotifyauth as localStorage.getItem("UID")
