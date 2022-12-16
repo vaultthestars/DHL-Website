@@ -69,7 +69,7 @@ function App() {
   }
 
   function hidebutton(): string{
-    if(spotifyLinked || CurrentGoogleUser == ""){
+    if(CurrentGoogleUser == ""){
       return "hidden"
     }
     else{

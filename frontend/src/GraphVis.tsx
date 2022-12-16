@@ -502,19 +502,26 @@ export default function GraphVis(googleuser: string, spotifylinked: boolean) {
                         const ids = respobj.ids
                         setuserIDs(ids)
                         setCircleData(initdist(ids.length))
-                        fetch("http://localhost:3232/load-song-features").then(()=>{
-                            setuserdata(ids, googleuser).then(()=>
+                        setuserdata(ids, googleuser).then(()=>
                             {
                                 setusersloaded(true)
                             })
-                        })
+
+                            //For now we're skipping load song features because it's broken right now
+                        
+                        // fetch("http://localhost:3232/load-song-features").then(()=>{
+                        //     setuserdata(ids, googleuser).then(()=>
+                        //     {
+                        //         setusersloaded(true)
+                        //     })
+                        // })
                         // console.log(userIDs)
                     })
                 })
                 }
             }
             if(usersloaded){
-                console.log("finding user " + googleuser + " in " + userIDs)
+                // console.log("finding user " + googleuser + " in " + userIDs)
                 Setcurruser(getcurruserindex(userIDs,googleuser))
             setCircleData(sortshift(CircleData, SortParameter, getsortmethod(SortIndex), Speed, spotifylinked, curruser))
             Setcamcenter(updatecamcenter(camcenter,
@@ -645,9 +652,10 @@ export default function GraphVis(googleuser: string, spotifylinked: boolean) {
                     {/* userbar, aka zoomed in sidebar panel */}  
                     <div key = "userbar" className={fullyloggedin(zoomed,"userbar")}>
                         {/* main song string info */}
+                        <p>{getdatastrings(SelectIndex,0)}</p>
+                        <p>{"is listening to"}</p>
                         <h2>{getdatastrings(SelectIndex,1)}</h2>
                         <h3>{"by " + getdatastrings(SelectIndex,2)}</h3>
-                        <p>{"user: " + getdatastrings(SelectIndex,0)}</p>
                         {/* song data value display */}
                         <svg id="paramdisplay" className = "paramdisplay" width = "100%" height = "500">
                             {[0,1,2,3,4,5].map((x)=>{
