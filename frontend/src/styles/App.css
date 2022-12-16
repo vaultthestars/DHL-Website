@@ -33,9 +33,9 @@
 }
 
 .tuneinlogo {
-  scale: 40%;
-  position: relative;
-  top: 4px;
+  width:300px;
+  position: absolute;
+  top: -50px;
 }
 
 .spotifybutton{

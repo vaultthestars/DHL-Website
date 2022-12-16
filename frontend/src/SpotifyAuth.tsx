@@ -45,7 +45,6 @@ export const SpotifyLoginButton: React.FC<SpotifyLoginButtonProps> = (parameters
     window.location.replace(url);
   };
 
-  //THIS COULD BE CAUSING ISSUES
   React.useEffect(() => {
     const interval = setInterval(() => {
       if (!spotifyLinked){
@@ -84,7 +83,7 @@ export const SpotifyLoginButton: React.FC<SpotifyLoginButtonProps> = (parameters
     };
 
     fetch(url, options)
-      .then((response) => response.json())
+      .then((response) => response.json()
       .then((data) => {
         if (refreshToken == "" && refreshToken != undefined) {
           refreshToken = data.refresh_token;}
@@ -94,7 +93,7 @@ export const SpotifyLoginButton: React.FC<SpotifyLoginButtonProps> = (parameters
             refreshToken: refreshToken,
           }, { merge: true }); 
           localStorage.setItem("spotify", "done")
-          setUser2("done")}
+          setUser2(iNSERT_UID_HERE)}
         if (accessToken == "" && accessToken != undefined) {
           accessToken = data.access_token;}
         // console.log("refresh")
@@ -102,7 +101,7 @@ export const SpotifyLoginButton: React.FC<SpotifyLoginButtonProps> = (parameters
         // console.log("access")
         // console.log("accessToken IS RIGHT HERE" + accessToken)
         onSuccess(refreshToken, accessToken);
-      })
+      }))
       .catch((error) => {
         //onFailure(error);
       });
@@ -117,7 +116,7 @@ export const SpotifyLoginButton: React.FC<SpotifyLoginButtonProps> = (parameters
 
   if ((localStorage.getItem("spotify") == "done" && localUID != null) || spotifyLinked ) {
     setspotifyLinked(true)
-    setUser2("done") //WHAT IS THIS?????
+    setUser2(localUID) //WHAT IS THIS?????
     return (
       <p>Spotify linked.</p>
     )

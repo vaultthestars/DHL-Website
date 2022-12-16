@@ -478,7 +478,7 @@ export default function GraphVis(googleuser: string, spotifylinked: boolean) {
                 //Why is this running multiple times? Ah. yes.
                 setCircleData(initdist(userIDs.length))
             })
-            console.log(userIDs)
+            // console.log(userIDs)
         })})
     }
 
@@ -494,7 +494,7 @@ export default function GraphVis(googleuser: string, spotifylinked: boolean) {
              Setzoomval(1-((camcenter[0]-2)/2))
             document.documentElement.style.setProperty('--sidebar-mode', zoomval.toString());
             document.documentElement.style.setProperty('--timeslidermode', slidenum(alltime).toString());
-            console.log(CircleData)
+            // console.log(CircleData)
             }
           }, 10);
            return () => clearInterval(interval);
@@ -593,8 +593,8 @@ export default function GraphVis(googleuser: string, spotifylinked: boolean) {
                     {/* userbar, aka zoomed in sidebar panel */}  
                     <div key = "userbar" className={fullyloggedin(zoomed,"userbar")}>
                         {/* main song string info */}
-                        <h2>{"Song: " + getdatastrings(SelectIndex,1)}</h2>
-                        <h3>{"artist: " + getdatastrings(SelectIndex,2)}</h3>
+                        <h2>{getdatastrings(SelectIndex,1)}</h2>
+                        <h3>{"by " + getdatastrings(SelectIndex,2)}</h3>
                         <p>{"user: " + getdatastrings(SelectIndex,0)}</p>
                         {/* song data value display */}
                         <svg id="paramdisplay" className = "paramdisplay" width = "100%" height = "500">
