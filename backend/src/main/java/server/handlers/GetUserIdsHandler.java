@@ -2,10 +2,9 @@ package server.handlers;
 
 import com.squareup.moshi.JsonAdapter;
 import com.squareup.moshi.Moshi;
-import java.util.Map;
+import java.util.List;
 import server.Database;
 import server.ErrBadJsonResponse;
-import server.handlers.GetUserHandler.GetUserSuccessResponse;
 import spark.Request;
 import spark.Response;
 import spark.Route;
@@ -21,28 +20,22 @@ import spark.Route;
     @Override
     public Object handle(Request request, Response response) throws Exception {
       try {
-        String userId = request.queryParams("id");
-
-
-        Map<String, Object> docMap = this.database.retrieveUser(userId);
-
-
-        return new GetUserIdsSuccessResponse(docMap).serialize();
+        List<String> ids = this.database.retrieveAllUserIds();
+        return new GetUserIdsSuccessResponse(ids).serialize();
       } catch (Exception e) {
         return new ErrBadJsonResponse();
       }
     }
 
-    public record GetUserIdsSuccessResponse(String result, Map<String, Object> user) {
+    public record GetUserIdsSuccessResponse(String result, List<String> ids) {
 
-      public GetUserIdsSuccessResponse(Map<String, Object> user) {
-        this("success", user);
+      public GetUserIdsSuccessResponse(List<String> ids) {
+        this("success", ids);
       }
 
       public String serialize() {
         try {
           Moshi moshi = new Moshi.Builder().build();
-
           JsonAdapter<GetUserIdsSuccessResponse> adapter = moshi.adapter(
               GetUserIdsSuccessResponse.class);
           return adapter.toJson(this);

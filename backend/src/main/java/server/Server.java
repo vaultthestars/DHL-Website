@@ -3,6 +3,7 @@ package server;
 import static spark.Spark.after;
 
 import server.handlers.GetUserHandler;
+import server.handlers.GetUserIdsHandler;
 import server.handlers.LoadConnectionsHandler;
 import server.handlers.LoadSongFeaturesHandler;
 import spark.Spark;
@@ -73,18 +74,11 @@ public class Server {
     Database db = new Database("private/tunedIn_firebase.json", Constants.PROJECT_ID);
 
     // Setting up the handler for the GET endpoints
+    Spark.get("load-song-features", new LoadSongFeaturesHandler(db));
     Spark.get("load-connections", new LoadConnectionsHandler(db));
     Spark.get("get-user", new GetUserHandler(db));
-    Spark.get("load-song-features", new LoadSongFeaturesHandler(db));
+    Spark.get("get-all-user-ids", new GetUserIdsHandler(db));
 
-    /*
-    Endpoints
-    - spotify calls
-    - getUsers --> response = user database
-        - to be used on frontend for getting all users and displaying interactive clustering
-    - getUser?username=<username> --> response = user object
-        - to be used on frontend for getting & displaying top 5 connections to a logged in tune in user
-     */
 
     Spark.init();
     Spark.awaitInitialization();

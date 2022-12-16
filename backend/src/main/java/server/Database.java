@@ -5,6 +5,8 @@ import com.google.auth.oauth2.GoogleCredentials;
 import com.google.cloud.firestore.DocumentReference;
 import com.google.cloud.firestore.DocumentSnapshot;
 import com.google.cloud.firestore.Firestore;
+import com.google.cloud.firestore.QueryDocumentSnapshot;
+import com.google.cloud.firestore.QuerySnapshot;
 import com.google.common.primitives.Doubles;
 import com.google.firebase.FirebaseApp;
 import com.google.firebase.FirebaseOptions;
@@ -106,6 +108,17 @@ public class Database {
       System.out.println("No such document!");
       throw new RuntimeException();
     }
+  }
+
+  public List<String> retrieveAllUserIds() throws ExecutionException, InterruptedException {
+    List<String> ids = new ArrayList<>();
+    ApiFuture<QuerySnapshot> future = this.database.collection("users").get();
+    // future.get() blocks on response
+    List<QueryDocumentSnapshot> documents = future.get().getDocuments();
+    for (QueryDocumentSnapshot doc : documents) {
+      ids.add(doc.getString("userId"));
+    }
+    return ids;
   }
 
   public Map<String, Object> retrieveUser(String docId)
