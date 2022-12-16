@@ -71,6 +71,63 @@ public class Database {
     this.userPoints = userPoints;
   }
 
+  public User generateUser(QueryDocumentSnapshot document) {
+    String userId = document.getString("userId");
+    String displayName = document.getString("displayName");
+    String refreshToken = document.getString("refreshToken");
+    int membershipLength = document.get("membershipLength", Integer.class);
+
+    Map<String, Object> docMap = document.getData();
+
+    Map<String, Object> songMap = (Map) docMap.get("currentSong");
+    List<Double> featList = (List<Double>) songMap.get("features");
+    Song currentSong =
+        new Song(
+            (String) songMap.get("userId"),
+            (String) songMap.get("title"),
+            (String) songMap.get("id"),
+            (List<String>) songMap.get("artists"),
+            this.listToDoubleArray(featList));
+
+    List<String> connections = (List<String>) docMap.get("connections");
+    List<Double> historicalSongPoint = (List<Double>) docMap.get("historicalSongPoint");
+    List<String> historicalConnections = (List<String>) docMap.get("historicalConnections");
+
+    return new User(
+        userId,
+        displayName,
+        refreshToken,
+        membershipLength,
+        currentSong,
+        this.listToStrArray(connections),
+        this.listToDoubleArray(historicalSongPoint),
+        this.listToStrArray(historicalConnections));
+  }
+
+  private double[] listToDoubleArray(List<Double> lst) {
+    if (lst != null) {
+      double[] array = new double[6];
+      for (int i = 0; i < lst.size(); i++) {
+        array[i] = lst.get(i);
+      }
+      return array;
+    } else {
+      return new double[6];
+    }
+  }
+
+  private String[] listToStrArray(List<String> lst) {
+    if (lst != null) {
+      String[] array = new String[5];
+      for (int i = 0; i < lst.size(); i++) {
+        array[i] = lst.get(i);
+      }
+      return array;
+    } else {
+      return new String[5];
+    }
+  }
+
   public void updateUserSong(Song song) throws ExecutionException, InterruptedException {
     DocumentReference docRef = this.database.collection("users").document(song.getUserId());
     Map<String, Object> songMap = new HashMap();
@@ -83,14 +140,20 @@ public class Database {
     docRef.update("currentSong", songMap);
   }
 
-  public void updateUserConnections(User user) {
-    DocumentReference docRef = this.database.collection("users").document(user.getUserId());
-    List<String> connections = Arrays.asList(user.getConnections());
-    docRef.update("connections", connections);
-    List<String> historicalConnections = Arrays.asList(user.getHistoricalConnections());
-    docRef.update("historicalConnections", historicalConnections);
-    List<Double> historicalSongPoint = Doubles.asList(user.getHistoricalSongPoint());
-    docRef.update("historicalSongPoint", historicalSongPoint);
+  public void updateMembershipLength(String userId) {
+    DocumentReference docRef = this.database.collection("users").document(userId);
+    // asynchronously retrieve the document
+    ApiFuture<DocumentSnapshot> future = docRef.get();
+    // block on response
+    DocumentSnapshot document = null;
+    try {
+      document = future.get();
+    } catch (InterruptedException | ExecutionException e) {
+      e.printStackTrace();
+      throw new RuntimeException(e);
+    }
+    int currentML = document.get("membershipLength", Integer.class);
+    docRef.update("membershipLength", currentML+1);
   }
 
   public String retrieveRefreshToken(String docId) throws ExecutionException, InterruptedException {
@@ -138,6 +201,16 @@ public class Database {
       System.out.println("No such document!");
       throw new RuntimeException();
     }
+  }
+
+  public void updateUserConnections(User user) {
+    DocumentReference docRef = this.database.collection("users").document(user.getUserId());
+    List<String> connections = Arrays.asList(user.getConnections());
+    docRef.update("connections", connections);
+    List<String> historicalConnections = Arrays.asList(user.getHistoricalConnections());
+    docRef.update("historicalConnections", historicalConnections);
+    List<Double> historicalSongPoint = Doubles.asList(user.getHistoricalSongPoint());
+    docRef.update("historicalSongPoint", historicalSongPoint);
   }
 
   /** Creates SongPoint objects from updated user data and stores in daySongPoints */
