@@ -485,6 +485,7 @@ export default function GraphVis(googleuser: string, spotifylinked: boolean) {
     const [curruser, Setcurruser] = useState<number>(0);
 
     const [usersloaded, setusersloaded] = useState<boolean>(false);
+
     const [fetchingusers, setfetchingusers] = useState<boolean>(false);
     const [userIDs, setuserIDs] = useState<Array<string>>([]);
     //Ok there's some weird stuff going on with userIDs now
@@ -502,20 +503,13 @@ export default function GraphVis(googleuser: string, spotifylinked: boolean) {
                         const ids = respobj.ids
                         setuserIDs(ids)
                         setCircleData(initdist(ids.length))
-                        setuserdata(ids, googleuser).then(()=>
+                        fetch("http://localhost:3232/load-song-features").then(()=>{
+                            setuserdata(ids, googleuser).then(()=>
                             {
                                 setusersloaded(true)
                             })
-
-                            //For now we're skipping load song features because it's broken right now
-                        
-                        // fetch("http://localhost:3232/load-song-features").then(()=>{
-                        //     setuserdata(ids, googleuser).then(()=>
-                        //     {
-                        //         setusersloaded(true)
-                        //     })
-                        // })
-                        // console.log(userIDs)
+                        })
+                        console.log(userIDs)
                     })
                 })
                 }
