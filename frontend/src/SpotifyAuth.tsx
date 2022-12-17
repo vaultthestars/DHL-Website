@@ -47,12 +47,11 @@ export const SpotifyLoginButton: React.FC<SpotifyLoginButtonProps> = (parameters
 
   // React.useEffect(() => {
   //   const interval = setInterval(() => {
-  //     console.log(spotifyLinked)
   //     if (!spotifyLinked){
   //       getTokens()     
   //     }
   // }
-  // , 1000);
+  // , 2000);
   //  return () => clearInterval(interval);
   // },[])
 
@@ -117,9 +116,9 @@ export const SpotifyLoginButton: React.FC<SpotifyLoginButtonProps> = (parameters
   const xval = 10;
   const yval = 5;
 
-  if ((localStorage.getItem("spotify") != "" && localUID != null) || spotifyLinked ) {
+  if ((localStorage.getItem("spotify") != "" && localStorage.getItem("spotify") != null) || spotifyLinked ) {
     setspotifyLinked(true)
-    setUser2(localUID)
+    setUser2(localStorage.getItem("spotify"))
     return (
       <p>Spotify linked.</p>
     )
@@ -144,7 +143,6 @@ export const SpotifyLoginButton: React.FC<SpotifyLoginButtonProps> = (parameters
       // <button onClick={handleClick}>Link TunedIn with Spotify</button>
     );
   } else {
-    getTokens()
     return (
       <p>state1</p>
     )

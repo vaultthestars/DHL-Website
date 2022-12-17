@@ -196,7 +196,7 @@ function linsort(pt: Array<number>, SortParameterIndex: number, loggedin: boolea
     }
     // Center the point horizontally if it is the current user
     if(loggedin && pt[0] == curruser){
-        x = 0;
+        x = 1;
     }
     return [pt[0], x,300-(600*getdata(pt[0],SortParameterIndex))] //trying to do it with 0 y instead of pt[2]
 }
@@ -365,7 +365,7 @@ function updatecamcenter(campt: number[], targpt: number[]): number[]{
     }
     else{
         // Scale and nudge the camera towards the target
-        let scalar = 0.05*(1-sech((1/1)*mag(nudgevec)))
+        let scalar = 0.05*(1-0.8*sech((1/1)*mag(nudgevec)))
         return [campt[0]+scalar*nudgevec[0],campt[1]+scalar*nudgevec[1],campt[2]+scalar*nudgevec[2]]
     }
 }
@@ -467,7 +467,7 @@ function getcurruserindex(userIDs: Array<string>,googleuser: string): number{
 //          -On-screen buttons(change parameter to sort by, zoom out)
 //      -Developer tool buttons
 
-export default function GraphVis(googleuser: string, spotifylinked: boolean) {
+export default function GraphVis(googleuser: string, spotifylinked: boolean, usersloaded: boolean, setusersloaded: ((arg: boolean)=>void)) {
     // All of our wonderful react state variables
     const [CircleData, setCircleData] = useState<number[][]>([]);
     const [SelectIndex, setSelectIndex] = useState<number>(0);
@@ -484,7 +484,6 @@ export default function GraphVis(googleuser: string, spotifylinked: boolean) {
     // Current user index. Currently set to default value of 0.
     const [curruser, Setcurruser] = useState<number>(0);
 
-    const [usersloaded, setusersloaded] = useState<boolean>(false);
     const [fetchingusers, setfetchingusers] = useState<boolean>(false);
     const [userIDs, setuserIDs] = useState<Array<string>>([]);
     //Ok there's some weird stuff going on with userIDs now
@@ -499,22 +498,21 @@ export default function GraphVis(googleuser: string, spotifylinked: boolean) {
                     setfetchingusers(true)
                     fetch("http://localhost:3232/get-all-user-ids").then((respjson)=>{
                         respjson.json().then((respobj)=>{
-                        const ids = respobj.ids
-                        setuserIDs(ids)
-                        setCircleData(initdist(ids.length))
-                        fetch("http://localhost:3232/load-song-features").then(()=>{
-                            setuserdata(ids, googleuser).then(()=>
-                            {
-                                setusersloaded(true)
+                            const ids = respobj.ids
+                            setuserIDs(ids)
+                            setCircleData(initdist(ids.length))
+                            fetch("http://localhost:3232/load-song-features").then(()=>{
+                                setuserdata(ids, googleuser).then(()=>
+                                {
+                                    setusersloaded(true)
+                                })
                             })
                         })
-                        // console.log(userIDs)
                     })
-                })
                 }
             }
             if(usersloaded){
-                console.log("finding user " + googleuser + " in " + userIDs)
+                // console.log("finding user " + googleuser + " in " + userIDs)
                 Setcurruser(getcurruserindex(userIDs,googleuser))
             setCircleData(sortshift(CircleData, SortParameter, getsortmethod(SortIndex), Speed, spotifylinked, curruser))
             Setcamcenter(updatecamcenter(camcenter,

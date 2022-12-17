@@ -18,6 +18,9 @@ const provider = new GoogleAuthProvider();
 // Sign-In function
 export const signInWithGoogle = (setUser: { (value: SetStateAction<string>): void; (arg0: string): void; }) => {
   let displayName = "";
+
+  //There's a google signout with popup function that we need to implement!
+
   signInWithPopup(auth, provider)
     .then(async (result) => {
       // console.log(result);
@@ -31,16 +34,16 @@ export const signInWithGoogle = (setUser: { (value: SetStateAction<string>): voi
        if (!docSnap.exists()) {
         await setDoc(doc(db, "users", UID), {
             email: result.user.email,
-            connections: "",
-            currentSong: {artist: [], dimension: "", features: [], id: "", title: "", userId: UID},
+            connections: [],
+            currentSong: {artists: [], dimension: "", features: [], id: "", title: "", userId: UID},
             displayName: displayName,
-            historicalConnections: "",
-            historicalSongPoint: "",
+            historicalConnections: [],
+            historicalSongPoint: [],
             membershipLength: 0, 
             userId: UID
         });
     }
-
+    //Ok so we definitely need this line
         setUser(UID);
       }
       // // This gives you a Google Access Token. You can use it to access the Google API.

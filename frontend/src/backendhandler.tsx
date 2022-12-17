@@ -10,7 +10,6 @@ export async function updateuserdata(userindex: number, userIds: Array<string>,u
     userdatastrings: Map<number, string[]>,matchesdata: Map<number,Array<Array<number>>>): Promise<void>{
 
     return fetch("http://localhost:3232/get-user?id=" + userIds[userindex]).then((respjson)=>{
-                //http://localhost:3232/get-user?id=pDtZBPn7kCYsYSRO83QhlpkBZkM2
                 respjson.json().then((respobj)=>{
                     let songnums:Array<number> = respobj.user.currentSong.features
                     // console.log(songnums)
