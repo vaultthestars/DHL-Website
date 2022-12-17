@@ -42,6 +42,7 @@ import { domainToASCII } from 'url';
 //TODO: Turn off the user outline circles when you aren't logged in
 //TODO: Add a pretty gradient bar on the side to denote how things are being sorted from bottom to top
 //TODO: CLEAN UP AND TEST
+//TODO: Make it so that users and everything up reloads when you log in for the first time
 
 //INTEGRATION TODO:
 //TODO: Set these when you log in!
@@ -196,7 +197,7 @@ function linsort(pt: Array<number>, SortParameterIndex: number, loggedin: boolea
     }
     // Center the point horizontally if it is the current user
     if(loggedin && pt[0] == curruser){
-        x = 0;
+        x = 1;
     }
     return [pt[0], x,300-(600*getdata(pt[0],SortParameterIndex))] //trying to do it with 0 y instead of pt[2]
 }
@@ -365,7 +366,7 @@ function updatecamcenter(campt: number[], targpt: number[]): number[]{
     }
     else{
         // Scale and nudge the camera towards the target
-        let scalar = 0.05*(1-sech((1/1)*mag(nudgevec)))
+        let scalar = 0.05*(1-0.8*sech((1/1)*mag(nudgevec)))
         return [campt[0]+scalar*nudgevec[0],campt[1]+scalar*nudgevec[1],campt[2]+scalar*nudgevec[2]]
     }
 }
@@ -393,11 +394,11 @@ function slidenum(bool: boolean){
 
 // Another simple function for determining whether or not we should display the sidebar.
 // Only returns "sidebar" element class name when the current google user ID passed in is nonempty.
-function sidebarloggedin(str: string): string{
-    if (str == ""){
-        return "hidden";
+function sidebarloggedin(str: string, spotifylinked: boolean): string{
+    if (str != "" && spotifylinked){
+        return "sidebar";
     }
-    return "sidebar";
+    return "hidden";
 }
 
 // A nearly identical function used for showing and hiding sidebar elements based on whether or not we've logged in to spotify.
@@ -467,14 +468,13 @@ function getcurruserindex(userIDs: Array<string>,googleuser: string): number{
 //          -On-screen buttons(change parameter to sort by, zoom out)
 //      -Developer tool buttons
 
-export default function GraphVis(googleuser: string, spotifylinked: boolean) {
+export default function GraphVis(googleuser: string, spotifylinked: boolean, usersloaded: boolean, setusersloaded: ((arg: boolean)=>void)) {
     // All of our wonderful react state variables
     const [CircleData, setCircleData] = useState<number[][]>([]);
     const [SelectIndex, setSelectIndex] = useState<number>(0);
     const [Timer, setTimer] = useState<number>(0);
     const [SortIndex, setSortIndex] = useState<number>(1);
     const [SortParameter, setSortParameter] = useState<number>(0);
-    const [Speed, setSpeed] = useState<number>(10);
     const [ShowCircLabels, SetShowCircLabels] = useState<boolean>(true);
     const [camcenter, Setcamcenter] = useState<number[]>([1,0,0]); //scale, position x, position y
     const [zoomed, Setzoomed] = useState<boolean>(false);
@@ -484,11 +484,11 @@ export default function GraphVis(googleuser: string, spotifylinked: boolean) {
     // Current user index. Currently set to default value of 0.
     const [curruser, Setcurruser] = useState<number>(0);
 
-    const [usersloaded, setusersloaded] = useState<boolean>(false);
-
     const [fetchingusers, setfetchingusers] = useState<boolean>(false);
     const [userIDs, setuserIDs] = useState<Array<string>>([]);
     //Ok there's some weird stuff going on with userIDs now
+
+    const Speed = 10;
 
     // Main useEffect loop! Had to use a setInterval to stop React from reaching its max update depth and freaking out.
     useEffect(() => {
@@ -500,18 +500,19 @@ export default function GraphVis(googleuser: string, spotifylinked: boolean) {
                     setfetchingusers(true)
                     fetch("http://localhost:3232/get-all-user-ids").then((respjson)=>{
                         respjson.json().then((respobj)=>{
-                        const ids = respobj.ids
-                        setuserIDs(ids)
-                        setCircleData(initdist(ids.length))
-                        fetch("http://localhost:3232/load-song-features").then(()=>{
-                            setuserdata(ids, googleuser).then(()=>
-                            {
-                                setusersloaded(true)
+                            const ids = respobj.ids
+                            setuserIDs(ids)
+                            setCircleData(initdist(ids.length))
+                            fetch("http://localhost:3232/load-song-features").then(()=>{
+                                fetch("http://localhost:3232/load-connections").then(()=>{
+                                    setuserdata(ids, googleuser).then(()=>
+                                    {
+                                        setusersloaded(true)
+                                    })
+                                })
                             })
                         })
-                        console.log(userIDs)
                     })
-                })
                 }
             }
             if(usersloaded){
@@ -558,7 +559,7 @@ export default function GraphVis(googleuser: string, spotifylinked: boolean) {
         // console.log(CircleData)
         return <div key = "wrapper" className = "wrapper">
                 {/* Sidebar background */}
-                <div key = "sidebardiv" className = {sidebarloggedin(googleuser)}>
+                <div key = "sidebardiv" className = {sidebarloggedin(googleuser,spotifylinked)}>
                     {/* defaultbar, aka zoomed out sidebar panel */}
                     <div key = "defaultbar" className = {fullyloggedin(spotifylinked,"defaultbar")}>
                         <h3>{"Welcome, " + getdatastrings(curruser,0) + "!"}</h3>
