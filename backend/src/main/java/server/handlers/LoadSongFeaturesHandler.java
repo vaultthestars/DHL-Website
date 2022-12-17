@@ -20,7 +20,6 @@ import se.michaelthelin.spotify.model_objects.specification.PlayHistory;
 import se.michaelthelin.spotify.model_objects.specification.TrackSimplified;
 import se.michaelthelin.spotify.requests.authorization.authorization_code.AuthorizationCodeRefreshRequest;
 import se.michaelthelin.spotify.requests.data.player.GetCurrentUsersRecentlyPlayedTracksRequest;
-import se.michaelthelin.spotify.requests.data.player.GetUsersCurrentlyPlayingTrackRequest;
 import se.michaelthelin.spotify.requests.data.tracks.GetAudioFeaturesForTrackRequest;
 import server.Constants;
 import server.Database;
@@ -28,6 +27,7 @@ import spark.Request;
 import spark.Response;
 import spark.Route;
 import user.Song;
+import user.User;
 
 public class LoadSongFeaturesHandler implements Route {
 
@@ -52,17 +52,28 @@ public class LoadSongFeaturesHandler implements Route {
     // future.get() blocks on response
     List<QueryDocumentSnapshot> documents = future.get().getDocuments();
     for (QueryDocumentSnapshot document : documents) {
-      String userId = (String) document.getData().get("userId");
-      System.out.println("userId: " + userId);
-      System.out.println("displayName: " + document.getData().get("displayName"));
-      if (document.getData().get("refreshToken") != null) {
-        String authToken = this.getAuthToken(this.database.retrieveRefreshToken(userId));
-        System.out.println("Auth: " + authToken);
-        Song newSong = this.getMostRecentSong(userId, authToken);
-        this.database.updateUserSong(newSong);
-        this.database.updateMembershipLength(userId);
+      if (!document.getData().get("userId").equals("RaJCoYqztldz3vK5jxbFUkyKbAZ2")) {
+        System.out.println("..........USER UPDATE BEGUN..........");
+        User user = this.database.generateUser(document);
+        System.out.println("Pre-update: " + user);
+        String userId = user.getUserId();
+        System.out.println("userId: " + userId);
+        System.out.println("displayName: " + document.getData().get("displayName"));
+        // if spotify has been linked:
+        if (document.getData().get("refreshToken") != null) {
+          String authToken = this.getAuthToken(user.getRefreshToken());
+          System.out.println("Auth: " + authToken);
+          // get new song
+          Song newSong = user.getMostRecentSong(userId, authToken);
+          user.setCurrentSong(newSong);
+          // add new song to averaged historical song point
+          user.updateHistoricalSongPoint(newSong.getPoint());
+          // update document in firebase to reflect new user info
+          this.database.updateUser(userId, user);
+          System.out.println("Post-update: " + user);
+        }
+        System.out.println("..........USER UPDATE FINISHED..........");
       }
-      System.out.println("..........NEXT..........");
     }
 
     return new LoadSongFeaturesSuccessResponse().serialize();

@@ -6,6 +6,7 @@ import com.google.cloud.firestore.QuerySnapshot;
 import com.squareup.moshi.Moshi;
 import java.util.List;
 import java.util.Map;
+import kdtree.KdTree;
 import server.Database;
 import server.ErrBadJsonResponse;
 import spark.Request;
@@ -38,18 +39,25 @@ public class LoadConnectionsHandler implements Route {
   @Override
   public Object handle(Request request, Response response) throws Exception {
     try {
+      // build kd trees for finding nearest neighbors
+      this.database.loadNodeLists();
+      this.database.buildTrees();
+      KdTree<Song> songTree = this.database.getSongTree();
+      KdTree<User> userTree = this.database.getUserTree();
       // asynchronously retrieve all documents
       ApiFuture<QuerySnapshot> future = this.database.getFireStore().collection("users").get();
       // future.get() blocks on response
       List<QueryDocumentSnapshot> documents = future.get().getDocuments();
-      for (QueryDocumentSnapshot doc : documents) {
-        User user = this.generateUser(doc);
-        //        this.database.loadCurrentSongPoints(user);
-        //        this.database.loadUserPoints(user);
-        //        this.database.buildSongTree();
-        //        this.database.buildUserTree();
-        //        this.database.loadConnections(user);
-        //        this.database.loadHistoricalConnections(user);
+      for (QueryDocumentSnapshot document : documents) {
+        if (document.getData().get("refreshToken") != null) {
+          User user = this.database.generateUser(document);
+          String[] connections = user.findConnections(songTree);
+          String[] historicalConnections = user.findHistoricalConnections(userTree);
+          user.setConnections(connections);
+          user.setHistoricalConnections(historicalConnections);
+          // update document using new user info
+          this.database.updateUser(user.getUserId(), user);
+        }
       }
       return new LoadConnectionsSuccessResponse().serialize();
     } catch (Exception e) {
