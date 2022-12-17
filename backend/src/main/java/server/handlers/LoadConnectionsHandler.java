@@ -1,23 +1,31 @@
 package server.handlers;
 
+import com.google.api.core.ApiFuture;
+import com.google.cloud.firestore.QueryDocumentSnapshot;
+import com.google.cloud.firestore.QuerySnapshot;
 import com.squareup.moshi.Moshi;
+import java.util.List;
+import java.util.Map;
+import kdtree.KdTree;
+import server.Database;
 import server.ErrBadJsonResponse;
 import spark.Request;
 import spark.Response;
 import spark.Route;
-import user.UserDatabase;
+import user.Song;
+import user.User;
 
 public class LoadConnectionsHandler implements Route {
 
-  private UserDatabase userDatabase;
+  private Database database;
 
   /**
    * Constructor for handler that takes in userDatabase to access nodes for kd-tree
    *
-   * @param userDatabase - the database housing users to build tree
+   * @param database - the database housing users to build tree
    */
-  public LoadConnectionsHandler(UserDatabase userDatabase) {
-    this.userDatabase = userDatabase;
+  public LoadConnectionsHandler(Database database) {
+    this.database = database;
   }
 
   /**
@@ -31,14 +39,26 @@ public class LoadConnectionsHandler implements Route {
   @Override
   public Object handle(Request request, Response response) throws Exception {
     try {
-      // call kd-tree methods from UserDatabase & store connections & historicalConnections in user
-      // objects
-      this.userDatabase.loadCurrentSongPoints();
-      this.userDatabase.loadUserPoints();
-      this.userDatabase.buildSongTree();
-      this.userDatabase.buildUserTree();
-      this.userDatabase.loadConnections();
-      this.userDatabase.loadHistoricalConnections();
+      // build kd trees for finding nearest neighbors
+      this.database.loadNodeLists();
+      this.database.buildTrees();
+      KdTree<Song> songTree = this.database.getSongTree();
+      KdTree<User> userTree = this.database.getUserTree();
+      // asynchronously retrieve all documents
+      ApiFuture<QuerySnapshot> future = this.database.getFireStore().collection("users").get();
+      // future.get() blocks on response
+      List<QueryDocumentSnapshot> documents = future.get().getDocuments();
+      for (QueryDocumentSnapshot document : documents) {
+        if (document.getData().get("refreshToken") != null) {
+          User user = this.database.generateUser(document);
+          String[] connections = user.findConnections(songTree);
+          String[] historicalConnections = user.findHistoricalConnections(userTree);
+          user.setConnections(connections);
+          user.setHistoricalConnections(historicalConnections);
+          // update document using new user info
+          this.database.updateUser(user.getUserId(), user);
+        }
+      }
       return new LoadConnectionsSuccessResponse().serialize();
     } catch (Exception e) {
       e.printStackTrace();
@@ -65,6 +85,63 @@ public class LoadConnectionsHandler implements Route {
         e.printStackTrace();
         throw e;
       }
+    }
+  }
+
+  private User generateUser(QueryDocumentSnapshot document) {
+    String userId = document.getString("userId");
+    String displayName = document.getString("displayName");
+    String refreshToken = document.getString("refreshToken");
+    int membershipLength = document.get("membershipLength", Integer.class);
+
+    Map<String, Object> docMap = document.getData();
+
+    Map<String, Object> songMap = (Map) docMap.get("currentSong");
+    List<Double> featList = (List<Double>) songMap.get("features");
+    Song currentSong =
+        new Song(
+            (String) songMap.get("userId"),
+            (String) songMap.get("title"),
+            (String) songMap.get("id"),
+            (List<String>) songMap.get("artists"),
+            this.listToDoubleArray(featList));
+
+    List<String> connections = (List<String>) docMap.get("connections");
+    List<Double> historicalSongPoint = (List<Double>) docMap.get("historicalSongPoint");
+    List<String> historicalConnections = (List<String>) docMap.get("historicalConnections");
+
+    return new User(
+        userId,
+        displayName,
+        refreshToken,
+        membershipLength,
+        currentSong,
+        this.listToStrArray(connections),
+        this.listToDoubleArray(historicalSongPoint),
+        this.listToStrArray(historicalConnections));
+  }
+
+  private double[] listToDoubleArray(List<Double> lst) {
+    if (lst != null) {
+      double[] array = new double[6];
+      for (int i = 0; i < lst.size(); i++) {
+        array[i] = lst.get(i);
+      }
+      return array;
+    } else {
+      return new double[6];
+    }
+  }
+
+  private String[] listToStrArray(List<String> lst) {
+    if (lst != null) {
+      String[] array = new String[5];
+      for (int i = 0; i < lst.size(); i++) {
+        array[i] = lst.get(i);
+      }
+      return array;
+    } else {
+      return new String[5];
     }
   }
 }

@@ -3,22 +3,10 @@ import { getAuth, GoogleAuthProvider, signInWithPopup } from 'firebase/auth'
 import { getFirestore, doc, setDoc, getDoc } from "firebase/firestore"; 
 import { SetStateAction } from "react";
 import { setSourceMapRange } from "typescript";
+import {firebaseConfig} from './private/firebaseconfig'
 
 // TODO: Add SDKs for Firebase products that you want to use
 // https://firebase.google.com/docs/web/setup#available-libraries
-
-// Your web app's Firebase configuration
-// For Firebase JS SDK v7.20.0 and later, measurementId is optional
-const firebaseConfig = {
- apiKey: "AIzaSyAGp8uTjHb6-vxrlbdM5QzFYA69Se9OPeA",
- authDomain: "test-tunedin.firebaseapp.com",
- projectId: "test-tunedin",
- storageBucket: "test-tunedin.appspot.com",
- messagingSenderId: "619555539594",
- appId: "1:619555539594:web:9869f144517a225d543b73",
- measurementId: "G-9PLN5MP4W9"
-};
-
 
 // Initialize Firebase & Google Provider 
 const app = initializeApp(firebaseConfig);
@@ -30,9 +18,12 @@ const provider = new GoogleAuthProvider();
 // Sign-In function
 export const signInWithGoogle = (setUser: { (value: SetStateAction<string>): void; (arg0: string): void; }) => {
   let displayName = "";
+
+  //There's a google signout with popup function that we need to implement!
+
   signInWithPopup(auth, provider)
     .then(async (result) => {
-      console.log(result);
+      // console.log(result);
       if(result.user.displayName != null){
         displayName = result.user.displayName;
         let UID = result.user.uid
@@ -44,7 +35,7 @@ export const signInWithGoogle = (setUser: { (value: SetStateAction<string>): voi
         await setDoc(doc(db, "users", UID), {
             email: result.user.email,
             connections: [],
-            currentSong: {artist: [], dimension: "", features: [], id: "", title: "", userId: UID},
+            currentSong: {artists: [], dimension: "", features: [], id: "", title: "", userId: UID},
             displayName: displayName,
             historicalConnections: [],
             historicalSongPoint: [],
@@ -52,8 +43,8 @@ export const signInWithGoogle = (setUser: { (value: SetStateAction<string>): voi
             userId: UID
         });
     }
-
-        setUser("done");
+    //Ok so we definitely need this line
+        setUser(UID);
       }
       // // This gives you a Google Access Token. You can use it to access the Google API.
       // const credential = GoogleAuthProvider.credentialFromResult(result);

@@ -1,8 +1,6 @@
 :root {
   --sidebar-mode: 0;
   --timeslidermode: 1;
-  --main-color: rgb(104, 117, 217);
-  --main-color-hover: rgb(104, 117, 217, 0.2);
   --track-color: #ddd;
 }
 
@@ -26,25 +24,12 @@
   background-position: 12px 11px;
 }
 
-.customSlider {
-  /* max width of your slider */
-  max-width: 300px;
-  /* Optional: Only If you want to center your slider in the page */
-  margin: auto;
+.spotifylogoutbutton{
+  fill:rgb(201, 187, 32);
 }
 
-.customSlider-track {
-  /* Top value to align your track to the center of your thumb */
-  top: 8px;
-  /* thickness of the track */
-  height: 4px;
- /* default color of your track */
-  background: var(--track-color);
-}
-
-.customSlider-track.customSlider-track-0 {
-  /* color of the track before the thumb */
-  background: var(--main-color);
+.spotifybuttonbackground{
+  fill:rgb(32, 201, 150);
 }
 
 .App {
@@ -52,14 +37,15 @@
 }
 
 .tuneinlogo {
-  scale: 40%;
-  position: relative;
-  top: -5px;
+  width:300px;
+  position: absolute;
+  top: -50px;
 }
 
 .spotifybutton{
   position: absolute;
-  right: 300px;
+  right: 10px;
+  top: 25px;
 }
 
 .App-logo {
@@ -118,37 +104,6 @@ circle {
   opacity: 1;
 }
 
-.example-thumb {
-  font-size: 0.9em;
-  text-align: center;
-  background-color: black;
-  color: white;
-  cursor: pointer;
-  border: 5px solid gray;
-  box-sizing: border-box;
-}
-
-.example-thumb.active {
-  background-color: grey;
-}
-
-.example-track {
-  position: relative;
-  background: #ddd;
-}
-
-.horizontal-slider .example-track {
-  top: 20px;
-  height: 10px;
-}
-
-.horizontal-slider .example-thumb {
-  top: 1px;
-  width: 50px;
-  height: 48px;
-  line-height: 38px;
-}
-
 .draggable {
   cursor: move;
 }
@@ -186,10 +141,22 @@ body{
   text-align: center;
 }
 
+.hidden{
+  display: none
+}
+
+.wrapper .hidden{
+  display: none;
+}
+
+.wrapper .sidebar .hidden{
+  display: none;
+}
+
 .wrapper .sidebar .defaultbar img{
   display: block;
   position: absolute;
-  top: 25px;
+  top: 32px;
   right:0px;
   width: 240px;
   height: 225px;
@@ -198,16 +165,16 @@ body{
 
 .wrapper .sidebar .userbar h2{
   position: absolute;
-  top: 25px;
+  top: 60px;
   left: 25px;
   opacity: calc(1 - var(--sidebar-mode));
   color: #ffffff;
 }
 
 .wrapper .sidebar .userbar h3{
-  position: relative;
+  position: absolute;
   text-align: left;
-  top: -40px;
+  top: 95px;
   left: 25px;
   opacity: calc(1 - var(--sidebar-mode));
   color: #ffffff;
@@ -216,7 +183,7 @@ body{
 .wrapper .sidebar .userbar p{
   position: relative;
   text-align: left;
-  top: -35px;
+  top: -110px;
   left: 25px;
   opacity: calc(1 - var(--sidebar-mode));
   color: #ffffff;
@@ -231,8 +198,15 @@ body{
 
 .wrapper .sidebar .userbar .paramdisplay{
   position: absolute;
-  top: 110px;
+  top: 120px;
   left: 10px;
+}
+
+.wrapper .sidebar .defaultbar h3{
+  opacity: var(--sidebar-mode);
+  color: #ffffff;
+  font-size: 14px;
+  margin: 5px 0 5px;
 }
 
 .wrapper .sidebar .defaultbar h2{
@@ -313,5 +287,11 @@ rect {
 .wrapper .svgwindow .whitetext{
   /* font: italic 40px serif; */
       font: normal 20px helvetica;
+      fill: rgb(255, 255, 255);
+}
+
+.wrapper .svgwindow .whitetextbig{
+  /* font: italic 40px serif; */
+      font: normal 50px helvetica;
       fill: rgb(255, 255, 255);
 }

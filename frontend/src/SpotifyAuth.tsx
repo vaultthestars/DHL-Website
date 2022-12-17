@@ -17,8 +17,7 @@ import { getFirestore, doc, setDoc, getDoc } from "firebase/firestore";
 import { initializeApp } from "firebase/app";
 import { convertCompilerOptionsFromJson } from 'typescript';
 import { render } from '@testing-library/react';
-
-
+import {firebaseConfig} from './private/firebaseconfig'
 
 interface SpotifyLoginButtonProps {
   clientId: string;
@@ -26,38 +25,35 @@ interface SpotifyLoginButtonProps {
   clientSecret: string;
   setUser2: Function;
   spotifyLinked: boolean;
+  setspotifyLinked: Function;
 }
-
-const firebaseConfig = {
-  apiKey: "AIzaSyAGp8uTjHb6-vxrlbdM5QzFYA69Se9OPeA",
-  authDomain: "test-tunedin.firebaseapp.com",
-  projectId: "test-tunedin",
-  storageBucket: "test-tunedin.appspot.com",
-  messagingSenderId: "619555539594",
-  appId: "1:619555539594:web:9869f144517a225d543b73",
-  measurementId: "G-9PLN5MP4W9"
-};
 
 const app = initializeApp(firebaseConfig);
 // Initialize Cloud Firestore and get a reference to the service
 const db = getFirestore(app);
 
 export const SpotifyLoginButton: React.FC<SpotifyLoginButtonProps> = (parameters) => {
-  const { clientId, redirectUri, clientSecret, setUser2, spotifyLinked} = parameters;
+  const { clientId, redirectUri, clientSecret, setUser2, spotifyLinked, setspotifyLinked} = parameters;
   
   let refreshToken: string = "";
   let accessToken: string = "";
 
   const handleClick = () => {
-    const url = `https://accounts.spotify.com/authorize?response_type=code&client_id=${clientId}&scope=user-read-private%20user-read-email&redirect_uri=${redirectUri}`;
+    const url = `https://accounts.spotify.com/authorize?response_type=code&client_id=${clientId}&scope=user-read-private%20user-read-email%20user-read-currently-playing%20user-read-recently-played&redirect_uri=${redirectUri}`;
+    // "scope=user-read-private%20user-read-email%20user-read-currently-playing%20user-read-recently-played%20user-read-playback-state&"
     // go to the url
     window.location.replace(url);
-
   };
 
-  React.useEffect(() => {
-    getTokens()     
-  })
+  // React.useEffect(() => {
+  //   const interval = setInterval(() => {
+  //     if (!spotifyLinked){
+  //       getTokens()     
+  //     }
+  // }
+  // , 2000);
+  //  return () => clearInterval(interval);
+  // },[])
 
   const onSuccess = async (refreshToken: string, accessToken: string) => {
     // console.log("OH MY GODDDD")
@@ -87,7 +83,7 @@ export const SpotifyLoginButton: React.FC<SpotifyLoginButtonProps> = (parameters
     };
 
     fetch(url, options)
-      .then((response) => response.json())
+      .then((response) => response.json()
       .then((data) => {
         if (refreshToken == "" && refreshToken != undefined) {
           refreshToken = data.refresh_token;}
@@ -95,9 +91,11 @@ export const SpotifyLoginButton: React.FC<SpotifyLoginButtonProps> = (parameters
           if (iNSERT_UID_HERE != null) {
           setDoc(doc(db, "users", iNSERT_UID_HERE), {
             refreshToken: refreshToken,
-          }, { merge: true });
-          localStorage.setItem("spotify", "done")
-          setUser2("done")}
+          }, { merge: true }); 
+          localStorage.setItem("spotify", iNSERT_UID_HERE)
+          // console.log(localStorage)
+          setUser2(iNSERT_UID_HERE)
+        }
         if (accessToken == "" && accessToken != undefined) {
           accessToken = data.access_token;}
         // console.log("refresh")
@@ -105,7 +103,7 @@ export const SpotifyLoginButton: React.FC<SpotifyLoginButtonProps> = (parameters
         // console.log("access")
         // console.log("accessToken IS RIGHT HERE" + accessToken)
         onSuccess(refreshToken, accessToken);
-      })
+      }))
       .catch((error) => {
         //onFailure(error);
       });
@@ -115,14 +113,34 @@ export const SpotifyLoginButton: React.FC<SpotifyLoginButtonProps> = (parameters
 
   let localUID = localStorage.getItem("UID");
 
-  if ((localStorage.getItem("spotify") == "done" && localUID != null) || spotifyLinked ) {
-    setUser2("done")
+  const xval = 10;
+  const yval = 5;
+
+  if ((localStorage.getItem("spotify") != "" && localStorage.getItem("spotify") != null) || spotifyLinked ) {
+    setspotifyLinked(true)
+    setUser2(localStorage.getItem("spotify"))
     return (
-      <p>Spotify linked.</p>
+      <p></p>
     )
   } else if (localUID != null && spotifyLinked == false) {
+    getTokens()
     return (
-      <button onClick={handleClick}>Link TunedIn with Spotify</button>
+      //Here is where the styling will go
+      <svg width = "220" height = "50">
+        <rect className="spotifybuttonbackground"
+        width = "200"
+        height = "40"
+        rx="5"
+        ry="5"
+        x = {xval.toString()}
+        y = {yval.toString()}
+        onClick={handleClick}
+        />
+        <text className = "whitetext" x= {(xval+6).toString()} y= {(yval+25).toString()}
+        onClick = {handleClick}> 
+        Link TunedIn with Spotify </text>
+      </svg>
+      // <button onClick={handleClick}>Link TunedIn with Spotify</button>
     );
   } else {
     return (

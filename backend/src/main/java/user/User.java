@@ -1,8 +1,27 @@
 package user;
 
+import java.io.IOException;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashSet;
+import java.util.List;
 import java.util.Objects;
+import java.util.PriorityQueue;
+import java.util.concurrent.ExecutionException;
+import kdtree.DistanceSorter;
+import kdtree.KdTree;
 import kdtree.KdTreeNode;
+import org.apache.hc.core5.http.ParseException;
+import se.michaelthelin.spotify.SpotifyApi;
+import se.michaelthelin.spotify.exceptions.SpotifyWebApiException;
+import se.michaelthelin.spotify.model_objects.specification.ArtistSimplified;
+import se.michaelthelin.spotify.model_objects.specification.AudioFeatures;
+import se.michaelthelin.spotify.model_objects.specification.PagingCursorbased;
+import se.michaelthelin.spotify.model_objects.specification.PlayHistory;
+import se.michaelthelin.spotify.model_objects.specification.TrackSimplified;
+import se.michaelthelin.spotify.requests.data.player.GetCurrentUsersRecentlyPlayedTracksRequest;
+import se.michaelthelin.spotify.requests.data.tracks.GetAudioFeaturesForTrackRequest;
+import server.Constants;
 
 /**
  * Class representing an individual TuneIn user, which houses essential user-specific information.
@@ -17,8 +36,14 @@ public class User implements KdTreeNode, Cloneable {
   private double[] historicalSongPoint;
   private String[] historicalConnections;
 
-  public User(String userId, String displayName, String refreshToken, int membershipLength,
-      Song currentSong, String[] connections, double[] historicalSongPoint,
+  public User(
+      String userId,
+      String displayName,
+      String refreshToken,
+      int membershipLength,
+      Song currentSong,
+      String[] connections,
+      double[] historicalSongPoint,
       String[] historicalConnections) {
     this.userId = userId;
     this.displayName = displayName;
@@ -57,11 +82,11 @@ public class User implements KdTreeNode, Cloneable {
     return result;
   }
 
-  public String getuserId() {
+  public String getUserId() {
     return this.userId;
   }
 
-  public void setuserId(String userId) {
+  public void setUserId(String userId) {
     this.userId = userId;
   }
 
@@ -126,7 +151,7 @@ public class User implements KdTreeNode, Cloneable {
     try {
       User clone = (User) super.clone();
       // TODO: copy mutable state here, so the clone can't change the internals of the original
-      clone.setuserId(this.getuserId());
+      clone.setUserId(this.getUserId());
       clone.setMembershipLength(this.getMembershipLength());
       clone.setCurrentSong(this.getCurrentSong());
       clone.setConnections(this.getConnections());
@@ -138,8 +163,61 @@ public class User implements KdTreeNode, Cloneable {
     }
   }
 
+  public Song getMostRecentSong(String userId, String accessToken)
+      throws IOException, ParseException, ExecutionException, InterruptedException,
+      SpotifyWebApiException {
+    SpotifyApi spotifyApi =
+        new SpotifyApi.Builder()
+            .setClientId(Constants.CLIENT_ID)
+            .setClientSecret(Constants.CLIENT_SECRET)
+            .setAccessToken(accessToken)
+            .build();
+
+    GetCurrentUsersRecentlyPlayedTracksRequest getCurrentUsersRecentlyPlayedTracksRequest =
+        spotifyApi.getCurrentUsersRecentlyPlayedTracks().limit(1).build();
+    System.out.println("Recently Played Request made. Will now execute...");
+    PagingCursorbased<PlayHistory> playHistoryPagingCursorbased =
+        getCurrentUsersRecentlyPlayedTracksRequest.execute();
+    System.out.println("Successfully executed.");
+
+    PlayHistory[] playHistories = playHistoryPagingCursorbased.getItems();
+    System.out.println("Date/Time Played: " + playHistories[0].getPlayedAt());
+    TrackSimplified track = playHistories[0].getTrack();
+
+    String title = track.getName();
+    System.out.println("Song Title: " + title);
+    String id = track.getId();
+    // artists
+    List<String> artists = new ArrayList<>();
+    ArtistSimplified[] artistsSimp = track.getArtists();
+    for (ArtistSimplified artist : artistsSimp) {
+      artists.add(artist.getName());
+    }
+    // features
+    GetAudioFeaturesForTrackRequest getAudioFeaturesForTrackRequest =
+        spotifyApi.getAudioFeaturesForTrack(id).build();
+    AudioFeatures audioFeatures = getAudioFeaturesForTrackRequest.execute();
+
+    double[] features = new double[6];
+    features[0] = audioFeatures.getAcousticness();
+    features[1] = audioFeatures.getDanceability();
+    features[2] = audioFeatures.getEnergy();
+    features[3] = audioFeatures.getInstrumentalness();
+    features[4] = audioFeatures.getSpeechiness();
+    features[5] = audioFeatures.getValence();
+
+    return new Song(userId, title, id, artists, features);
+  }
   public void updateHistoricalSongPoint(double[] newSongPoint) {
-    // TODO: implement with incremental / running average formula
+    // current average point + [(new point - current average point) / membershipLength]
+    this.membershipLength++; // n increases by 1 because a new point is being added to average
+    double[] newHistoricalSongPoint = new double[6];
+    for (int i = 0; i < newSongPoint.length; i++) {
+      newHistoricalSongPoint[i] = newSongPoint[i] - this.getHistoricalSongPoint()[i];
+      newHistoricalSongPoint[i] = newHistoricalSongPoint[i] / this.getMembershipLength();
+      newHistoricalSongPoint[i] = newHistoricalSongPoint[i] + this.getHistoricalSongPoint()[i];
+    }
+    this.setHistoricalSongPoint(newHistoricalSongPoint);
   }
 
   @Override
@@ -161,5 +239,29 @@ public class User implements KdTreeNode, Cloneable {
       sum += Math.pow(currentVals[i] - targetVals[i], 2);
     }
     return Math.sqrt(sum);
+  }
+
+  public String[] findConnections(KdTree<Song> songTree) {
+    PriorityQueue<Song> connectionsQueue = songTree.kdTreeSearch(
+        "neighbors", 5, this.getCurrentSong(), new DistanceSorter(this.getCurrentSong()), new HashSet<>());
+    String[] connections = new String[5];
+    int i = 0;
+    for (Song song : connectionsQueue) {
+      connections[i] = song.getUserId();
+      i++;
+    }
+    return connections;
+  }
+
+  public String[] findHistoricalConnections(KdTree<User> userTree) {
+    PriorityQueue<User> connectionsQueue = userTree.kdTreeSearch(
+        "neighbors", 5, this, new DistanceSorter(this), new HashSet<>());
+    String[] connections = new String[5];
+    int i = 0;
+    for (User user : connectionsQueue) {
+      connections[i] = user.getUserId();
+      i++;
+    }
+    return connections;
   }
 }
