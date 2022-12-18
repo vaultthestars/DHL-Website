@@ -7,10 +7,12 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
 import java.util.PriorityQueue;
+import java.util.Set;
 import java.util.concurrent.ExecutionException;
 import kdtree.DistanceSorter;
 import kdtree.KdTree;
 import kdtree.KdTreeNode;
+import kotlin.jvm.Transient;
 import org.apache.hc.core5.http.ParseException;
 import se.michaelthelin.spotify.SpotifyApi;
 import se.michaelthelin.spotify.exceptions.SpotifyWebApiException;
@@ -25,6 +27,8 @@ import se.michaelthelin.spotify.requests.authorization.authorization_code.Author
 import se.michaelthelin.spotify.requests.data.player.GetCurrentUsersRecentlyPlayedTracksRequest;
 import se.michaelthelin.spotify.requests.data.tracks.GetAudioFeaturesForTrackRequest;
 import server.Constants;
+import song.Song;
+import song.SongLibrary;
 
 /**
  * Class representing an individual TuneIn user, which houses essential user-specific information.
@@ -38,6 +42,7 @@ public class User implements KdTreeNode, Cloneable {
   private String[] connections;
   private double[] historicalSongPoint;
   private String[] historicalConnections;
+  private transient SongLibrary songLibrary;
 
   public User(
       String userId,
@@ -149,6 +154,10 @@ public class User implements KdTreeNode, Cloneable {
     this.historicalConnections = historicalConnections;
   }
 
+  public void setSongLibrary(SongLibrary songLibrary) {
+    this.songLibrary = songLibrary;
+  }
+
   @Override
   public User clone() {
     try {
@@ -166,56 +175,70 @@ public class User implements KdTreeNode, Cloneable {
     }
   }
 
+  public boolean isMocked() {
+    return this.songLibrary != null;
+  }
+
   public boolean hasRefreshToken() {
-    return this.getRefreshToken() != null || !this.getRefreshToken().isEmpty();
+    Set<String> conditions = new HashSet<>(Arrays.asList(null, "", "\"\"", " "));
+    return !conditions.contains(this.getRefreshToken());
   }
 
   public Song getMostRecentSong()
       throws IOException, ParseException, ExecutionException, InterruptedException,
       SpotifyWebApiException {
+    // if spotify has been linked:
+    if (this.hasRefreshToken()) {
+      System.out.println("Refresh token present: " + this.getRefreshToken());
+      String authToken = this.getAuthToken();
+      SpotifyApi spotifyApi =
+          new SpotifyApi.Builder()
+              .setClientId(Constants.CLIENT_ID)
+              .setClientSecret(Constants.CLIENT_SECRET)
+              .setAccessToken(authToken)
+              .build();
 
-    String authToken = this.getAuthToken();
-    SpotifyApi spotifyApi =
-        new SpotifyApi.Builder()
-            .setClientId(Constants.CLIENT_ID)
-            .setClientSecret(Constants.CLIENT_SECRET)
-            .setAccessToken(authToken)
-            .build();
+      GetCurrentUsersRecentlyPlayedTracksRequest getCurrentUsersRecentlyPlayedTracksRequest =
+          spotifyApi.getCurrentUsersRecentlyPlayedTracks().limit(1).build();
+      System.out.println("Recently Played Request made. Will now execute...");
+      PagingCursorbased<PlayHistory> playHistoryPagingCursorbased =
+          getCurrentUsersRecentlyPlayedTracksRequest.execute();
+      System.out.println("Successfully executed.");
 
-    GetCurrentUsersRecentlyPlayedTracksRequest getCurrentUsersRecentlyPlayedTracksRequest =
-        spotifyApi.getCurrentUsersRecentlyPlayedTracks().limit(1).build();
-    System.out.println("Recently Played Request made. Will now execute...");
-    PagingCursorbased<PlayHistory> playHistoryPagingCursorbased =
-        getCurrentUsersRecentlyPlayedTracksRequest.execute();
-    System.out.println("Successfully executed.");
+      PlayHistory[] playHistories = playHistoryPagingCursorbased.getItems();
+      System.out.println("Date/Time Played: " + playHistories[0].getPlayedAt());
+      TrackSimplified track = playHistories[0].getTrack();
 
-    PlayHistory[] playHistories = playHistoryPagingCursorbased.getItems();
-    System.out.println("Date/Time Played: " + playHistories[0].getPlayedAt());
-    TrackSimplified track = playHistories[0].getTrack();
+      String title = track.getName();
+      String id = track.getId();
+      // artists
+      List<String> artists = new ArrayList<>();
+      ArtistSimplified[] artistsSimp = track.getArtists();
+      for (ArtistSimplified artist : artistsSimp) {
+        artists.add(artist.getName());
+      }
+      // features
+      GetAudioFeaturesForTrackRequest getAudioFeaturesForTrackRequest =
+          spotifyApi.getAudioFeaturesForTrack(id).build();
+      AudioFeatures audioFeatures = getAudioFeaturesForTrackRequest.execute();
 
-    String title = track.getName();
-    System.out.println("Song Title: " + title);
-    String id = track.getId();
-    // artists
-    List<String> artists = new ArrayList<>();
-    ArtistSimplified[] artistsSimp = track.getArtists();
-    for (ArtistSimplified artist : artistsSimp) {
-      artists.add(artist.getName());
+      double[] features = new double[6];
+      features[0] = audioFeatures.getAcousticness();
+      features[1] = audioFeatures.getDanceability();
+      features[2] = audioFeatures.getEnergy();
+      features[3] = audioFeatures.getInstrumentalness();
+      features[4] = audioFeatures.getSpeechiness();
+      features[5] = audioFeatures.getValence();
+
+      return new Song(this.getUserId(), title, id, artists, features);
+    } else if (this.isMocked()) {
+      Song newSong = this.songLibrary.getRandom();
+      newSong.setUserId(this.getUserId());
+      return newSong;
+    } else {
+      // perform get the last successful song update
+      return this.getCurrentSong();
     }
-    // features
-    GetAudioFeaturesForTrackRequest getAudioFeaturesForTrackRequest =
-        spotifyApi.getAudioFeaturesForTrack(id).build();
-    AudioFeatures audioFeatures = getAudioFeaturesForTrackRequest.execute();
-
-    double[] features = new double[6];
-    features[0] = audioFeatures.getAcousticness();
-    features[1] = audioFeatures.getDanceability();
-    features[2] = audioFeatures.getEnergy();
-    features[3] = audioFeatures.getInstrumentalness();
-    features[4] = audioFeatures.getSpeechiness();
-    features[5] = audioFeatures.getValence();
-
-    return new Song(this.getUserId(), title, id, artists, features);
   }
 
   /**

@@ -2,12 +2,7 @@ package database;
 
 import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
-import java.util.PriorityQueue;
-import kdtree.DistanceSorter;
-import kdtree.KdTree;
-import user.Song;
 import user.User;
 
 /** Class representing the complete database of userMap */

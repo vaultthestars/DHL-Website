@@ -23,6 +23,7 @@ public class GetUserHandler implements Route {
     try {
       String userId = request.queryParams("id");
       User user = this.database.getUser(userId);
+      System.out.println("User retrieved.");
       return new GetUserSuccessResponse(user).serialize();
     } catch (Exception e) {
       return new ErrBadJsonResponse();

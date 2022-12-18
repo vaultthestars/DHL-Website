@@ -19,7 +19,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ExecutionException;
-import user.Song;
+import song.Song;
 import user.User;
 
 /** Wrapper class for Firestore Database */
@@ -52,7 +52,7 @@ public class FirestoreDatabase implements UserDatabase {
     DocumentReference docRef = this.firestore.collection("users").document(userId);
     // asynchronously retrieve the document
     ApiFuture<DocumentSnapshot> future = docRef.get();
-    System.out.println("async call");
+    System.out.println("Async call to getting user document from firestore.");
 
     // future.get() blocks on response
     DocumentSnapshot document = null;

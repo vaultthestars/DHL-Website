@@ -1,32 +1,16 @@
 package server.handlers;
 
-import com.google.api.core.ApiFuture;
-import com.google.cloud.firestore.QueryDocumentSnapshot;
-import com.google.cloud.firestore.QuerySnapshot;
 import com.squareup.moshi.Moshi;
 import java.io.IOException;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ExecutionException;
 import org.apache.hc.core5.http.ParseException;
-import se.michaelthelin.spotify.SpotifyApi;
 import se.michaelthelin.spotify.exceptions.SpotifyWebApiException;
-import se.michaelthelin.spotify.exceptions.detailed.ForbiddenException;
-import se.michaelthelin.spotify.model_objects.credentials.AuthorizationCodeCredentials;
-import se.michaelthelin.spotify.model_objects.specification.ArtistSimplified;
-import se.michaelthelin.spotify.model_objects.specification.AudioFeatures;
-import se.michaelthelin.spotify.model_objects.specification.PagingCursorbased;
-import se.michaelthelin.spotify.model_objects.specification.PlayHistory;
-import se.michaelthelin.spotify.model_objects.specification.TrackSimplified;
-import se.michaelthelin.spotify.requests.authorization.authorization_code.AuthorizationCodeRefreshRequest;
-import se.michaelthelin.spotify.requests.data.player.GetCurrentUsersRecentlyPlayedTracksRequest;
-import se.michaelthelin.spotify.requests.data.tracks.GetAudioFeaturesForTrackRequest;
-import server.Constants;
 import database.UserDatabase;
 import spark.Request;
 import spark.Response;
 import spark.Route;
-import user.Song;
+import song.Song;
 import user.User;
 
 public class LoadSongFeaturesHandler implements Route {
@@ -56,19 +40,17 @@ public class LoadSongFeaturesHandler implements Route {
       User user = this.database.getUser(userId);
       System.out.println("Pre-update: " + user);
       System.out.println("displayName: " + user.getDisplayName());
-      // if spotify has been linked:
-      if (user.hasRefreshToken()) {
-        System.out.println("Refresh token present: " + user.getRefreshToken());
-        // get new song
-        Song newSong = user.getMostRecentSong();
-        user.setCurrentSong(newSong);
-        // add new song to averaged historical song point
-        user.updateHistoricalSongPoint(newSong.getPoint());
-        // update document in firebase to reflect new user info
-        this.database.updateUser(userId, user);
-        System.out.println("Post-update: " + user);
-        System.out.println("..........USER UPDATE FINISHED..........");
-      }
+      // get new song
+      Song newSong = user.getMostRecentSong();
+      System.out.println("Song Title: " + newSong.getTitle());
+      System.out.println("Artists: " + newSong.getArtists());
+      user.setCurrentSong(newSong);
+      // add new song to averaged historical song point
+      user.updateHistoricalSongPoint(newSong.getPoint());
+      // update document in firebase to reflect new user info
+      this.database.updateUser(userId, user);
+      System.out.println("Post-update: " + user);
+      System.out.println("..........USER UPDATE FINISHED..........");
     }
     return new LoadSongFeaturesSuccessResponse(userIds).serialize();
   }

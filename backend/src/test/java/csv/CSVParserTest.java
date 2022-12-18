@@ -86,20 +86,20 @@ public class CSVParserTest {
   //    this.testParser = new CSVParser<>(this.testFileReader, new StarFactory());
   //  }
 
-  /**
-   * Sets the testParser with a UserFactory as a second input to the constructor.
-   *
-   * @throws IOException if an I/O Exception occurs
-   * @throws FactoryFailureException if a Factory Failure Exception occurs
-   */
-  public void setWithUserFactory() throws IOException, FactoryFailureException {
-    try {
-      this.testFileReader = new FileReader("data/mockUsers.csv");
-    } catch (FileNotFoundException e) {
-      throw new RuntimeException(e);
-    }
-    this.testParser = new CSVParser<User>(this.testFileReader, new UserFactory());
-  }
+//  /**
+//   * Sets the testParser with a UserFactory as a second input to the constructor.
+//   *
+//   * @throws IOException if an I/O Exception occurs
+//   * @throws FactoryFailureException if a Factory Failure Exception occurs
+//   */
+//  public void setWithUserFactory() throws IOException, FactoryFailureException {
+//    try {
+//      this.testFileReader = new FileReader("data/mock-users.csv");
+//    } catch (FileNotFoundException e) {
+//      throw new RuntimeException(e);
+//    }
+//    this.testParser = new CSVParser<User>(this.testFileReader, new UserFactory());
+//  }
 
   /**
    * Tests the expected parsed data, counter values, and column titles on the basic csv test file.
