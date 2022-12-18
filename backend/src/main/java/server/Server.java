@@ -27,7 +27,7 @@ import user.UserFactory;
 public class Server {
   // constants to change users, songs, and firestore parameters
 
-  public static final boolean USING_MOCKS = false;
+  public static final boolean USING_MOCKS = true;
   public static final String MOCK_USERS_FILEPATH = "data/mock-users.csv";
   public static final String MOCK_SONGS_FILEPATH = "data/songs.csv";
   public static final String FIRESTORE_JSON_FILEPATH = "private/tunedIn_firebase.json";

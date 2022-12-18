@@ -303,8 +303,10 @@ public class User implements KdTreeNode, Cloneable {
   }
 
   public String[] findConnections(KdTree<Song> songTree) {
+    HashSet<Song> excluded = new HashSet<Song>();
+    excluded.add(this.getCurrentSong());
     PriorityQueue<Song> connectionsQueue = songTree.kdTreeSearch(
-        "neighbors", 5, this.getCurrentSong(), new DistanceSorter(this.getCurrentSong()), new HashSet<>());
+        "neighbors", 5, this.getCurrentSong(), new DistanceSorter(this.getCurrentSong()), excluded);
     String[] connections = new String[5];
     int i = 0;
     for (Song song : connectionsQueue) {
@@ -315,8 +317,10 @@ public class User implements KdTreeNode, Cloneable {
   }
 
   public String[] findHistoricalConnections(KdTree<User> userTree) {
+    HashSet<User> excluded = new HashSet<User>();
+    excluded.add(this);
     PriorityQueue<User> connectionsQueue = userTree.kdTreeSearch(
-        "neighbors", 5, this, new DistanceSorter(this), new HashSet<>());
+        "neighbors", 5, this, new DistanceSorter(this), excluded);
     String[] connections = new String[5];
     int i = 0;
     for (User user : connectionsQueue) {
