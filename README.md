@@ -30,15 +30,21 @@ Our app will allow anybody to view the most recent TunedIn of other users. They 
 
 Our app will group users with similar music preferences (based on those six metrics) together by calculating a general distance metric between any two users based on their present and historical music data. Finally, our app will provide a beautiful data visualization for our users, displaying each user as a bubble in a vast floating landscape of other users, allowing the user to sort the bubbles (visual clustering) by any category they wish, as well as click on individual bubbles to view the users themselves and their most recent activity. Our project will also form an overall sense of community amongst users via this musical exchange, and hopefully help people discover others who either share their tastes, or enjoy something completely different.
 
-
-
 ## Design Choices:
+
+There is a frontend and a backend. There is firebase.
 
 ## Errors/Bugs:
 
 At this time, there are no known bugs with our program.
 
 ## Tests:
+
+### Running tests:
+
+For the backend, enter the backend folder and type `mvn test` in the terminal to run the tests.
+
+For the frontend, enter the frontend folder and type `npm test` in the terminal to run the tests.
 
 ## How-To:
 
@@ -51,9 +57,10 @@ is locally hosted. There are many different endpoints, some listed below:
 Examples:
 
 ```
+### Running the frontend server:
 
-### Running tests:
+Navigate to the frontend directory. Ensure that all dependencies are installed by running `npm install`. Ensure that the backend is already running on `localhost:3232`.Then, run `npm start` to start the frontend server on `localhost:3000`.
 
-For the backend, enter the backend folder and type `mvn test` in the terminal to run the tests.
 
-For the frontend, enter the frontend folder and type `npm test` in the terminal to run the tests.
+## Sources:
+
