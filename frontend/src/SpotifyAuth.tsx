@@ -26,6 +26,8 @@ interface SpotifyLoginButtonProps {
   setUser2: Function;
   spotifyLinked: boolean;
   setspotifyLinked: Function;
+  setusersloaded: Function;
+  setfetchingusers: Function
 }
 
 const app = initializeApp(firebaseConfig);
@@ -33,7 +35,7 @@ const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 
 export const SpotifyLoginButton: React.FC<SpotifyLoginButtonProps> = (parameters) => {
-  const { clientId, redirectUri, clientSecret, setUser2, spotifyLinked, setspotifyLinked} = parameters;
+  const { clientId, redirectUri, clientSecret, setUser2, spotifyLinked, setspotifyLinked, setusersloaded, setfetchingusers} = parameters;
   
   let refreshToken: string = "";
   let accessToken: string = "";
@@ -46,9 +48,9 @@ export const SpotifyLoginButton: React.FC<SpotifyLoginButtonProps> = (parameters
   };
 
   const onSuccess = async (refreshToken: string, accessToken: string) => {
-    // console.log("OH MY GODDDD")
-    // console.log(accessToken)
-    // console.log(refreshToken)
+    console.log("new user registered with access token " + accessToken + " and refresh token " + refreshToken)
+    setfetchingusers(false)
+    setusersloaded(false)
   };
 
   const onFailure = (error: string) => {

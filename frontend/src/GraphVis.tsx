@@ -1,10 +1,5 @@
 import { stringify } from 'querystring';
 import React, { useState, Dispatch, SetStateAction, useEffect, useCallback } from 'react';
-import { isTupleTypeNode } from 'typescript';
-import Slider from './Slider'
-import ReactSlider from "react-slider";
-import * as d3 from 'd3';
-import ReactDOM from 'react-dom';
 import { range, svg } from 'd3';
 import { isVisible } from '@testing-library/user-event/dist/utils';
 import { updateuserdata } from './backendhandler';
@@ -12,56 +7,7 @@ import { firebaseConfig } from './private/firebaseconfig';
 import { getFirestore } from 'firebase/firestore';
 import { initializeApp } from 'firebase/app';
 import { domainToASCII } from 'url';
-
-//NOTE: login function is currently set to be permanently logged in for the sake of testing and because
-//firebase is down.
-
-//For whatever reason, this is causing us a lot of problems. Trying to create a map gives us a warning that the map items could be null, which is a huge
-//pain in the ass. Try doing it with arrays instead.
-// Point data format: ID/key, cx, cy
-// Have a separate map from ID/key to energy, something, something else, something else, etc.
-//[DONE]: We need to be able to render a whole ton of circles.
-//[DONE]: Add the actual parameters we want
-//[DONE]: Change background color
-//[DONE]: Add camera controls
-//[DONE]: Make button fade in dynamically
-//[DONE]: Make the sidebar change when you zoom in
-//[DONE]: Add number displays in the sidebar
-//[DONE]: Make a pretty logo and slap it in
-//[DONE]: Add the current user
-//[DONE]: Add matches and matches navigation
-//[DONE]: Add variables for everything we're actually going to use
-//[DONE]: Account for when the google user is not logged in but the spotify is already linked
-//[DONE]: Make google thing vanish after you've logged in
-//[DONE]: Make the website actually look the way we want it to
-//[DONE]: FIX THE INFINITE LOOP PLEASE
-//[DONE]: make a button to change the sorting parameter!
-
-//FRONTEND TODO:
-//TODO: Aria label the heck out of everything
-//TODO: Re-render users once you've logged in fully!
-//TODO: Turn off the user outline circles when you aren't logged in
-//TODO: Add a pretty gradient bar on the side to denote how things are being sorted from bottom to top
-//TODO: CLEAN UP AND TEST
-//TODO: Make it so that users and everything up reloads when you log in for the first time
-
-//INTEGRATION TODO:
-//TODO: Set these when you log in!
-//TODO: Fix long title formatting!
-//TODO: Get frontend to communicate with backend
-//TODO: Make current user index update when you log in! Edit the initdist functions
-
-// A map from a user's number/index to the numerical data of their last listened to last song, in the following order:
-// Acousticness, Danceability, Energy, Instrumentalness, Speechiness, Valence
-export let usersongparams: Map<number, Array<number>> = new Map<number, Array<number>>();
-
-// A map from a user's number/index to their string data, in the following order:
-// Username, name of most recently listened to song, artist of most recently listened to song
-export let userdatastrings: Map<number, Array<string>> = new Map<number, Array<string>>();
-
-// The current user's top 5 user matches, in the following order:
-// Current top 5 matches, All time top 5 matches
-export let matchesdata: Map<number, Array<Array<number>>> = new Map<number, Array<Array<number>>>();
+import { match } from 'assert';
 
 // Number of mocked users to display. Can go up to 1000 without significant slowdowns.
 let maxnum = 150;
@@ -81,7 +27,7 @@ let repulsedist = 40;
 
 // A map indexing the visual sorting method of the bubbles on the page with a number key. 
 // Currently we only use a linear sort from top to bottom for the sake of visual clarity.
-const sortstyle: Map<number, (inpt: Array<number>, SortParameter: number, loggedin: boolean, curruser: number) => Array<number>> = new Map<number, (inpt: Array<number>) => Array<number>>();
+const sortstyle: Map<number, (inpt: Array<number>, SortParameter: number, loggedin: boolean, curruser: number, usersongparams: Map<number, Array<number>>) => Array<number>> = new Map<number, (inpt: Array<number>) => Array<number>>();
 
 // A map indexing the name of the visual sorting method with a number key. We use this primarily for dev tools
 const sortname: Map<number, string> = new Map<number, string>();
@@ -125,20 +71,6 @@ export function genrandomstring(length: number): string{
     return result;
 }
 
-// A function takes maxnum and randomly generates that many user coordinates across our screen.
-// The general template for a set of "user coordinates" is as follows:
-// [<user index number>, <user x position>, <user y position>]
-// The x and y position are used and updated to make the user bubbles move across the screen,
-// while the user index is used to identify each bubble with an actual user's data
-export function initdist(num: number): Array<Array<number>>{
-    let returnarr: Array<Array<number>> = new Array<Array<number>>();
-    for(let i = 0; i < num; i++){
-        // Add a randomly generated user coordinate to the stack
-        returnarr.push([i,1500*(Math.random()-0.5),600*(Math.random()-0.5)])
-    }
-    return returnarr;
-}
-
 // A function that takes in a coordinate array and returns its magnitude from the origin.
 // Useful later on when calculating attractive and repulsive distance between bubbles and their targets.
 export function mag(userarr: Array<number>): number{
@@ -165,12 +97,12 @@ export function sech(x: number): number{
 // In actuality/nuances: this function doesn't directly take in the song data value, it takes in the index that 
 // points to the value of that point's song data value and uses that to get the data value.
 // Result: points with low data values go to the middle of the screen, while points with higher data values remain further away
-export function radsort(pt: Array<number>, SortParameterIndex: number): Array<number>{
+export function radsort(pt: Array<number>, SortParameterIndex: number, loggedin: boolean, curruser: number, usersongparams: Map<number, Array<number>>): Array<number>{
     let scalar: number = 0;
         if(mag(pt) != 0){
             // Here, we scale up our point to be 800 times further away from the origin to fit the screen dimensions.
             // This is necessary because our song data value is always within the range [0,1], and a unit circle is tiny onscreen.
-            scalar = 800*getdata(pt[0],SortParameterIndex)/mag(pt);
+            scalar = 800*getdata(pt[0],SortParameterIndex, usersongparams)/mag(pt);
         }
         return [pt[0], scalar*pt[1], scalar*pt[2]]
 }
@@ -181,7 +113,7 @@ export function radsort(pt: Array<number>, SortParameterIndex: number): Array<nu
 // We also make sure that the points' x values don't accidentally go off screen, since all points repulse each other.
 // Finally, if a user is logged in and this is their point, we make sure that it is centered horizontally so it is easier to see.
 // Result: points with low data values sit lower on the screen, while points with higher data values sit higher on the screen.
-export function linsort(pt: Array<number>, SortParameterIndex: number, loggedin: boolean, curruser: number): Array<number>{
+export function linsort(pt: Array<number>, SortParameterIndex: number, loggedin: boolean, curruser: number, usersongparams: Map<number, Array<number>>): Array<number>{
     // Maximum horizontal distance a point is allowed to get from the middle of the screen. 
     // Thought about making this interactively scale with the window size but ultimately decided 
     // it wasn't worth creating an entire React myRef variable for something this subtle.
@@ -201,12 +133,12 @@ export function linsort(pt: Array<number>, SortParameterIndex: number, loggedin:
     if(loggedin && pt[0] == curruser){
         x = 1;
     }
-    return [pt[0], x,300-(600*getdata(pt[0],SortParameterIndex))] //trying to do it with 0 y instead of pt[2]
+    return [pt[0], x,300-(600*getdata(pt[0],SortParameterIndex, usersongparams))] //trying to do it with 0 y instead of pt[2]
 }
 
 // Simple boilerplate function for fetching the paramindex'th song data value of the userindex'th user.
 // Returns NaN if no entry exists for that key
-export function getdata(userindex: number, paramindex: number): number{
+export function getdata(userindex: number, paramindex: number, usersongparams: Map<number, Array<number>>): number{
     if(usersongparams.get(userindex) != undefined){
         let paramarr: number[] | undefined = usersongparams.get(userindex)
         if(paramarr){
@@ -218,7 +150,7 @@ export function getdata(userindex: number, paramindex: number): number{
 
 // Simple boilerplate function for fetching the stringdex'th string data value of the userindex'th user.
 // Returns 'DATA NOT FOUND' if no entry exists for that key
-export function getdatastrings(userindex: number, stringdex: number): string{
+export function getdatastrings(userindex: number, stringdex: number, userdatastrings: Map<number, Array<string>>): string{
     let datarr: string[] | undefined = userdatastrings.get(userindex)
         if(datarr){
             return datarr[stringdex];
@@ -229,7 +161,7 @@ export function getdatastrings(userindex: number, stringdex: number): string{
 // Simple boilerplate function for fetching the matchindex'th match of the userindex'th user.
 // This will either be out of all time top 5 matches, or current top 5 matches, depending on the "time" boolean.
 // Returns NaN if no entry exists for any of the requested values.
-export function getdatamatches(userindex: number, time: boolean, matchindex: number):  number{
+export function getdatamatches(userindex: number, time: boolean, matchindex: number, matchesdata: Map<number, Array<Array<number>>>):  number{
     let timeindex = 0;
     if(time){
         timeindex = 1;
@@ -266,7 +198,7 @@ export function getparamname(index: number): string{
 }
 
 // Boilerplate function to get the sorting method function given its index
-export function getsortmethod(index: number): ((inpt: Array<number>, SortParameter: number, loggedin: boolean, curruser: number)=> Array<number>){
+export function getsortmethod(index: number): ((inpt: Array<number>, SortParameter: number, loggedin: boolean, curruser: number, usersongparams: Map<number, Array<number>>)=> Array<number>){
     let returnfunc = sortstyle.get(index)
     if(returnfunc != undefined){
         return returnfunc
@@ -293,9 +225,9 @@ export function repulse(p1: Array<number>, p2: Array<number>): Array<number>{
 // Given a single point, a sorting parameter, a list of all points onscreen, a function to sort by, and a scaling factor for speed, 
 // this function calculates the attractive force between the point and its target(determined by the sorting function), as well
 // as all of the repulsive forces acting on it. Adds these vectors together and spits out the point's new position.
-export function towardsort(pt: Array<number>, SortParameter: number, allpts: Array<Array<number>>, sortfunc: (inputarr: Array<number>, SortParameter: number, loggedin: boolean, curruser: number) => Array<number>, speed: number, loggedin: boolean, curruser: number): Array<number>{
+export function towardsort(pt: Array<number>, SortParameter: number, allpts: Array<Array<number>>, sortfunc: (inputarr: Array<number>, SortParameter: number, loggedin: boolean, curruser: number, usersongparams: Map<number, Array<number>>) => Array<number>, speed: number, loggedin: boolean, curruser: number, usersongparams: Map<number, Array<number>>): Array<number>{
     // Get the coordinates of the point we want
-    const targpt: Array<number> = sortfunc(pt, SortParameter, loggedin, curruser)
+    const targpt: Array<number> = sortfunc(pt, SortParameter, loggedin, curruser, usersongparams)
     // Make a vector from the points' distances
     const vector: Array<number> = [pt[0],targpt[1]-pt[1],targpt[2]-pt[2]]
     let scalar: number = 0
@@ -328,8 +260,8 @@ export function towardsort(pt: Array<number>, SortParameter: number, allpts: Arr
 }
 
 // Take all points onscreen and move them by one step based on their attractive and repulsive forces
-export function sortshift(pts: Array<Array<number>>, SortParameter: number, sortfunc: (inputarr: Array<number>, SortParameter: number, loggedin: boolean, curruser: number) => Array<number>, speed: number, loggedin: boolean, curruser: number):Array<Array<number>>{
-    return pts.map((pt)=>towardsort(pt,SortParameter, pts, sortfunc, speed, loggedin, curruser))
+export function sortshift(pts: Array<Array<number>>, SortParameter: number, sortfunc: ((inputarr: Array<number>, SortParameter: number, loggedin: boolean, curruser: number, usersongparams: Map<number, Array<number>>) => Array<number>), speed: number, loggedin: boolean, curruser: number, usersongparams: Map<number, Array<number>>):Array<Array<number>>{
+    return pts.map((pt)=>towardsort(pt,SortParameter, pts, sortfunc, speed, loggedin, curruser, usersongparams))
 }
 
 // Simple function for returning the stroke color of the circles surrounding a selected user based on 
@@ -375,7 +307,7 @@ export function updatecamcenter(campt: number[], targpt: number[]): number[]{
 
 // Super simple function that takes in two points and a boolean and returns the first if the boolean is true, second if false.
 // Used for setting the target of our camera based on if a point is selected or not.
-function camtarg(A: number[],B: number[],selected: boolean): number[]{
+export function camtarg(A: number[],B: number[],selected: boolean): number[]{
     if (selected){
         return A;
     }
@@ -385,7 +317,7 @@ function camtarg(A: number[],B: number[],selected: boolean): number[]{
 // Super simple function for returning a 1 or 0 based on a boolean. 
 // Annoying but necessary for setting the transform/display mode of our sidebar elements when we
 // select and unselect a user.
-function slidenum(bool: boolean){
+export function slidenum(bool: boolean){
     if (bool){
         return 1
     }
@@ -425,30 +357,7 @@ function dots(Timer: number): string{
     return "..."
 }
 
-//SETUP ORDER:
-//Run getsongfeatures once to load everyone's songs
-//Get a hashmap of user IDs to numbers
-//Enter a for loop for each user ID in the set, populate local hashmaps with the returned data
-//Get the current user's matches[this can really go anywhere in the list]
 
-// fetch("http://localhost:3232/load-song-features")
-
-//This returns a promise that will only resolve when all users' data have been updated
-async function setuserdata(userIDs:Array<string>, googleuserid: string): Promise<void[]>{
-    // console.log(googleuserid)
-    const range: Array<number> = Array.from(Array(userIDs.length).keys())
-    const promises: Array<Promise<void>> = range.map((i:number)=>{
-        return updateuserdata(i, userIDs,usersongparams,userdatastrings,matchesdata)})
-    return Promise.all(promises)
-}
-
-function getcurruserindex(userIDs: Array<string>,googleuser: string): number{
-    if(userIDs.includes(googleuser)){
-        return userIDs.indexOf(googleuser)
-    }
-    // console.log(userIDs + " does not contain " + googleuser)
-    return 0;
-}
 
 // Our main rendering function. Returns everything below the header in our app.
 // Takes in the current google user ID and whether or not spotify is linked, as these affect which elements are rendered.
@@ -470,28 +379,31 @@ function getcurruserindex(userIDs: Array<string>,googleuser: string): number{
 //          -On-screen buttons(change parameter to sort by, zoom out)
 //      -Developer tool buttons
 
-export default function GraphVis(googleuser: string, spotifylinked: boolean, usersloaded: boolean, setusersloaded: ((arg: boolean)=>void)) {
+// A map from a user's number/index to the numerical data of their last listened to last song, in the following order:
+// Acousticness, Danceability, Energy, Instrumentalness, Speechiness, Valence
+// export let usersongparams: Map<number, Array<number>> = new Map<number, Array<number>>();
+
+// A map from a user's number/index to their string data, in the following order:
+// Username, name of most recently listened to song, artist of most recently listened to song
+// export let userdatastrings: Map<number, Array<string>> = new Map<number, Array<string>>();
+
+// The current user's top 5 user matches, in the following order:
+// Current top 5 matches, All time top 5 matches
+// export let matchesdata: Map<number, Array<Array<number>>> = new Map<number, Array<Array<number>>>();
+
+export default function GraphVis(CurrentGoogleUser: string, spotifyLinked: boolean, usersloaded: boolean, fetchingusers: boolean, 
+    usersongparams: Map<number, Array<number>>, userdatastrings: Map<number, Array<string>>,
+    matchesdata: Map<number,Array<Array<number>>>, Timer: number, userIDs: Array<string>, 
+    CircleData: number[][], SortParameter: number, SortIndex: number, camcenter: number[], 
+    SelectIndex: number, zoomval: number, zoomed: boolean, alltime: boolean, curruser: number, 
+    Setalltime: ((bool: boolean)=>void), setSelectIndex: ((num: number)=>void), Setzoomed: ((bool: boolean)=> void), 
+    setSortParameter: ((num: number)=>void), setSortIndex: ((num: number)=>void)) {
+
     // All of our wonderful react state variables
-    const [CircleData, setCircleData] = useState<number[][]>([]);
-    const [SelectIndex, setSelectIndex] = useState<number>(0);
-    const [Timer, setTimer] = useState<number>(0);
-    const [SortIndex, setSortIndex] = useState<number>(1);
-    const [SortParameter, setSortParameter] = useState<number>(0);
     const [ShowCircLabels, SetShowCircLabels] = useState<boolean>(true);
-    const [camcenter, Setcamcenter] = useState<number[]>([1,0,0]); //scale, position x, position y
-    const [zoomed, Setzoomed] = useState<boolean>(false);
-    const [zoomval, Setzoomval] = useState<number>(0);
-    const [alltime, Setalltime] = useState<boolean>(false);
-    const SELECTEDUSERSONGSTRING: string = getdatastrings(SelectIndex,0) + " is listening to " + getdatastrings(SelectIndex,1) + "by " + getdatastrings(SelectIndex,2)
+    const SELECTEDUSERSONGSTRING: string = getdatastrings(SelectIndex,0, userdatastrings) + " is listening to " + getdatastrings(SelectIndex,1, userdatastrings) + "by " + getdatastrings(SelectIndex,2, userdatastrings)
 
-    // Current user index. Currently set to default value of 0.
-    const [curruser, Setcurruser] = useState<number>(0);
-
-    const [fetchingusers, setfetchingusers] = useState<boolean>(false);
-    const [userIDs, setuserIDs] = useState<Array<string>>([]);
     //Ok there's some weird stuff going on with userIDs now
-
-    const Speed = 10;
 
     //What is the best way to go about this? You will probably have to set usersloaded and fetchingusers to be false again
     //The question is, where do we do this? And how do we make sure it doesn't happen twice in a row?
@@ -499,44 +411,6 @@ export default function GraphVis(googleuser: string, spotifylinked: boolean, use
     //
 
     // Main useEffect loop! Had to use a setInterval to stop React from reaching its max update depth and freaking out.
-    useEffect(() => {
-        const interval = setInterval(() => {
-            setTimer((Timer + 0.003) % 1)
-            if(!usersloaded){
-                if (!fetchingusers){
-                    // console.log("we need to get stuff")
-                    setfetchingusers(true)
-                    fetch("http://localhost:3232/get-all-user-ids").then((respjson)=>{
-                        respjson.json().then((respobj)=>{
-                            const ids = respobj.ids
-                            setuserIDs(ids)
-                            setCircleData(initdist(ids.length))
-                            fetch("http://localhost:3232/load-song-features").then(()=>{
-                                fetch("http://localhost:3232/load-connections").then(()=>{
-                                    setuserdata(ids, googleuser).then(()=>
-                                    {
-                                        setusersloaded(true)
-                                    })
-                                })
-                            })
-                        })
-                    })
-                }
-            }
-            if(usersloaded){
-                // console.log("finding user " + googleuser + " in " + userIDs)
-            Setcurruser(getcurruserindex(userIDs,googleuser))
-            setCircleData(sortshift(CircleData, SortParameter, getsortmethod(SortIndex), Speed, spotifylinked, curruser))
-            Setcamcenter(updatecamcenter(camcenter,
-            camtarg([4,CircleData[SelectIndex][1],CircleData[SelectIndex][2]],
-                 [1,0,0],zoomed)))
-             Setzoomval(1-((camcenter[0]-2)/2))
-            document.documentElement.style.setProperty('--sidebar-mode', zoomval.toString());
-            document.documentElement.style.setProperty('--timeslidermode', slidenum(alltime).toString());
-            }
-          }, 10);
-           return () => clearInterval(interval);
-    }, [Timer])
 
     // Main return statement
     if (!usersloaded || userIDs.length == 0){
@@ -567,11 +441,11 @@ export default function GraphVis(googleuser: string, spotifylinked: boolean, use
         // console.log(CircleData)
         return <div key = "wrapper" className = "wrapper">
                 {/* Sidebar background */}
-                <div key = "sidebardiv" className = {sidebarloggedin(googleuser,spotifylinked)}>
+                <div key = "sidebardiv" className = {sidebarloggedin(CurrentGoogleUser,spotifyLinked)}>
                     {/* defaultbar, aka zoomed out sidebar panel */}
-                    <div key = "defaultbar" className = {fullyloggedin(spotifylinked,"defaultbar")} aria-label="user sidebar for displaying your current matches">
-                        <h3 aria-label={"Welcome, " + getdatastrings(curruser,0) + "!"}>
-                            {"Welcome, " + getdatastrings(curruser,0) + "!"}
+                    <div key = "defaultbar" className = {fullyloggedin(spotifyLinked,"defaultbar")} aria-label="user sidebar for displaying your current matches">
+                        <h3 aria-label={"Welcome, " + getdatastrings(curruser,0, userdatastrings) + "!"}>
+                            {"Welcome, " + getdatastrings(curruser,0, userdatastrings) + "!"}
                             </h3>
                         <h2 aria-label="Who's on your wavelength?">Who's on your wavelength?</h2>
                         {/* lovely wave logo made in Desmos */}
@@ -635,7 +509,7 @@ export default function GraphVis(googleuser: string, spotifylinked: boolean, use
                                     ry="5"
                                     opacity = {(zoomval).toString()}
                                     onClick= {() => {  
-                                        setSelectIndex(getdatamatches(SelectIndex, alltime, matchindex))
+                                        setSelectIndex(getdatamatches(SelectIndex, alltime, matchindex, matchesdata))
                                         Setzoomed(true)
                                     }}>
                                     </rect>
@@ -648,12 +522,12 @@ export default function GraphVis(googleuser: string, spotifylinked: boolean, use
                                     y= {(75+70*x2).toString()}
                                     opacity = {(zoomval).toString()}
                                     onClick= {() => {  
-                                        setSelectIndex(getdatamatches(SelectIndex, alltime, matchindex))
+                                        setSelectIndex(getdatamatches(SelectIndex, alltime, matchindex,matchesdata))
                                         Setzoomed(true)
                                     }}
-                                    aria-label={"Match " + x2 + ": " + getdatastrings(getdatamatches(SelectIndex, alltime, matchindex),0)}
+                                    aria-label={"Match " + x2 + ": " + getdatastrings(getdatamatches(SelectIndex, alltime, matchindex, matchesdata),0, userdatastrings)}
                                     >
-                                    {getdatastrings(getdatamatches(SelectIndex, alltime, matchindex),0)}
+                                    {getdatastrings(getdatamatches(SelectIndex, alltime, matchindex, matchesdata),0, userdatastrings)}
                                     </text>
                                 })}
                             </svg>
@@ -661,10 +535,10 @@ export default function GraphVis(googleuser: string, spotifylinked: boolean, use
                     {/* userbar, aka zoomed in sidebar panel */}  
                     <div key = "userbar" className={fullyloggedin(zoomed,"userbar")} aria-label = "sidebar for viewing a selected user's current song statistics">
                         {/* main song string info */}
-                        <p aria-label={SELECTEDUSERSONGSTRING}>{getdatastrings(SelectIndex,0)}</p>
+                        <p aria-label={SELECTEDUSERSONGSTRING}>{getdatastrings(SelectIndex,0, userdatastrings)}</p>
                         <p aria-label={SELECTEDUSERSONGSTRING}>{"is listening to"}</p>
-                        <h2 aria-label={SELECTEDUSERSONGSTRING}>{getdatastrings(SelectIndex,1)}</h2>
-                        <h3 aria-label={SELECTEDUSERSONGSTRING}>{"by " + getdatastrings(SelectIndex,2)}</h3>
+                        <h2 aria-label={SELECTEDUSERSONGSTRING}>{getdatastrings(SelectIndex,1, userdatastrings)}</h2>
+                        <h3 aria-label={SELECTEDUSERSONGSTRING}>{"by " + getdatastrings(SelectIndex,2, userdatastrings)}</h3>
                         {/* song data value display */}
                         <svg id="paramdisplay" className = "paramdisplay" width = "100%" height = "500">
                             {[0,1,2,3,4,5].map((x)=>{
@@ -674,7 +548,7 @@ export default function GraphVis(googleuser: string, spotifylinked: boolean, use
                                 fill = {"hsla(1,0%,100%," + (1-zoomval).toString() + ")"}
                                 strokeOpacity = {(1-zoomval).toString()}
                                 aria-label = {"The current " + getparamname(x)+ " value of the song is " + 
-                                Math.round(getdata(SelectIndex,x)*100) + "percent"}
+                                Math.round(getdata(SelectIndex,x, usersongparams)*100) + "percent"}
                                 />
                             })}
                             {[0,1,2,3,4,5].map((x)=>{
@@ -682,26 +556,26 @@ export default function GraphVis(googleuser: string, spotifylinked: boolean, use
                                 key = {"percentagearc_"+x.toString()}
                                 d={"M 225 " + (15 + 70*x).toString() + " a 25 25 0 0 1 0 50 a 25 25 0 0 1 0 -50"}
                                 fill="none"
-                                stroke={"hsla(" + 90*getdata(SelectIndex,x) + ", 100%, 40%, 1)"}
+                                stroke={"hsla(" + 90*getdata(SelectIndex,x, usersongparams) + ", 100%, 40%, 1)"}
                                 strokeWidth="5"
-                                strokeDasharray={getdata(SelectIndex,x)*157.079632679 + ", 157.079632679"}
+                                strokeDasharray={getdata(SelectIndex,x, usersongparams)*157.079632679 + ", 157.079632679"}
                                 opacity = {(1-zoomval).toString()}
                                 aria-label = {"The current " + getparamname(x)+ " value of the song is " + 
-                                Math.round(getdata(SelectIndex,x)*100) + "percent"}
+                                Math.round(getdata(SelectIndex,x, usersongparams)*100) + "percent"}
                                 />
                             })}
                             {[0,1,2,3,4,5].map((x)=>{
                                 return <text key = {"userdata_"+x.toString()}
                                 fontSize="18" x = "207" y = {45+70*x} opacity = {(1-zoomval).toString()}
                                 aria-label = {"The current " + getparamname(x)+ " value of the song is " + 
-                                Math.round(getdata(SelectIndex,x)*100) + "percent"}>
-                                    {Math.round(getdata(SelectIndex,x)*100) + "%"}</text>
+                                Math.round(getdata(SelectIndex,x, usersongparams)*100) + "percent"}>
+                                    {Math.round(getdata(SelectIndex,x, usersongparams)*100) + "%"}</text>
                             })}
                             {[0,1,2,3,4,5].map((x)=>{
                                 return <text key = {"parameterlabel_"+x.toString()}
                                 className = "whitetext" x= "20" y= {(50 + 70*x).toString()}
                                 aria-label = {"The current " + getparamname(x)+ " value of the song is " + 
-                                Math.round(getdata(SelectIndex,x)*100) + "percent"}> {getparamname(x)+":"} </text>
+                                Math.round(getdata(SelectIndex,x, usersongparams)*100) + "percent"}> {getparamname(x)+":"} </text>
                             })}
                         </svg>
                     </div>
@@ -711,7 +585,7 @@ export default function GraphVis(googleuser: string, spotifylinked: boolean, use
                  width="100%" height="600" >
                     {/* current user outline circles */}
                     {[0,1,2,3].map((num) => 
-                        {if (spotifylinked){
+                        {if (spotifyLinked){
                         return <circle 
                         key= {"usercircleoutline_"+num.toString()} 
                         cx= {camcenter[0]*(CircleData[curruser][1]-camcenter[1])+centerx} cy= {camcenter[0]*(CircleData[curruser][2]-camcenter[2])+300} 
@@ -731,7 +605,7 @@ export default function GraphVis(googleuser: string, spotifylinked: boolean, use
                         cx= {camcenter[0]*(CircleData[SelectIndex][1]-camcenter[1])+centerx} cy= {camcenter[0]*(CircleData[SelectIndex][2]-camcenter[2])+300} 
                         r={camcenter[0]*20 + 20 + 20*num + 10*Math.sin(0.1*CircleData[curruser][0]+tau*Timer)} 
                         fill="none"
-                        stroke = {renderstroke(zoomed,getdata(SelectIndex,SortParameter))}
+                        stroke = {renderstroke(zoomed,getdata(SelectIndex,SortParameter, usersongparams))}
                         strokeWidth = "2"
                         >
                         </circle>
@@ -747,7 +621,7 @@ export default function GraphVis(googleuser: string, spotifylinked: boolean, use
                         key= {entry[0]} 
                         className = {entry[0].toString()} 
                         cx= {camcenter[0]*(entry[1]-camcenter[1])+centerx} cy= {camcenter[0]*(entry[2]-camcenter[2])+300} 
-                        r={camcenter[0]*20 + 4*Math.sin(0.1*entry[0]+tau*Timer)} fill={"hsla(" + 200+90*getdata(entry[0],SortParameter) + ", 50%, 50%, 1)"}
+                        r={camcenter[0]*20 + 4*Math.sin(0.1*entry[0]+tau*Timer)} fill={"hsla(" + 200+90*getdata(entry[0],SortParameter, usersongparams) + ", 50%, 50%, 1)"}
                         stroke = "none"
                         strokeWidth = "5"
                         onClick= {() => {
@@ -772,7 +646,7 @@ export default function GraphVis(googleuser: string, spotifylinked: boolean, use
                             console.log("circle " + entry[0] + " clicked");
                             setSelectIndex(entry[0])
                         }} >
-                        {getdatastrings(entry[0],0)}</text>)}}
+                        {getdatastrings(entry[0],0, userdatastrings)}</text>)}}
                     )}
                     {/* button for changing the parameter we sort by */}
                     {<rect 
