@@ -41,5 +41,6 @@ Examples:
 
 ### Running tests:
 
-For the backend, enter the backend folder and type `mvn test` in the terminal to run the tests. 
+For the backend, enter the backend folder and type `mvn test` in the terminal to run the tests.
+
 For the frontend, enter the frontend folder and type `npm test` in the terminal to run the tests.
