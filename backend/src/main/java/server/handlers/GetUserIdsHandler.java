@@ -3,7 +3,7 @@ package server.handlers;
 import com.squareup.moshi.JsonAdapter;
 import com.squareup.moshi.Moshi;
 import java.util.List;
-import server.Database;
+import database.UserDatabase;
 import server.ErrBadJsonResponse;
 import spark.Request;
 import spark.Response;
@@ -11,16 +11,16 @@ import spark.Route;
 
   public class GetUserIdsHandler implements Route {
 
-    Database database;
+    UserDatabase database;
 
-    public GetUserIdsHandler(Database database) {
+    public GetUserIdsHandler(UserDatabase database) {
       this.database = database;
     }
 
     @Override
     public Object handle(Request request, Response response) throws Exception {
       try {
-        List<String> ids = this.database.retrieveAllUserIds();
+        List<String> ids = this.database.getAllUserIds();
         return new GetUserIdsSuccessResponse(ids).serialize();
       } catch (Exception e) {
         return new ErrBadJsonResponse();

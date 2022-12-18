@@ -1,13 +1,12 @@
 package server.handlers;
 
-import com.google.api.core.ApiFuture;
 import com.google.cloud.firestore.QueryDocumentSnapshot;
-import com.google.cloud.firestore.QuerySnapshot;
 import com.squareup.moshi.Moshi;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import kdtree.KdTree;
-import server.Database;
+import database.UserDatabase;
 import server.ErrBadJsonResponse;
 import spark.Request;
 import spark.Response;
@@ -17,14 +16,14 @@ import user.User;
 
 public class LoadConnectionsHandler implements Route {
 
-  private Database database;
+  private UserDatabase database;
 
   /**
    * Constructor for handler that takes in userDatabase to access nodes for kd-tree
    *
    * @param database - the database housing users to build tree
    */
-  public LoadConnectionsHandler(Database database) {
+  public LoadConnectionsHandler(UserDatabase database) {
     this.database = database;
   }
 
@@ -40,24 +39,28 @@ public class LoadConnectionsHandler implements Route {
   public Object handle(Request request, Response response) throws Exception {
     try {
       // build kd trees for finding nearest neighbors
-      this.database.loadNodeLists();
-      this.database.buildTrees();
-      KdTree<Song> songTree = this.database.getSongTree();
-      KdTree<User> userTree = this.database.getUserTree();
-      // asynchronously retrieve all documents
-      ApiFuture<QuerySnapshot> future = this.database.getFireStore().collection("users").get();
-      // future.get() blocks on response
-      List<QueryDocumentSnapshot> documents = future.get().getDocuments();
-      for (QueryDocumentSnapshot document : documents) {
-        if (document.getData().get("refreshToken") != null) {
-          User user = this.database.generateUser(document);
-          String[] connections = user.findConnections(songTree);
-          String[] historicalConnections = user.findHistoricalConnections(userTree);
-          user.setConnections(connections);
-          user.setHistoricalConnections(historicalConnections);
-          // update document using new user info
-          this.database.updateUser(user.getUserId(), user);
+      List<User> userNodes = new ArrayList<>();
+      List<Song> songNodes = new ArrayList<>();
+      List<String> userIds = this.database.getAllUserIds();
+      for (String userId : userIds) {
+        User user = this.database.getUser(userId);
+        if (user.getRefreshToken() != null) {
+          userNodes.add(user);
+          songNodes.add(user.getCurrentSong());
         }
+      }
+      KdTree<User> userTree = new KdTree<User>(userNodes, 1);
+      KdTree<Song> songTree = new KdTree<Song>(songNodes, 1);
+
+      for (User user : userNodes) {
+        // create new user object so user in tree does not get modified
+        User newUser = this.database.getUser(user.getUserId());
+        String[] connections = user.findConnections(songTree);
+        user.setConnections(connections);
+        String[] historicalConnections = user.findHistoricalConnections(userTree);
+        user.setHistoricalConnections(historicalConnections);
+        // update database using new user info
+        this.database.updateUser(user.getUserId(), user);
       }
       return new LoadConnectionsSuccessResponse().serialize();
     } catch (Exception e) {

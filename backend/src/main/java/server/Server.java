@@ -2,6 +2,7 @@ package server;
 
 import static spark.Spark.after;
 
+import database.FirestoreDatabase;
 import server.handlers.GetRandomSongsHandler;
 import server.handlers.GetUserHandler;
 import server.handlers.GetUserIdsHandler;
@@ -14,6 +15,10 @@ import spark.Spark;
  * various handlers.
  */
 public class Server {
+
+  public static final boolean USE_MOCKS = false;
+
+  // set up mock users local database
 
   /**
    * Creates a List of User objects from a csv of mock users.
@@ -72,7 +77,7 @@ public class Server {
 
     // mock Points for now to build kd trees
 
-    Database db = new Database("private/tunedIn_firebase.json", Constants.PROJECT_ID);
+    FirestoreDatabase db = new FirestoreDatabase("private/tunedIn_firebase.json", Constants.PROJECT_ID);
 
     // Setting up the handler for the GET endpoints
     Spark.get("load-song-features", new LoadSongFeaturesHandler(db));

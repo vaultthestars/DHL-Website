@@ -22,7 +22,7 @@ import se.michaelthelin.spotify.requests.authorization.authorization_code.Author
 import se.michaelthelin.spotify.requests.data.player.GetCurrentUsersRecentlyPlayedTracksRequest;
 import se.michaelthelin.spotify.requests.data.tracks.GetAudioFeaturesForTrackRequest;
 import server.Constants;
-import server.Database;
+import database.UserDatabase;
 import spark.Request;
 import spark.Response;
 import spark.Route;
@@ -31,9 +31,9 @@ import user.User;
 
 public class LoadSongFeaturesHandler implements Route {
 
-  private Database database;
+  private UserDatabase database;
 
-  public LoadSongFeaturesHandler(Database database) {
+  public LoadSongFeaturesHandler(UserDatabase database) {
     this.database = database;
   }
 
@@ -48,39 +48,35 @@ public class LoadSongFeaturesHandler implements Route {
     // features of current song
     // update song field of user object to contain new song object
 
-    ApiFuture<QuerySnapshot> future = this.database.getFireStore().collection("users").get();
-    // future.get() blocks on response
-    List<QueryDocumentSnapshot> documents = future.get().getDocuments();
-    for (QueryDocumentSnapshot document : documents) {
-      if (!document.getData().get("userId").equals("RaJCoYqztldz3vK5jxbFUkyKbAZ2")) {
-        System.out.println("..........USER UPDATE BEGUN..........");
-        User user = this.database.generateUser(document);
-        System.out.println("Pre-update: " + user);
-        String userId = user.getUserId();
-        System.out.println("userId: " + userId);
-        System.out.println("displayName: " + document.getData().get("displayName"));
-        // if spotify has been linked:
-        if (document.getData().get("refreshToken") != null) {
-          // get new song
-          Song newSong = user.getMostRecentSong();
-          user.setCurrentSong(newSong);
-          // add new song to averaged historical song point
-          user.updateHistoricalSongPoint(newSong.getPoint());
-          // update document in firebase to reflect new user info
-          this.database.updateUser(userId, user);
-          System.out.println("Post-update: " + user);
-        }
+    List<String> userIds = this.database.getAllUserIds();
+
+    for (String userId : userIds) {
+      System.out.println("..........USER UPDATE BEGUN..........");
+      System.out.println("userId: " + userId);
+      User user = this.database.getUser(userId);
+      System.out.println("Pre-update: " + user);
+      System.out.println("displayName: " + user.getDisplayName());
+      // if spotify has been linked:
+      if (user.hasRefreshToken()) {
+        System.out.println("Refresh token present: " + user.getRefreshToken());
+        // get new song
+        Song newSong = user.getMostRecentSong();
+        user.setCurrentSong(newSong);
+        // add new song to averaged historical song point
+        user.updateHistoricalSongPoint(newSong.getPoint());
+        // update document in firebase to reflect new user info
+        this.database.updateUser(userId, user);
+        System.out.println("Post-update: " + user);
         System.out.println("..........USER UPDATE FINISHED..........");
       }
     }
-
-    return new LoadSongFeaturesSuccessResponse().serialize();
+    return new LoadSongFeaturesSuccessResponse(userIds).serialize();
   }
 
-  public record LoadSongFeaturesSuccessResponse(String result) {
+  public record LoadSongFeaturesSuccessResponse(String result, List<String> updatedUsers) {
 
-    public LoadSongFeaturesSuccessResponse() {
-      this("success");
+    public LoadSongFeaturesSuccessResponse(List<String> updatedUsers) {
+      this("success", updatedUsers);
     }
 
     String serialize() {
