@@ -2,55 +2,59 @@ package server;
 
 import static spark.Spark.after;
 
+import csv.CSVParser;
+import csv.FactoryFailureException;
 import database.FirestoreDatabase;
-import server.handlers.GetRandomSongsHandler;
+import database.LocalDatabase;
+import database.UserDatabase;
+import java.io.FileReader;
+import java.io.IOException;
 import server.handlers.GetUserHandler;
 import server.handlers.GetUserIdsHandler;
 import server.handlers.LoadConnectionsHandler;
 import server.handlers.LoadSongFeaturesHandler;
+import song.Song;
+import song.SongFactory;
+import song.SongLibrary;
 import spark.Spark;
+import user.User;
+import user.UserFactory;
 
 /**
  * Top-level class to run our API server. Contains the main() method which starts Spark and runs the
  * various handlers.
  */
 public class Server {
+  // constants to change users, songs, and firestore parameters
 
-  public static final boolean USE_MOCKS = false;
-
-  // set up mock users local database
+  public static final boolean USING_MOCKS = false;
+  public static final String MOCK_USERS_FILEPATH = "data/mock-users.csv";
+  public static final String MOCK_SONGS_FILEPATH = "data/songs.csv";
+  public static final String FIRESTORE_JSON_FILEPATH = "private/tunedIn_firebase.json";
+  public static final String FIRESTORE_PROJECT_ID = Constants.PROJECT_ID;
 
   /**
-   * Creates a List of User objects from a csv of mock users.
+   * Creates local database to run server using locally stored mock users and songs.
    *
-   * @return a List of Users
+   * @return a local database
    */
-  //  public static List<User> generateMockUsers() {
-  //    try {
-  //      CSVParser<User> userCSVParser =
-  //          new CSVParser<User>(new FileReader("data/mockUsers.csv"), new UserFactory());
-  //      return userCSVParser.getParsedData();
-  //    } catch (IOException | FactoryFailureException e) {
-  //      throw new RuntimeException(e);
-  //    }
-  //  }
+  public static LocalDatabase createLocalDatabase() {
+    try {
+      CSVParser<Song> songCSVParser = new CSVParser<>(new FileReader(MOCK_SONGS_FILEPATH), new SongFactory());
+      SongLibrary songLibrary = new SongLibrary(songCSVParser);
 
-  //  /**
-  //   * Registers users from a list in the user database
-  //   *
-  //   * @param userDatabase - the user database to update
-  //   * @param users - the list of users to register
-  //   */
-  //  public static void registerUsers(UserDatabase userDatabase, List<User> users) {
-  //    for (User user : users) {
-  //      userDatabase.register(user);
-  //    }
-  //  }
+      CSVParser<User> userCSVParser = new CSVParser<>(
+          new FileReader(MOCK_USERS_FILEPATH), new UserFactory(songLibrary));
+
+      return new LocalDatabase(userCSVParser.getParsedData());
+    } catch (IOException | FactoryFailureException e) {
+      e.printStackTrace();
+      throw new RuntimeException(e);
+    }
+  }
 
   public static void main(String[] args) {
     Spark.port(3232);
-    //    UserDatabase userDatabase = new UserDatabase();
-    //    registerUsers(userDatabase, generateMockUsers());
 
     /*
        Setting CORS headers to allow cross-origin requests from the client; this is necessary for the client to
@@ -75,9 +79,13 @@ public class Server {
           response.header("Access-Control-Allow-Methods", "*");
         });
 
-    // mock Points for now to build kd trees
-
-    FirestoreDatabase db = new FirestoreDatabase("private/tunedIn_firebase.json", Constants.PROJECT_ID);
+    // instantiate database
+    UserDatabase db;
+    if (USING_MOCKS) {
+      db = createLocalDatabase();
+    } else {
+      db = new FirestoreDatabase(FIRESTORE_JSON_FILEPATH, FIRESTORE_PROJECT_ID);
+    }
 
     // Setting up the handler for the GET endpoints
     Spark.get("load-song-features", new LoadSongFeaturesHandler(db));
@@ -85,7 +93,7 @@ public class Server {
     Spark.get("get-user", new GetUserHandler(db));
     Spark.get("get-all-user-ids", new GetUserIdsHandler(db));
     // just for generating mock songs to store in songs.csv
-    Spark.get("get-random-songs", new GetRandomSongsHandler());
+    // Spark.get("get-random-songs", new GetRandomSongsHandler());
 
     Spark.init();
     Spark.awaitInitialization();

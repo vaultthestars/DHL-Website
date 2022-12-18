@@ -1,4 +1,4 @@
-package user;
+package song;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -15,6 +15,31 @@ public class Song implements KdTreeNode {
   private double[] features;
   private int dimension;
 
+  /**
+   * Constructor.
+   *
+   * @param title - title of the song
+   * @param id - track id for Spotify API
+   * @param artists - list of artists that perform the song
+   * @param features - array of doubles representing six audio analysis features
+   */
+  public Song(String title, String id, List<String> artists, double[] features) {
+    this.userId = "";
+    this.title = title;
+    this.id = id;
+    this.artists = artists;
+    this.features = features;
+    this.dimension = features.length;
+  }
+  /**
+   * Constructor with userId (for building kd-tree & identifying user associated with song).
+   *
+   * @param userId - the userId associated with the song
+   * @param title - title of the song
+   * @param id - track id for Spotify API
+   * @param artists - list of artists that perform the song
+   * @param features - array of doubles representing six audio analysis features
+   */
   public Song(String userId, String title, String id, List<String> artists, double[] features) {
     this.userId = userId;
     this.title = title;

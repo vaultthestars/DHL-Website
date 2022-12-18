@@ -2,29 +2,28 @@ package server.handlers;
 
 import com.squareup.moshi.JsonAdapter;
 import com.squareup.moshi.Moshi;
-import java.io.BufferedWriter;
-import java.io.FileNotFoundException;
-import java.io.FileOutputStream;
-import java.io.IOException;
-import java.io.OutputStreamWriter;
-import java.io.UnsupportedEncodingException;
 import java.util.ArrayList;
 import java.util.List;
-import server.handlers.GetUserHandler.GetUserSuccessResponse;
-import song.RandomSongGenerator;
+import song.RandomSpotifySongSearch;
 import spark.Request;
 import spark.Response;
 import spark.Route;
-import user.Song;
+import song.Song;
 
 public class GetRandomSongsHandler implements Route {
 
   @Override
   public Object handle(Request request, Response response) throws Exception {
     String numSongs = request.queryParams("n");
+    String countryCode = request.queryParams("country-code");
     int n = Integer.parseInt(numSongs);
 
-    RandomSongGenerator generator = new RandomSongGenerator();
+    RandomSpotifySongSearch generator;
+    if (countryCode != null) {
+      generator = new RandomSpotifySongSearch(countryCode);
+    } else {
+      generator = new RandomSpotifySongSearch();
+    }
     List<Song> songs = new ArrayList<>();
     for (int i = 0; i < n; i++) {
       Song song = generator.getRandomSong();
@@ -56,9 +55,9 @@ public class GetRandomSongsHandler implements Route {
     for (Song song : songs) {
       StringBuffer oneLine = new StringBuffer();
       oneLine.append(song.getTitle());
-      oneLine.append(CSV_SEPARATOR);
+      oneLine.append(this.CSV_SEPARATOR);
       oneLine.append(song.getId());
-      oneLine.append(CSV_SEPARATOR);
+      oneLine.append(this.CSV_SEPARATOR);
 
       List<String> artists = song.getArtists();
       StringBuilder artistStr = new StringBuilder();
@@ -69,20 +68,21 @@ public class GetRandomSongsHandler implements Route {
           artistStr.append(";").append(artist);
         }
       }
-      oneLine.append(artistStr.toString());
-      oneLine.append(CSV_SEPARATOR);
+      oneLine.append(artistStr);
+      oneLine.append(this.CSV_SEPARATOR);
 
       double[] features = song.getFeatures();
       StringBuilder featuresStr = new StringBuilder();
       for (double val : features) {
         if (featuresStr.length() == 0) {
-          featuresStr.append(String.valueOf(val));
+          featuresStr.append(val);
         } else {
-          featuresStr.append(";").append(String.valueOf(val));
+          featuresStr.append(";").append(val);
         }
       }
-      oneLine.append(featuresStr.toString());
-      System.out.println(oneLine.toString());
+      oneLine.append(featuresStr);
+      // print to terminal for easy retrieval
+      System.out.println(oneLine);
     }
   }
 }

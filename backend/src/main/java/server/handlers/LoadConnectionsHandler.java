@@ -3,6 +3,7 @@ package server.handlers;
 import com.google.cloud.firestore.QueryDocumentSnapshot;
 import com.squareup.moshi.Moshi;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import kdtree.KdTree;
@@ -11,7 +12,7 @@ import server.ErrBadJsonResponse;
 import spark.Request;
 import spark.Response;
 import spark.Route;
-import user.Song;
+import song.Song;
 import user.User;
 
 public class LoadConnectionsHandler implements Route {
@@ -39,28 +40,36 @@ public class LoadConnectionsHandler implements Route {
   public Object handle(Request request, Response response) throws Exception {
     try {
       // build kd trees for finding nearest neighbors
+      System.out.println("Constructing user and song trees...");
       List<User> userNodes = new ArrayList<>();
       List<Song> songNodes = new ArrayList<>();
       List<String> userIds = this.database.getAllUserIds();
       for (String userId : userIds) {
         User user = this.database.getUser(userId);
-        if (user.getRefreshToken() != null) {
-          userNodes.add(user);
-          songNodes.add(user.getCurrentSong());
-        }
+        userNodes.add(user);
+        songNodes.add(user.getCurrentSong());
       }
+      System.out.println("User count: " + userNodes.size());
+      System.out.println("Song count: " + songNodes.size());
       KdTree<User> userTree = new KdTree<User>(userNodes, 1);
+      System.out.println("User Tree built.");
       KdTree<Song> songTree = new KdTree<Song>(songNodes, 1);
-
+      System.out.println("Song Tree built.");
       for (User user : userNodes) {
         // create new user object so user in tree does not get modified
+        System.out.println("..........BEGINNING CONNECTIONS..........");
         User newUser = this.database.getUser(user.getUserId());
+        System.out.println("userId: " + user.getDisplayName());
+        System.out.println("displayName: " + user.getDisplayName());
         String[] connections = user.findConnections(songTree);
+        System.out.println("Today's Connections: " + Arrays.asList(connections));
         user.setConnections(connections);
         String[] historicalConnections = user.findHistoricalConnections(userTree);
+        System.out.println("All Time Connections: " + Arrays.asList(historicalConnections));
         user.setHistoricalConnections(historicalConnections);
         // update database using new user info
         this.database.updateUser(user.getUserId(), user);
+        System.out.println("..........CONNECTIONS UPDATED..........");
       }
       return new LoadConnectionsSuccessResponse().serialize();
     } catch (Exception e) {
