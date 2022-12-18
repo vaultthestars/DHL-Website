@@ -50,7 +50,7 @@ For the frontend, enter the frontend folder and type `npm test` in the terminal 
 
 ### Running the backend server:
 
-Run the server file (our preferred method is to run ```Server.main()``` through IntelliJ). Then, use a web browser to navigate to `localhost:3232` which is where the server
+Run the server file (our preferred method is to run `Server.main()` in IntelliJ). Then, use a web browser to navigate to `localhost:3232` which is where the server
 is locally hosted. There are many different endpoints, some listed below:
 
 ```
