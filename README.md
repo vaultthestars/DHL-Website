@@ -50,7 +50,7 @@ For the frontend, enter the frontend folder and type `npm test` in the terminal 
 
 ### Running the backend server:
 
-Run the server file. Then, use a web browser to navigate to `localhost:3232` which is where the server
+Run the server file (our preferred method is to run ```Server.main()``` through IntelliJ). Then, use a web browser to navigate to `localhost:3232` which is where the server
 is locally hosted. There are many different endpoints, some listed below:
 
 ```
@@ -59,7 +59,7 @@ Examples:
 ```
 ### Running the frontend server:
 
-Navigate to the frontend directory. Ensure that all dependencies are installed by running `npm install`. Ensure that the backend is already running on `localhost:3232`.Then, run `npm start` to start the frontend server on `localhost:3000`.
+Navigate to the frontend directory. Ensure that all dependencies are installed by running `npm install`, followed by `npm install firebase`. Ensure that the backend is already running on `localhost:3232`. Then, run `npm start` to start the frontend server on `localhost:3000`.
 
 
 ## Sources:
