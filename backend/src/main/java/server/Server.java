@@ -3,6 +3,7 @@ package server;
 import static spark.Spark.after;
 
 import database.FirestoreDatabase;
+import server.handlers.GetRandomSongsHandler;
 import server.handlers.GetUserHandler;
 import server.handlers.GetUserIdsHandler;
 import server.handlers.LoadConnectionsHandler;
@@ -79,7 +80,8 @@ public class Server {
     Spark.get("load-connections", new LoadConnectionsHandler(db));
     Spark.get("get-user", new GetUserHandler(db));
     Spark.get("get-all-user-ids", new GetUserIdsHandler(db));
-
+    // just for generating mock songs to store in songs.csv
+    Spark.get("get-random-songs", new GetRandomSongsHandler());
 
     Spark.init();
     Spark.awaitInitialization();

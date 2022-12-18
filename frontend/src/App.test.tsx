@@ -3,91 +3,104 @@ import { render, screen } from '@testing-library/react';
 import App from './App';
 import userEvent from '@testing-library/user-event';
 import '@testing-library/jest-dom'
+import {usersongparams, genrandomstring, initdist, mag, sech, radsort, linsort, getdata, getdatastrings, getdatamatches, repulse, towardsort, sortshift, updatecamcenter, getsortname, getparamname} from './GraphVis';
 
 beforeEach(() => {
-    // render(<App />);
+    render(<App />);
 });
 
 afterEach(() => {
 });
 
-// //testing based on the idea of 'tests for this front-end application should be written in terms of what the end-user can perceive'
+//testing based on the idea of 'tests for this front-end application should be written in terms of what the end-user can perceive'
 
-// test('renders submit button', () => {
-//     const buttonElement = screen.getByText(new RegExp(TEXT_submit_button_text));
-//     expect(buttonElement).toBeInTheDocument();
+test('renders app header', () => {
+    const headerElement = screen.getByLabelText("App-header")
+    expect(headerElement).toBeInTheDocument();
+});
+
+test('renders sign in box', () => {
+    const loginElement = screen.getByLabelText("sign-into-google")
+    expect(loginElement).toBeInTheDocument();
+});
+
+test('renders sign in box', () => {
+    const loginElement = screen.getByLabelText("spotify-button")
+    expect(loginElement).toBeInTheDocument();
+});
+
+test('log in logic', () => {
+    
+});
+// TESTS FOR FUNCTIONS IN GRAPHVIZ
+test('genradnomstring()', () => {
+    const result = genrandomstring(4)
+    expect(result.length).toBe(4)
+});
+
+test('genrandomstring() empty edge case', () => {
+    const result = genrandomstring(0)
+    expect(result).toBe('')
+});
+
+test('initdist() ', () => {
+    const result: Array<Array<number>> = initdist(50)
+    expect(result.length).toBe(50) 
+    expect(result[2].length).toBe(3) // 50 items, each a 3d array
+});
+
+
+test('mag()', () => {
+    const result = mag([1, 2, 3, 4, 5])
+    expect((result < 3.61 && result > 3.59)).toBe(true)
+    const result2 = mag([])
+    expect(result2).toBe(NaN) // DYLAN DYLAN note that edge case outputs NaN
+});
+
+test('radsort() NaN behavior', () => {
+    const point = [2, 5, 6] // id, x, y
+    const result = radsort(point, 0)
+    expect(result).toStrictEqual([2, NaN, NaN])
+});
+
+// need to implement linsort, radsort testing by mocking data not sure how bc that is picked up in graphviz instantiation itself
+test('linsort()', () => {
+});
+
+test('radsort()', () => {
+});
+
+
+
+test('repulse()', () => {
+    const result: Array<number> = repulse([1, 2, 3], [2, 2, 6])
+    expect(result.length).toBe(2)
+    expect(result[0]).toBe[0]
+    expect(result[1] < -0.99 && result[1]>-1).toBe(true)
+    // should only repulse in the y direction if they are in the same x position
+});
+
+test('towardsort()', () => {
+});
+
+// how to set mock data if graphviz imports from backend directly
+// test('getdata()', () => {
+//     usersongparams.set(1, ["this is a song", "this is an artist"])
+//     const result = getdata(1, 0)
+//     expect(result).toBe("this is a song")
+//     const result2 = getdata(1, 2)
+//     expect(result2).toBe("this is an artist")
 // });
 
-// test('renders input box', () => {
-//     const inputBoxElement = screen.getByRole("repl-command-box")
-//     expect(inputBoxElement).toBeInTheDocument();
-// });
+test('getdatamatches()', () => {
+});
 
-// test('getting a valid CSV file', async () => {
-//     const inputBoxElement = screen.getByRole("repl-command-box")
-//     const buttonElement = screen.getByText(new RegExp(TEXT_submit_button_text));
-//     userEvent.type(inputBoxElement, "get frontend/mockFiles/cords.csv")
-//     userEvent.click(buttonElement)
-//     await screen.findAllByRole("command-output")
-//     let oldCommands = screen.getAllByRole("command-output")
-//     let expectedHTML =
-//         'Command: get frontend/mockFiles/cords.csv <br>Output: [[AD,42.546245,1.601554,Andorra][AE,23.424076,53.847818,United Arab Emirates][AF,33.93911,67.709953,Afghanistan][AG,17.060816,-61.796428,Antigua and Barbuda]]'
-//     expect(oldCommands[0].innerHTML).toBe(expectedHTML)
-// });
+test('getdatastrings()', () => {
+});
 
-// test('getting a valid CSV file, running stats', async () => {
-//     const inputBoxElement = screen.getByRole("repl-command-box")
-//     const buttonElement = screen.getByText(new RegExp(TEXT_submit_button_text));
-//     userEvent.type(inputBoxElement, "get frontend/mockFiles/cords.csv")
-//     userEvent.click(buttonElement)
-//     userEvent.type(inputBoxElement, "stats")
-//     userEvent.click(buttonElement)
-//     await screen.findAllByRole("command-output")
-//     let oldCommands = screen.getAllByRole("command-output")
-//     let expectedHTML =
-//         'Command: stats <br>Output: 4 rows, 4 columns'
-//     expect(oldCommands[0].innerHTML).toBe(expectedHTML)
-// });
+test('sortShift()', () => {
+});
 
-// // test('getting a valid CSV file, running stats, switching csv files, running stats', async () => {
-// //     const inputBoxElement = screen.getByRole("repl-command-box")
-// //     const buttonElement = screen.getByText(new RegExp(TEXT_submit_button_text));
-
-// //     userEvent.type(inputBoxElement, "get frontend/mockFiles/cords1.csv")
-// //     userEvent.click(buttonElement)
-// //     userEvent.type(inputBoxElement, "stats")
-// //     userEvent.click(buttonElement)
-// //     await screen.findAllByRole("repl-history")
-// //     let oldCommands1 = await screen.getAllByRole("repl-history")
-// //     let expectedHTML1 =
-// //         '<p> Command: stats </p><p> Output: 4 rows, 4 columns </p>'
-// //     expect(oldCommands1[oldCommands1.length - 1].innerHTML).toBe(expectedHTML1)
-// // });
-
-// test('get csv with invalid filepath', async () => {
-//     const inputBoxElement = screen.getByRole("repl-command-box")
-//     const buttonElement = screen.getByText(new RegExp(TEXT_submit_button_text));
-//     userEvent.type(inputBoxElement, "get fro")
-//     userEvent.click(buttonElement)
-//     await screen.findAllByRole("command-output")
-//     let oldCommands = screen.getAllByRole("command-output")
-//     let expectedHTML =
-//         'Command: get fro <br>Output: unable to load file; please check the file path and try again'
-//     expect(oldCommands[0].innerHTML).toBe(expectedHTML)
-// });
-
-// test('getting an invalid CSV file at with valid filepath', async () => {
-//     const inputBoxElement = screen.getByRole("repl-command-box")
-//     const buttonElement = screen.getByText(new RegExp(TEXT_submit_button_text));
-//     userEvent.type(inputBoxElement, "get frontend/mockFiles/badCsv.csv")
-//     userEvent.click(buttonElement)
-//     await screen.findAllByRole("command-output")
-//     let oldCommands = screen.getAllByRole("command-output")
-//     expect(oldCommands.length).toBe(1) //double checking that only one has been run
-//     let expectedHTML =
-//         'Command: get frontend/mockFiles/badCsv.csv <br>Output: unable to parse file; please check the csv format and try again'
-//     expect(oldCommands[0].innerHTML).toBe(expectedHTML)
-
-// });
-
+test('updatecamcenter()', () => {
+});
 
