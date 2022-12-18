@@ -30,9 +30,9 @@ import { updateuserdata } from './backendhandler';
 //[DONE]: Set curruser when you log in!
 //[DONE]: Make current user index update when you log in! Edit the initdist functions
 //[DONE]: Aria label the heck out of everything
+//[DONE]: Re-render users once you've logged in fully!
 
 //FRONTEND TODO:
-//TODO: Re-render users once you've logged in fully!
 //TODO: Fix long title formatting!
 //TODO: Add a pretty gradient bar on the side to denote how things are being sorted from bottom to top
 //TODO: Turn off the user outline circles when you aren't logged in
@@ -101,7 +101,7 @@ function App() {
   useEffect(() => {
     const interval = setInterval(() => {
       if(CurrentGoogleUser != ""){
-        console.log("there is a google user " + CurrentGoogleUser.toString())
+        // console.log("there is a google user " + CurrentGoogleUser.toString())
         if(!spotifyLinked){
           console.log("spotify isn't linked")
           checkSpotifyLinked().then((result)=>{

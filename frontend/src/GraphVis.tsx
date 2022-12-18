@@ -706,6 +706,7 @@ export default function GraphVis(CurrentGoogleUser: string, spotifyLinked: boole
                         >
                             Zoom out
                         </text>}
+                        <image className= "gradient" height = "450" y = "130" href = "https://i.ibb.co/8cN6FXd/transpgradbar.png"/>
                 </svg>
                 {/* misc. developer tools. Kept for debugging purposes, nothing here is dangerous or alters the actual data,
                  which is why I've simply hidden it instead of omitting it completely via some boolean function */}
