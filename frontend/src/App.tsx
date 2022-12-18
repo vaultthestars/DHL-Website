@@ -84,16 +84,16 @@ function App() {
 
   return (
     <div className="App">
-      <p className="App-header">
+      <p className="App-header" aria-label = "App header">
       {/* {CurrentGoogleUser} */}
       {(CurrentGoogleUser == "") && 
-      <button className="google-button" onClick = {()=>{let x = signInWithGoogle(SetCurrentGoogleUser)}}>Sign in With Google</button>}
-      <img className = "tuneinlogo" src="https://i.ibb.co/rFTJDTr/tuneinlogo2.png"/>
+      <button className="google-button" onClick = {()=>{let x = signInWithGoogle(SetCurrentGoogleUser)}} aria-label = "Click here to sign in with google">Sign in With Google</button>}
+      <img className = "tuneinlogo" src="https://i.ibb.co/rFTJDTr/tuneinlogo2.png" aria-label = "Logo for the tunedin website"/>
       </p>
       {/* NOTE: Currently I'm pretending the user is automatically logged in for testing purposes*/}
       {GraphVis(CurrentGoogleUser,spotifyLinked, usersloaded, setusersloaded)}
       {/* {GraphVis("HELLO I AM A USER",true)} */}
-      <div className = {hidebutton()}>
+      <div className = {hidebutton()} aria-label = "Click here to log in to spotify">
         <SpotifyLoginButton clientId={"213450855ac44f5aa842c2359939fded"} 
         redirectUri={'http://localhost:3000/callback/'} 
         clientSecret = {'9771ae6d19724806b33c585b57068127'} 

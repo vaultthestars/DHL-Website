@@ -45,16 +45,6 @@ export const SpotifyLoginButton: React.FC<SpotifyLoginButtonProps> = (parameters
     window.location.replace(url);
   };
 
-  // React.useEffect(() => {
-  //   const interval = setInterval(() => {
-  //     if (!spotifyLinked){
-  //       getTokens()     
-  //     }
-  // }
-  // , 2000);
-  //  return () => clearInterval(interval);
-  // },[])
-
   const onSuccess = async (refreshToken: string, accessToken: string) => {
     // console.log("OH MY GODDDD")
     // console.log(accessToken)

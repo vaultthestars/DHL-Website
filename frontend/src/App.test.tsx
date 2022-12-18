@@ -75,7 +75,7 @@ test('radsort()', () => {
 test('repulse()', () => {
     const result: Array<number> = repulse([1, 2, 3], [2, 2, 6])
     expect(result.length).toBe(2)
-    expect(result[0]).toBe[0]
+    expect(result[0]).is[0]
     expect(result[1] < -0.99 && result[1]>-1).toBe(true)
     // should only repulse in the y direction if they are in the same x position
 });
