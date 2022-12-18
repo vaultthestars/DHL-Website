@@ -19,17 +19,12 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ExecutionException;
-import kdtree.KdTree;
 import user.Song;
 import user.User;
 
 /** Wrapper class for Firestore Database */
-public class FirestoreDatabase {
-  private Firestore database;
-  private List<Song> songNodes;
-  private List<User> userNodes;
-  private KdTree<Song> songTree;
-  private KdTree<User> userTree;
+public class FirestoreDatabase implements UserDatabase {
+  private Firestore firestore;
 
   public FirestoreDatabase(String filepath, String projectId) {
     try {
@@ -41,7 +36,7 @@ public class FirestoreDatabase {
               .build();
       FirebaseApp.initializeApp(options);
 
-      this.database = FirestoreClient.getFirestore();
+      this.firestore = FirestoreClient.getFirestore();
 
     } catch (IOException e) {
       System.out.println(e.getMessage());
@@ -49,43 +44,12 @@ public class FirestoreDatabase {
   }
 
   public Firestore getFireStore() {
-    return this.database;
+    return this.firestore;
   }
 
-  public List<Song> getSongNodes() {
-    return this.songNodes;
-  }
-
-  public void setSongNodes(List<Song> songNodes) {
-    this.songNodes = songNodes;
-  }
-
-  public List<User> getUserNodes() {
-    return this.userNodes;
-  }
-
-  public void setUserNodes(List<User> userNodes) {
-    this.userNodes = userNodes;
-  }
-
-  public KdTree<Song> getSongTree() {
-    return this.songTree;
-  }
-
-  public void setSongTree(KdTree<Song> songTree) {
-    this.songTree = songTree;
-  }
-
-  public KdTree<User> getUserTree() {
-    return this.userTree;
-  }
-
-  public void setUserTree(KdTree<User> userTree) {
-    this.userTree = userTree;
-  }
-
-  public User generateUser(String userId) {
-    DocumentReference docRef = this.database.collection("users").document(userId);
+  @Override
+  public User getUser(String userId) {
+    DocumentReference docRef = this.firestore.collection("users").document(userId);
     // asynchronously retrieve the document
     ApiFuture<DocumentSnapshot> future = docRef.get();
     System.out.println("async call");
@@ -153,8 +117,9 @@ public class FirestoreDatabase {
     }
   }
 
-  public void updateUser(String userId, User user) throws ExecutionException, InterruptedException {
-    DocumentReference docRef = this.database.collection("users").document(userId);
+  @Override
+  public void updateUser(String userId, User user) {
+    DocumentReference docRef = this.firestore.collection("users").document(userId);
     docRef.update("userId", user.getUserId());
     docRef.update("displayName", user.getDisplayName());
     docRef.update("refreshToken", user.getRefreshToken());
@@ -164,7 +129,12 @@ public class FirestoreDatabase {
     docRef.update("historicalConnections", Arrays.asList(user.getHistoricalConnections()));
     docRef.update("historicalSongPoint", Doubles.asList(user.getHistoricalSongPoint()));
     // update song field as map
-    this.updateUserSong(docRef, user.getCurrentSong());
+    try {
+      this.updateUserSong(docRef, user.getCurrentSong());
+    } catch (ExecutionException | InterruptedException e) {
+      e.printStackTrace();
+      throw new RuntimeException(e);
+    }
   }
 
   private void updateUserSong(DocumentReference docRef, Song song) throws ExecutionException, InterruptedException {
@@ -178,56 +148,21 @@ public class FirestoreDatabase {
     docRef.update("currentSong", songMap);
   }
 
-  public List<String> retrieveAllUserIds() throws ExecutionException, InterruptedException {
+  @Override
+  public List<String> getAllUserIds() {
     List<String> ids = new ArrayList<>();
-    ApiFuture<QuerySnapshot> future = this.database.collection("users").get();
+    ApiFuture<QuerySnapshot> future = this.firestore.collection("users").get();
     // future.get() blocks on response
-    List<QueryDocumentSnapshot> documents = future.get().getDocuments();
+    List<QueryDocumentSnapshot> documents = null;
+    try {
+      documents = future.get().getDocuments();
+    } catch (InterruptedException | ExecutionException e) {
+      e.printStackTrace();
+      throw new RuntimeException(e);
+    }
     for (QueryDocumentSnapshot doc : documents) {
       ids.add(doc.getString("userId"));
     }
     return ids;
-  }
-
-  public Map<String, Object> retrieveUser(String docId)
-      throws ExecutionException, InterruptedException, IOException {
-    DocumentReference docRef = this.database.collection("users").document(docId);
-    // asynchronously retrieve the document
-    ApiFuture<DocumentSnapshot> future = docRef.get();
-    System.out.println("async call");
-
-    // future.get() blocks on response
-    DocumentSnapshot document = future.get();
-
-    if (document.exists()) {
-      System.out.println(document.getData().get("displayName"));
-      return document.getData();
-    } else {
-      System.out.println("No such document!");
-      throw new RuntimeException();
-    }
-  }
-
-  public void loadNodeLists() throws ExecutionException, InterruptedException {
-    List<User> userNodes = new ArrayList<>();
-    List<Song> songNodes = new ArrayList<>();
-    ApiFuture<QuerySnapshot> future = this.database.collection("users").get();
-    // future.get() blocks on response
-    List<QueryDocumentSnapshot> documents = future.get().getDocuments();
-    for (QueryDocumentSnapshot doc : documents) {
-      String userId = doc.getId();
-      if (doc.getData().get("refreshToken") != null) {
-        User user = this.generateUser(userId);
-        userNodes.add(user);
-        songNodes.add(user.getCurrentSong());
-      }
-    }
-    this.setUserNodes(userNodes);
-    this.setSongNodes(songNodes);
-  }
-
-  public void buildTrees() {
-    this.setSongTree(new KdTree<Song>(this.getSongNodes(), 1));
-    this.setUserTree(new KdTree<User>(this.getUserNodes(), 1));
   }
 }

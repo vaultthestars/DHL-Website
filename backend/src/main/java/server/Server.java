@@ -16,6 +16,10 @@ import spark.Spark;
  */
 public class Server {
 
+  public static final boolean USE_MOCKS = false;
+
+  // set up mock users local database
+
   /**
    * Creates a List of User objects from a csv of mock users.
    *

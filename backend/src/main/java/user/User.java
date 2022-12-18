@@ -166,6 +166,10 @@ public class User implements KdTreeNode, Cloneable {
     }
   }
 
+  public boolean hasRefreshToken() {
+    return this.getRefreshToken() != null || !this.getRefreshToken().isEmpty();
+  }
+
   public Song getMostRecentSong()
       throws IOException, ParseException, ExecutionException, InterruptedException,
       SpotifyWebApiException {
