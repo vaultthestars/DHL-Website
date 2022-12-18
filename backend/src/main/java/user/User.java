@@ -14,11 +14,14 @@ import kdtree.KdTreeNode;
 import org.apache.hc.core5.http.ParseException;
 import se.michaelthelin.spotify.SpotifyApi;
 import se.michaelthelin.spotify.exceptions.SpotifyWebApiException;
+import se.michaelthelin.spotify.exceptions.detailed.ForbiddenException;
+import se.michaelthelin.spotify.model_objects.credentials.AuthorizationCodeCredentials;
 import se.michaelthelin.spotify.model_objects.specification.ArtistSimplified;
 import se.michaelthelin.spotify.model_objects.specification.AudioFeatures;
 import se.michaelthelin.spotify.model_objects.specification.PagingCursorbased;
 import se.michaelthelin.spotify.model_objects.specification.PlayHistory;
 import se.michaelthelin.spotify.model_objects.specification.TrackSimplified;
+import se.michaelthelin.spotify.requests.authorization.authorization_code.AuthorizationCodeRefreshRequest;
 import se.michaelthelin.spotify.requests.data.player.GetCurrentUsersRecentlyPlayedTracksRequest;
 import se.michaelthelin.spotify.requests.data.tracks.GetAudioFeaturesForTrackRequest;
 import server.Constants;
@@ -163,14 +166,16 @@ public class User implements KdTreeNode, Cloneable {
     }
   }
 
-  public Song getMostRecentSong(String userId, String accessToken)
+  public Song getMostRecentSong()
       throws IOException, ParseException, ExecutionException, InterruptedException,
       SpotifyWebApiException {
+
+    String authToken = this.getAuthToken();
     SpotifyApi spotifyApi =
         new SpotifyApi.Builder()
             .setClientId(Constants.CLIENT_ID)
             .setClientSecret(Constants.CLIENT_SECRET)
-            .setAccessToken(accessToken)
+            .setAccessToken(authToken)
             .build();
 
     GetCurrentUsersRecentlyPlayedTracksRequest getCurrentUsersRecentlyPlayedTracksRequest =
@@ -206,8 +211,37 @@ public class User implements KdTreeNode, Cloneable {
     features[4] = audioFeatures.getSpeechiness();
     features[5] = audioFeatures.getValence();
 
-    return new Song(userId, title, id, artists, features);
+    return new Song(this.getUserId(), title, id, artists, features);
   }
+
+  /**
+   * Helper method that takes in a user's refresh token and makes a call to the Spotify API to
+   * return a valid access token
+   *
+   * @return access token
+   */
+  private String getAuthToken() throws SpotifyWebApiException, ParseException {
+    try {
+      SpotifyApi spotifyApi =
+          new SpotifyApi.Builder()
+              .setClientId(Constants.CLIENT_ID)
+              .setClientSecret(Constants.CLIENT_SECRET)
+              .setRefreshToken(this.getRefreshToken())
+              .build();
+      AuthorizationCodeRefreshRequest authorizationCodeRefreshRequest =
+          spotifyApi.authorizationCodeRefresh().build();
+      AuthorizationCodeCredentials authorizationCodeCredentials =
+          authorizationCodeRefreshRequest.execute();
+      return authorizationCodeCredentials.getAccessToken();
+    } catch (IOException e) {
+      System.out.println("Error: " + e.getMessage());
+      throw new RuntimeException(e);
+    } catch (ForbiddenException e) {
+      System.out.println("Forbidden exception: " + e.getMessage());
+      throw new ForbiddenException(e.getMessage());
+    }
+  }
+
   public void updateHistoricalSongPoint(double[] newSongPoint) {
     // current average point + [(new point - current average point) / membershipLength]
     this.membershipLength++; // n increases by 1 because a new point is being added to average

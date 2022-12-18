@@ -61,10 +61,8 @@ public class LoadSongFeaturesHandler implements Route {
         System.out.println("displayName: " + document.getData().get("displayName"));
         // if spotify has been linked:
         if (document.getData().get("refreshToken") != null) {
-          String authToken = this.getAuthToken(user.getRefreshToken());
-          System.out.println("Auth: " + authToken);
           // get new song
-          Song newSong = user.getMostRecentSong(userId, authToken);
+          Song newSong = user.getMostRecentSong();
           user.setCurrentSong(newSong);
           // add new song to averaged historical song point
           user.updateHistoricalSongPoint(newSong.getPoint());
@@ -94,88 +92,5 @@ public class LoadSongFeaturesHandler implements Route {
         throw e;
       }
     }
-  }
-
-  /**
-   * Helper method that takes in a user's refresh token and makes a call to the Spotify API to
-   * return a valid access token
-   *
-   * @param refreshToken - refresh token (obtained when a user logins in with their Spotify account)
-   * @return access token
-   */
-  private String getAuthToken(String refreshToken) throws SpotifyWebApiException, ParseException {
-    try {
-      SpotifyApi spotifyApi =
-          new SpotifyApi.Builder()
-              .setClientId(Constants.CLIENT_ID)
-              .setClientSecret(Constants.CLIENT_SECRET)
-              .setRefreshToken(refreshToken)
-              .build();
-      AuthorizationCodeRefreshRequest authorizationCodeRefreshRequest =
-          spotifyApi.authorizationCodeRefresh().build();
-      AuthorizationCodeCredentials authorizationCodeCredentials =
-          authorizationCodeRefreshRequest.execute();
-      return authorizationCodeCredentials.getAccessToken();
-    } catch (IOException e) {
-      System.out.println("Error: " + e.getMessage());
-      throw new RuntimeException(e);
-    } catch (ForbiddenException e) {
-      System.out.println("Forbidden exception: " + e.getMessage());
-      throw new ForbiddenException(e.getMessage());
-    }
-  }
-
-  /**
-   * Helper that gets the current song or most recently listened to song of a user and returns a
-   * Song object with relevant info.
-   *
-   * @param userId - the userId of the user whose song to get
-   * @param accessToken - the access token for the user
-   * @return their current song as a Song object
-   */
-  public Song getMostRecentSong(String userId, String accessToken)
-      throws IOException, ParseException, ExecutionException, InterruptedException,
-          SpotifyWebApiException {
-    SpotifyApi spotifyApi =
-        new SpotifyApi.Builder()
-            .setClientId(Constants.CLIENT_ID)
-            .setClientSecret(Constants.CLIENT_SECRET)
-            .setAccessToken(accessToken)
-            .build();
-
-    GetCurrentUsersRecentlyPlayedTracksRequest getCurrentUsersRecentlyPlayedTracksRequest =
-        spotifyApi.getCurrentUsersRecentlyPlayedTracks().limit(1).build();
-    System.out.println("Recently Played Request made. Will now execute...");
-    PagingCursorbased<PlayHistory> playHistoryPagingCursorbased =
-        getCurrentUsersRecentlyPlayedTracksRequest.execute();
-    System.out.println("Successfully executed.");
-
-    PlayHistory[] playHistories = playHistoryPagingCursorbased.getItems();
-    System.out.println("Date/Time Played: " + playHistories[0].getPlayedAt());
-    TrackSimplified track = playHistories[0].getTrack();
-
-    String title = track.getName();
-    System.out.println("Song Title: " + title);
-    String id = track.getId();
-    // artists
-    List<String> artists = new ArrayList<>();
-    ArtistSimplified[] artistsSimp = track.getArtists();
-    for (ArtistSimplified artist : artistsSimp) {
-      artists.add(artist.getName());
-    }
-    // features
-    GetAudioFeaturesForTrackRequest getAudioFeaturesForTrackRequest =
-        spotifyApi.getAudioFeaturesForTrack(id).build();
-    AudioFeatures audioFeatures = getAudioFeaturesForTrackRequest.execute();
-
-    double[] features = new double[6];
-    features[0] = audioFeatures.getAcousticness();
-    features[1] = audioFeatures.getDanceability();
-    features[2] = audioFeatures.getEnergy();
-    features[3] = audioFeatures.getInstrumentalness();
-    features[4] = audioFeatures.getSpeechiness();
-    features[5] = audioFeatures.getValence();
-
-    return new Song(userId, title, id, artists, features);
   }
 }
