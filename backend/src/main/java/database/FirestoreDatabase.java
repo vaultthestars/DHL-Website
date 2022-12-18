@@ -1,4 +1,4 @@
-package server;
+package database;
 
 import com.google.api.core.ApiFuture;
 import com.google.auth.oauth2.GoogleCredentials;
@@ -16,25 +16,22 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.PriorityQueue;
 import java.util.concurrent.ExecutionException;
-import kdtree.DistanceSorter;
 import kdtree.KdTree;
 import user.Song;
 import user.User;
 
 /** Wrapper class for Firestore Database */
-public class Database {
+public class FirestoreDatabase {
   private Firestore database;
   private List<Song> songNodes;
   private List<User> userNodes;
   private KdTree<Song> songTree;
   private KdTree<User> userTree;
 
-  public Database(String filepath, String projectId) {
+  public FirestoreDatabase(String filepath, String projectId) {
     try {
       FileInputStream serviceAccount = new FileInputStream(filepath);
       FirebaseOptions options =
@@ -87,37 +84,49 @@ public class Database {
     this.userTree = userTree;
   }
 
-  public User generateUser(QueryDocumentSnapshot document) {
-    String userId = document.getString("userId");
-    String displayName = document.getString("displayName");
-    String refreshToken = document.getString("refreshToken");
-    int membershipLength = document.get("membershipLength", Integer.class);
+  public User generateUser(String userId) {
+    DocumentReference docRef = this.database.collection("users").document(userId);
+    // asynchronously retrieve the document
+    ApiFuture<DocumentSnapshot> future = docRef.get();
+    System.out.println("async call");
 
-    Map<String, Object> docMap = document.getData();
+    // future.get() blocks on response
+    DocumentSnapshot document = null;
+    try {
+      document = future.get();
+      String displayName = document.getString("displayName");
+      String refreshToken = document.getString("refreshToken");
+      int membershipLength = document.get("membershipLength", Integer.class);
 
-    Map<String, Object> songMap = (Map) docMap.get("currentSong");
-    List<Double> featList = (List<Double>) songMap.get("features");
-    Song currentSong =
-        new Song(
-            (String) songMap.get("userId"),
-            (String) songMap.get("title"),
-            (String) songMap.get("id"),
-            (List<String>) songMap.get("artists"),
-            this.listToDoubleArray(featList));
+      Map<String, Object> docMap = document.getData();
 
-    List<String> connections = (List<String>) docMap.get("connections");
-    List<Double> historicalSongPoint = (List<Double>) docMap.get("historicalSongPoint");
-    List<String> historicalConnections = (List<String>) docMap.get("historicalConnections");
+      Map<String, Object> songMap = (Map) docMap.get("currentSong");
+      List<Double> featList = (List<Double>) songMap.get("features");
+      Song currentSong =
+          new Song(
+              (String) songMap.get("userId"),
+              (String) songMap.get("title"),
+              (String) songMap.get("id"),
+              (List<String>) songMap.get("artists"),
+              this.listToDoubleArray(featList));
 
-    return new User(
-        userId,
-        displayName,
-        refreshToken,
-        membershipLength,
-        currentSong,
-        this.listToStrArray(connections),
-        this.listToDoubleArray(historicalSongPoint),
-        this.listToStrArray(historicalConnections));
+      List<String> connections = (List<String>) docMap.get("connections");
+      List<Double> historicalSongPoint = (List<Double>) docMap.get("historicalSongPoint");
+      List<String> historicalConnections = (List<String>) docMap.get("historicalConnections");
+
+      return new User(
+          userId,
+          displayName,
+          refreshToken,
+          membershipLength,
+          currentSong,
+          this.listToStrArray(connections),
+          this.listToDoubleArray(historicalSongPoint),
+          this.listToStrArray(historicalConnections));
+    } catch (InterruptedException | ExecutionException e) {
+      e.printStackTrace();
+      throw new RuntimeException(e);
+    }
   }
 
   private double[] listToDoubleArray(List<Double> lst) {
@@ -206,8 +215,9 @@ public class Database {
     // future.get() blocks on response
     List<QueryDocumentSnapshot> documents = future.get().getDocuments();
     for (QueryDocumentSnapshot doc : documents) {
+      String userId = doc.getId();
       if (doc.getData().get("refreshToken") != null) {
-        User user = this.generateUser(doc);
+        User user = this.generateUser(userId);
         userNodes.add(user);
         songNodes.add(user.getCurrentSong());
       }

@@ -3,7 +3,7 @@ package server.handlers;
 import com.squareup.moshi.JsonAdapter;
 import com.squareup.moshi.Moshi;
 import java.util.List;
-import server.Database;
+import database.FirestoreDatabase;
 import server.ErrBadJsonResponse;
 import spark.Request;
 import spark.Response;
@@ -11,9 +11,9 @@ import spark.Route;
 
   public class GetUserIdsHandler implements Route {
 
-    Database database;
+    FirestoreDatabase database;
 
-    public GetUserIdsHandler(Database database) {
+    public GetUserIdsHandler(FirestoreDatabase database) {
       this.database = database;
     }
 

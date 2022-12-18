@@ -2,6 +2,7 @@ package server;
 
 import static spark.Spark.after;
 
+import database.FirestoreDatabase;
 import server.handlers.GetUserHandler;
 import server.handlers.GetUserIdsHandler;
 import server.handlers.LoadConnectionsHandler;
@@ -71,7 +72,7 @@ public class Server {
 
     // mock Points for now to build kd trees
 
-    Database db = new Database("private/tunedIn_firebase.json", Constants.PROJECT_ID);
+    FirestoreDatabase db = new FirestoreDatabase("private/tunedIn_firebase.json", Constants.PROJECT_ID);
 
     // Setting up the handler for the GET endpoints
     Spark.get("load-song-features", new LoadSongFeaturesHandler(db));

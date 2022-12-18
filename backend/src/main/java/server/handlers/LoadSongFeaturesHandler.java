@@ -22,7 +22,7 @@ import se.michaelthelin.spotify.requests.authorization.authorization_code.Author
 import se.michaelthelin.spotify.requests.data.player.GetCurrentUsersRecentlyPlayedTracksRequest;
 import se.michaelthelin.spotify.requests.data.tracks.GetAudioFeaturesForTrackRequest;
 import server.Constants;
-import server.Database;
+import database.FirestoreDatabase;
 import spark.Request;
 import spark.Response;
 import spark.Route;
@@ -31,9 +31,9 @@ import user.User;
 
 public class LoadSongFeaturesHandler implements Route {
 
-  private Database database;
+  private FirestoreDatabase database;
 
-  public LoadSongFeaturesHandler(Database database) {
+  public LoadSongFeaturesHandler(FirestoreDatabase database) {
     this.database = database;
   }
 

@@ -7,7 +7,7 @@ import com.squareup.moshi.Moshi;
 import java.util.List;
 import java.util.Map;
 import kdtree.KdTree;
-import server.Database;
+import database.FirestoreDatabase;
 import server.ErrBadJsonResponse;
 import spark.Request;
 import spark.Response;
@@ -17,14 +17,14 @@ import user.User;
 
 public class LoadConnectionsHandler implements Route {
 
-  private Database database;
+  private FirestoreDatabase database;
 
   /**
    * Constructor for handler that takes in userDatabase to access nodes for kd-tree
    *
    * @param database - the database housing users to build tree
    */
-  public LoadConnectionsHandler(Database database) {
+  public LoadConnectionsHandler(FirestoreDatabase database) {
     this.database = database;
   }
 
