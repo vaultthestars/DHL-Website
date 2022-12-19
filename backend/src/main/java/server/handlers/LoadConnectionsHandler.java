@@ -37,7 +37,7 @@ public class LoadConnectionsHandler implements Route {
    * @throws Exception
    */
   @Override
-  public Object handle(Request request, Response response) throws Exception {
+  public Object handle(Request request, Response response)  {
     try {
       // build kd trees for finding nearest neighbors
       System.out.println("Constructing user and song trees...");
@@ -74,7 +74,7 @@ public class LoadConnectionsHandler implements Route {
       return new LoadConnectionsSuccessResponse().serialize();
     } catch (Exception e) {
       e.printStackTrace();
-      return new ErrBadJsonResponse();
+      return new ErrBadJsonResponse().serialize();
     }
   }
 

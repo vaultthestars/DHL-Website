@@ -12,7 +12,6 @@ import java.util.concurrent.ExecutionException;
 import kdtree.DistanceSorter;
 import kdtree.KdTree;
 import kdtree.KdTreeNode;
-import kotlin.jvm.Transient;
 import org.apache.hc.core5.http.ParseException;
 import se.michaelthelin.spotify.SpotifyApi;
 import se.michaelthelin.spotify.exceptions.SpotifyWebApiException;
