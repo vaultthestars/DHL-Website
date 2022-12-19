@@ -287,7 +287,8 @@ public class KdTree<T extends KdTreeNode> {
    * @param nodeToDelete - the node to delete
    * @return - the new tree after deletion
    */
-  public KdTree<T> deleteNode(KdTreeNode nodeToDelete) {
+  public KdTree<T> deleteNode(T nodeToDelete) {
+    this.kdTreeNodes.remove(nodeToDelete);
     return this.deleteNodeRecursive(nodeToDelete, 0);
   }
 
@@ -304,17 +305,17 @@ public class KdTree<T extends KdTreeNode> {
 
     // if point to delete is present at root
     if (this.getHead().equals(nodeToDelete)) {
-      if (this.getRight() != null) {
+      if (this.getRight().getHead() != null) {
         // find minimum in right subtree to get 'inorder successor' to replace position of the node being deleted
         KdTree<T> minNode = this.right.findMinNode(currentDimension);
         this.head = minNode.getHead();
         this.right = this.right.deleteNodeRecursive(minNode.getHead(), depth + 1);
-      } else if (this.getLeft() != null) {
+      } else if (this.getLeft().getHead() != null) {
         KdTree<T> minNode = this.left.findMinNode(currentDimension);
         this.head = minNode.getHead();
         this.right = this.left.deleteNodeRecursive(minNode.getHead(), depth + 1);
       } else {
-        return null;
+        return new KdTree<>(new ArrayList<>(), depth + 1);
       }
       return this;
     }
@@ -350,7 +351,7 @@ public class KdTree<T extends KdTreeNode> {
 
     // compare values of axis easily if it equals currentDimension
     if (currentDimension == axis) {
-      if (this.left == null) {
+      if (this.left.getHead() == null) {
         return this;
       }
       return this.left.findMinimumRecursive(axis, depth + 1);

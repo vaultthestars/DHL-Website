@@ -68,16 +68,16 @@ public class User implements KdTreeNode, Cloneable {
     if (this == o) {
       return true;
     }
-    if (o == null || getClass() != o.getClass()) {
+    if (o == null || this.getClass() != o.getClass()) {
       return false;
     }
     User user = (User) o;
-    return membershipLength == user.membershipLength
-        && userId.equals(user.userId)
-        && currentSong.equals(user.currentSong)
-        && Arrays.equals(connections, user.connections)
-        && Arrays.equals(historicalSongPoint, user.historicalSongPoint)
-        && Arrays.equals(historicalConnections, user.historicalConnections);
+    return this.membershipLength == user.membershipLength && this.userId.equals(user.userId)
+        && this.displayName.equals(user.displayName) && Objects.equals(this.refreshToken,
+        user.refreshToken) && this.currentSong.equals(user.currentSong) && Arrays.equals(
+        this.connections, user.connections) && Arrays.equals(this.historicalSongPoint,
+        user.historicalSongPoint) && Arrays.equals(this.historicalConnections,
+        user.historicalConnections) && Objects.equals(this.songLibrary, user.songLibrary);
   }
 
   @Override

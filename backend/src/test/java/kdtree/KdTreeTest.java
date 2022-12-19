@@ -282,4 +282,66 @@ public class KdTreeTest {
     assertTrue(radiusNoIgnore.contains(targetPoint));
     assertArrayEquals(radiusNoIgnoreNaive.toArray(), radiusNoIgnore.toArray());
   }
+
+  /**
+   * Tests delete node, where the node is a leaf.
+   */
+  @Test
+  public void testDeleteLeafNode() {
+    setUpOddPoints();
+
+    Point pointToDelete = new Point(new double[] {4, 1});
+
+    this.kdTree.deleteNode(pointToDelete);
+    assertEquals(false, this.kdTree.getKdTreeNodes().contains(pointToDelete));
+
+    // assert correct root
+    assertEquals(2, kdTree.getHead().getDimension());
+    assertEquals("[6.0, 5.0]", Arrays.toString(kdTree.getHead().getPoint()));
+
+    // assert correct children
+    KdTree<KdTreeNode> left = kdTree.getLeft();
+    KdTree<KdTreeNode> right = kdTree.getRight();
+
+    assertEquals(2, left.getHead().getDimension());
+    assertEquals(2, right.getHead().getDimension());
+    assertEquals("[0.0, 5.0]", Arrays.toString(left.getHead().getPoint()));
+    assertEquals("[6.0, 2.0]", Arrays.toString(right.getHead().getPoint()));
+
+    // assert correct children's children
+    KdTree<KdTreeNode> leftLeft = kdTree.getLeft().getLeft();
+    KdTree<KdTreeNode> leftRight = kdTree.getLeft().getRight();
+
+    KdTree<KdTreeNode> rightLeft = kdTree.getRight().getLeft();
+    KdTree<KdTreeNode> rightRight = kdTree.getRight().getRight();
+
+    assertEquals(null, leftLeft.getHead()); // deleted leaf's head is now null
+    assertEquals(2, leftRight.getHead().getDimension());
+    assertEquals(2, rightLeft.getHead().getDimension());
+    assertEquals(2, rightRight.getHead().getDimension());
+
+    assertEquals("[3.0, 6.0]", Arrays.toString(leftRight.getHead().getPoint()));
+    assertEquals("[7.0, 0.0]", Arrays.toString(rightLeft.getHead().getPoint()));
+    assertEquals("[6.0, 4.0]", Arrays.toString(rightRight.getHead().getPoint()));
+  }
+
+  /**
+   * Tests delete node, where the node is the root.
+   */
+
+  /**
+   * Tests delete node, where the node has a right child.
+   */
+
+  /**
+   * Tests delete node, where the node is in the middle and has 2 children.
+   */
+
+  /**
+   * Tests delete node, where the node is not in the tree.
+   */
+
+  /**
+   * Tests delete node, where the tree is empty.
+   */
 }

@@ -2,6 +2,7 @@ package csv;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import java.io.FileNotFoundException;
 import java.io.FileReader;
@@ -9,8 +10,12 @@ import java.io.IOException;
 import java.io.Reader;
 import java.io.StringReader;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import org.junit.jupiter.api.Test;
+import song.Song;
+import song.SongFactory;
+import song.SongLibrary;
 import user.User;
 import user.UserFactory;
 
@@ -18,6 +23,7 @@ public class CSVParserTest {
 
   private Reader testFileReader;
   private CSVParser testParser;
+  private SongLibrary testSongLibrary;
 
   /** Sets the testParser for the basic csv case. */
   public void setBasicCase() throws IOException, FactoryFailureException {
@@ -75,31 +81,6 @@ public class CSVParserTest {
         Quinn,20,Female""");
     this.testParser = new CSVParser<>(sr);
   }
-
-  //  /** Sets the testParser with a StarFactory as a second input to the constructor. */
-  //  public void setWithStarCreator() throws IOException, FactoryFailureException {
-  //    try {
-  //      this.testFileReader = new FileReader("data/stars/ten-star.csv");
-  //    } catch (FileNotFoundException e) {
-  //      throw new RuntimeException(e);
-  //    }
-  //    this.testParser = new CSVParser<>(this.testFileReader, new StarFactory());
-  //  }
-
-//  /**
-//   * Sets the testParser with a UserFactory as a second input to the constructor.
-//   *
-//   * @throws IOException if an I/O Exception occurs
-//   * @throws FactoryFailureException if a Factory Failure Exception occurs
-//   */
-//  public void setWithUserFactory() throws IOException, FactoryFailureException {
-//    try {
-//      this.testFileReader = new FileReader("data/mock-users.csv");
-//    } catch (FileNotFoundException e) {
-//      throw new RuntimeException(e);
-//    }
-//    this.testParser = new CSVParser<User>(this.testFileReader, new UserFactory());
-//  }
 
   /**
    * Tests the expected parsed data, counter values, and column titles on the basic csv test file.
@@ -210,47 +191,71 @@ public class CSVParserTest {
     assertArrayEquals(expectedColumns, this.testParser.getColumnTitles());
   }
 
-  //
-  //  /** Tests userFactory from csv data. */
-  //  @Test
-  //  public void testUsersCase() throws IOException, FactoryFailureException {
-  //    setWithUserFactory();
-  //
-  //    User firstUser =
-  //        new User(
-  //            "bradleywiseman",
-  //            2,
-  //            new float[] {
-  //              (float) 0.39, (float) 0.17, (float) 0.63, (float) 0.48, (float) 0.95, (float) 0.92
-  //            },
-  //            new String[] {"star22", "max", "maria.t7", "pablo365", "musicluv3r"},
-  //            new float[] {
-  //              (float) 0.62, (float) 0.40, 0.00F, (float) 0.05, (float) 0.39, (float) 0.34
-  //            },
-  //            new String[] {"will.smith", "harry_styles", "pablo365", "maria.t7",
-  // "bradleywiseman"});
-  //    assertEquals(firstUser, this.testParser.getParsedData().get(0));
-  //    assertEquals(14, this.testParser.getParsedData().size());
-  //    String[] expectedColumns =
-  //        new String[] {
-  //          "username",
-  //          "membershipLength",
-  //          "songPoint",
-  //          "connections",
-  //          "historicalSongPoint",
-  //          "historicalConnections"
-  //        };
-  //    assertArrayEquals(expectedColumns, this.testParser.getColumnTitles());
-  //  }
+  /**
+   * Sets the parser for the song factory test.
+   */
+  public void setWithSongFactory() throws IOException, FactoryFailureException {
+    this.testFileReader = new FileReader("data/songs.csv");
+    this.testParser = new CSVParser<Song>(this.testFileReader, new SongFactory());
+  }
 
-  //
-  //  /** Testing exceptions */
-  //  @Test
-  //  public void testExceptions() {
-  //    assertThrows(IOException.class, () -> new CSVParser<>(new FileReader("phone-numbers.csv")));
-  //    assertThrows(
-  //        FactoryFailureException.class,
-  //        () -> new CSVParser<>(new FileReader("data/testing/test-basic.csv"), new
-  // StarFactory()));
-  //  }
+  /**
+   * Tests the song factory creator.
+   */
+  @Test
+  public void testSongFactory() throws IOException, FactoryFailureException {
+    setWithSongFactory();
+
+    Song firstSong = new Song(
+        "willow",
+        "5C9JlYhuv96JQXyXuxYsB2",
+        new ArrayList<String>(List.of("Taylor Swift")),
+        new double[]{
+            0.8349999785423279,
+            0.3919999897480011,
+            0.5789999961853027,
+            0.0017900000093504786,
+            0.164000004529953,
+            0.5490000247955322}
+        );
+    assertEquals(firstSong, this.testParser.getParsedData().get(0));
+    assertEquals(400, this.testParser.getParsedData().size());
+  }
+
+  /**
+   * Sets the testParser with a UserFactory as a second input to the constructor.
+   *
+   * @throws IOException if an I/O Exception occurs
+   * @throws FactoryFailureException if a Factory Failure Exception occurs
+   */
+  public void setWithUserFactory() throws IOException, FactoryFailureException {
+    CSVParser<Song> songCSVParser = new CSVParser<Song>(
+        new FileReader("data/songs.csv"), new SongFactory());
+    this.testSongLibrary = new SongLibrary(songCSVParser);
+    this.testFileReader = new FileReader("data/mock-users.csv");
+    this.testParser = new CSVParser<User>(this.testFileReader, new UserFactory(this.testSongLibrary));
+  }
+
+  /** Tests userFactory from csv data. */
+  @Test
+  public void testUsersCase() throws IOException, FactoryFailureException {
+    setWithUserFactory();
+
+    assertEquals(100, this.testParser.getParsedData().size());
+
+    User actualFirstUser = (User) this.testParser.getParsedData().get(0);
+    assertEquals("3nVvzfAdYooxYlp4ElVS", ((User) this.testParser.getParsedData().get(0)).getUserId());
+    assertEquals("Bradley Wiseman", ((User) this.testParser.getParsedData().get(0)).getDisplayName());
+    assertEquals(2, ((User) this.testParser.getParsedData().get(0)).getMembershipLength());
+  }
+
+
+    /** Testing exceptions */
+    @Test
+    public void testExceptions() {
+      assertThrows(
+          FactoryFailureException.class,
+          () -> new CSVParser<>(new FileReader("data/testing/test-basic.csv"),
+              new SongFactory()));
+    }
 }
