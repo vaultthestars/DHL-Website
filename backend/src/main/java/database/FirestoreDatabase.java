@@ -43,6 +43,11 @@ public class FirestoreDatabase implements UserDatabase {
     }
   }
 
+  public FirestoreDatabase(Firestore firestore){
+    this.firestore = firestore;
+
+  }
+
   public Firestore getFireStore() {
     return this.firestore;
   }
@@ -61,6 +66,8 @@ public class FirestoreDatabase implements UserDatabase {
       String displayName = document.getString("displayName");
       String refreshToken = document.getString("refreshToken");
       int membershipLength = document.get("membershipLength", Integer.class);
+
+      System.out.println("getUser method call" + membershipLength);
 
       Map<String, Object> docMap = document.getData();
 
