@@ -78,4 +78,8 @@ https://react-hook-form.com/api/useform/setvalue/
 https://developer.spotify.com/documentation/general/guides/authorization/code-flow/
 https://khalilstemmler.com/articles/tutorials/getting-the-currently-playing-song-spotify/
 
+Google Login:
+Button CSS Styling: https://codepen.io/mupkoo/pen/YgddgB
+Login Functionaliy: https://firebase.google.com/docs/auth/web/google-signin
+
 
