@@ -2,9 +2,8 @@ package server.handlers;
 
 import com.squareup.moshi.JsonAdapter;
 import com.squareup.moshi.Moshi;
-import java.util.Map;
 import database.UserDatabase;
-import server.ErrBadJsonResponse;
+import server.ErrBadRequestResponse;
 import spark.Request;
 import spark.Response;
 import spark.Route;
@@ -19,14 +18,14 @@ public class GetUserHandler implements Route {
   }
 
   @Override
-  public Object handle(Request request, Response response) throws Exception {
+  public Object handle(Request request, Response response) {
     try {
       String userId = request.queryParams("id");
       User user = this.database.getUser(userId);
       System.out.println("User retrieved.");
       return new GetUserSuccessResponse(user).serialize();
     } catch (Exception e) {
-      return new ErrBadJsonResponse();
+      return new ErrBadRequestResponse().serialize();
     }
   }
 

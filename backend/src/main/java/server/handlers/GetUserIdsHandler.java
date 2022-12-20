@@ -18,12 +18,12 @@ import spark.Route;
     }
 
     @Override
-    public Object handle(Request request, Response response) throws Exception {
+    public Object handle(Request request, Response response)  {
       try {
         List<String> ids = this.database.getAllUserIds();
         return new GetUserIdsSuccessResponse(ids).serialize();
       } catch (Exception e) {
-        return new ErrBadJsonResponse();
+        return new ErrBadJsonResponse().serialize();
       }
     }
 

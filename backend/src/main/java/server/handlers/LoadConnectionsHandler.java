@@ -37,7 +37,7 @@ public class LoadConnectionsHandler implements Route {
    * @throws Exception
    */
   @Override
-  public Object handle(Request request, Response response) throws Exception {
+  public Object handle(Request request, Response response)  {
     try {
       // build kd trees for finding nearest neighbors
       System.out.println("Constructing user and song trees...");
@@ -74,7 +74,7 @@ public class LoadConnectionsHandler implements Route {
       return new LoadConnectionsSuccessResponse().serialize();
     } catch (Exception e) {
       e.printStackTrace();
-      return new ErrBadJsonResponse();
+      return new ErrBadJsonResponse().serialize();
     }
   }
 
@@ -99,61 +99,5 @@ public class LoadConnectionsHandler implements Route {
       }
     }
   }
-
-  private User generateUser(QueryDocumentSnapshot document) {
-    String userId = document.getString("userId");
-    String displayName = document.getString("displayName");
-    String refreshToken = document.getString("refreshToken");
-    int membershipLength = document.get("membershipLength", Integer.class);
-
-    Map<String, Object> docMap = document.getData();
-
-    Map<String, Object> songMap = (Map) docMap.get("currentSong");
-    List<Double> featList = (List<Double>) songMap.get("features");
-    Song currentSong =
-        new Song(
-            (String) songMap.get("userId"),
-            (String) songMap.get("title"),
-            (String) songMap.get("id"),
-            (List<String>) songMap.get("artists"),
-            this.listToDoubleArray(featList));
-
-    List<String> connections = (List<String>) docMap.get("connections");
-    List<Double> historicalSongPoint = (List<Double>) docMap.get("historicalSongPoint");
-    List<String> historicalConnections = (List<String>) docMap.get("historicalConnections");
-
-    return new User(
-        userId,
-        displayName,
-        refreshToken,
-        membershipLength,
-        currentSong,
-        this.listToStrArray(connections),
-        this.listToDoubleArray(historicalSongPoint),
-        this.listToStrArray(historicalConnections));
-  }
-
-  private double[] listToDoubleArray(List<Double> lst) {
-    if (lst != null) {
-      double[] array = new double[6];
-      for (int i = 0; i < lst.size(); i++) {
-        array[i] = lst.get(i);
-      }
-      return array;
-    } else {
-      return new double[6];
-    }
-  }
-
-  private String[] listToStrArray(List<String> lst) {
-    if (lst != null) {
-      String[] array = new String[5];
-      for (int i = 0; i < lst.size(); i++) {
-        array[i] = lst.get(i);
-      }
-      return array;
-    } else {
-      return new String[5];
-    }
-  }
+ 
 }
