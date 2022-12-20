@@ -22,10 +22,15 @@ import java.util.concurrent.ExecutionException;
 import song.Song;
 import user.User;
 
-/** Wrapper class for Firestore Database */
+/** Wrapper class for Firestore Database, which implements the UserDatabase interface */
 public class FirestoreDatabase implements UserDatabase {
   private Firestore firestore;
 
+  /**
+   * Constructor that takes care of setting up the Firestore configurations
+   * @param filepath - filepath of a private file that stores sensitive credential information
+   * @param projectId - id of our Firestore project
+   */
   public FirestoreDatabase(String filepath, String projectId) {
     try {
       FileInputStream serviceAccount = new FileInputStream(filepath);
@@ -43,16 +48,24 @@ public class FirestoreDatabase implements UserDatabase {
     }
   }
 
+  /**
+   * Getter method to retrieve the Firestore object
+   */
   public Firestore getFireStore() {
     return this.firestore;
   }
 
+
+  /**
+   * Generates specific a User object from its document reference stored in Firestore
+   * @param userId - id of user to retrieve from Firestore
+   * @return - User object
+   */
   @Override
   public User getUser(String userId) {
     DocumentReference docRef = this.firestore.collection("users").document(userId);
     // asynchronously retrieve the document
     ApiFuture<DocumentSnapshot> future = docRef.get();
-    System.out.println("Async call to getting user document from firestore.");
 
     // future.get() blocks on response
     DocumentSnapshot document = null;
@@ -87,12 +100,17 @@ public class FirestoreDatabase implements UserDatabase {
           this.listToStrArray(connections),
           this.listToDoubleArray(historicalSongPoint),
           this.listToStrArray(historicalConnections));
-    } catch (InterruptedException | ExecutionException e) {
-      e.printStackTrace();
+    } catch (ExecutionException | InterruptedException e){
       throw new RuntimeException(e);
     }
   }
 
+  /**
+   * Helper method that converts a List<Double> to a double[].
+   * Useful because Firestore is incompatible with Java Array Objects.
+   * @param lst - lst retrieved from Firestore
+   * @return double[] with the same contents as the list
+   */
   private double[] listToDoubleArray(List<Double> lst) {
     if (lst != null) {
       double[] array = new double[6];
@@ -105,6 +123,12 @@ public class FirestoreDatabase implements UserDatabase {
     }
   }
 
+  /**
+   * Helper method that converts a List<String> to a String[]
+   * Useful because Firestore is incompatible with Java Array Objects
+   * @param lst - lst retrieved from Firestore
+   * @return String[] with the same contents as the list
+   */
   private String[] listToStrArray(List<String> lst) {
     if (lst != null) {
       String[] array = new String[5];
@@ -117,6 +141,11 @@ public class FirestoreDatabase implements UserDatabase {
     }
   }
 
+  /**
+   * Updates the Firestore document reference of a specific user
+   * @param userId - id of user to update
+   * @param user - User object containing the updated fields
+   */
   @Override
   public void updateUser(String userId, User user) {
     DocumentReference docRef = this.firestore.collection("users").document(userId);
@@ -137,6 +166,13 @@ public class FirestoreDatabase implements UserDatabase {
     }
   }
 
+  /**
+   * Updates the Firestore document reference with new Song information for a specific user
+   * @param docRef - document reference of user to update
+   * @param song - Song object with updated fields
+   * @throws ExecutionException
+   * @throws InterruptedException
+   */
   private void updateUserSong(DocumentReference docRef, Song song) throws ExecutionException, InterruptedException {
     Map<String, Object> songMap = new HashMap();
     songMap.put("userId", song.getUserId());
@@ -148,6 +184,10 @@ public class FirestoreDatabase implements UserDatabase {
     docRef.update("currentSong", songMap);
   }
 
+  /**
+   * Retrieves all user ids from Firestore users collection
+   * @return List<String> of all user ids
+   */
   @Override
   public List<String> getAllUserIds() {
     List<String> ids = new ArrayList<>();

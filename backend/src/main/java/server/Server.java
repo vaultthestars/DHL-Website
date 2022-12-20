@@ -1,5 +1,10 @@
 package server;
 
+import static server.Constants.FIRESTORE_JSON_FILEPATH;
+import static server.Constants.FIRESTORE_PROJECT_ID;
+import static server.Constants.MOCK_SONGS_FILEPATH;
+import static server.Constants.MOCK_USERS_FILEPATH;
+import static server.Constants.USING_MOCKS;
 import static spark.Spark.after;
 
 import csv.CSVParser;
@@ -26,12 +31,6 @@ import user.UserFactory;
  */
 public class Server {
   // constants to change users, songs, and firestore parameters
-
-  public static final boolean USING_MOCKS = false;
-  public static final String MOCK_USERS_FILEPATH = "data/mock-users.csv";
-  public static final String MOCK_SONGS_FILEPATH = "data/songs.csv";
-  public static final String FIRESTORE_JSON_FILEPATH = "private/tunedIn_firebase.json";
-  public static final String FIRESTORE_PROJECT_ID = Constants.PROJECT_ID;
 
   /**
    * Creates local database to run server using locally stored mock users and songs.

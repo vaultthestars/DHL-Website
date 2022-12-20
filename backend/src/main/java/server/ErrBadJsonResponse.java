@@ -16,7 +16,7 @@ public record ErrBadJsonResponse(String result) {
   /**
    * @return this response, serialized as Json
    */
-  String serialize() {
+  public String serialize() {
     Moshi moshi = new Moshi.Builder().build();
     return moshi.adapter(ErrBadJsonResponse.class).toJson(this);
   }
