@@ -38,6 +38,7 @@ import { updateuserdata } from './backendhandler';
 //[DONE]: If you can't find the current google user in the userlist(mocked data), consider making a separate screen?
 
 //FRONTEND TODO:
+//TODO: add a cute credits/about us section
 //TODO: COMMENT EVERYTHING
 //TODO: CLEAN UP AND TEST
 
@@ -83,7 +84,101 @@ function sawtooth(x: number): number{
   return Math.abs(((2*x) % 2)-1)
 }
 
+function aboutus(){
+  return <div className="aboutustext" aria-label = "click for more info about tunedin">
+    <svg width = "75" height = "50">
+    <rect 
+      key = "paramsortbutton"
+      width = "75"
+      height = "30"
+      x= "0"
+      y= "0"
+      rx="5"
+      ry="5"
+      onClick={()=>{aboutusdisplay = true}}
+      >
+      </rect>
+      <text className = "whitetext" x = "9" y = "22"
+      onClick={()=>{aboutusdisplay = true}}>
+      About
+      </text>
+    </svg>
+  </div>
+}
+
+function aboutusinfo(){
+  if(aboutusdisplay){
+  return  <div className = "aboutusinfo" aria-label = "FILL THIS IN SOON">
+    <svg width = "510" height = "400">
+        <rect 
+          key = "textbox"
+          width = "500"
+          height = "380"
+          x= "5"
+          y= "5"
+          rx="5"
+          ry="5"
+          />
+          <text className = "whitetext2" x = "20" y = "25"
+          onClick={()=>{aboutusdisplay = false}}>
+          {"[Click to close window]"}
+          </text>
+
+          <text className = "whitetext2" x = "20" y = "75">
+          Tunedin is a musical social media app designed by Samantha Minars, 
+          </text>
+
+          <text className = "whitetext2" x = "20" y = "100">
+          Denise Tamesis, Chance Emerson, and Dylan Lee.
+          </text>
+
+          <text className = "whitetext2" x = "20" y = "125">
+          Find your perfect music match with Tunedin's sophisticated algorithm!
+          </text>
+
+          <text className = "whitetext2" x = "20" y = "150">
+          Expand your music universe and keep up with your friends' latest jams.
+          </text>
+
+          <text className = "whitetext2" x = "20" y = "200">
+          TUNE IN. YOU WIN.
+          </text>
+
+          <text className = "whitetext2" x = "20" y = "225">
+          It's a win-win, take TUNEDIN for a spin.
+          </text>
+
+          <text className = "whitetext2" x = "20" y = "250">
+          Tune out the din, tune in with TUNEDIN!
+          </text>
+
+          <text className = "whitetext2" x = "20" y = "275">
+          You'll never not grin when tuning TUNEDIN in.
+          </text>
+
+          <text className = "whitetext2" x = "20" y = "300">
+          FALL for TUNEDIN like a bowling pin!
+          </text>
+
+          <text className = "whitetext2" x = "20" y = "325">
+          Your life wears thin. Repair your skin with TUNEDIN.
+          </text>
+
+          <text className = "whitetext2" x = "20" y = "350">
+          Use TUNEDIN or forfeit your shins. Win and sin in the din in TUNEDIN.
+          </text>
+
+          <text className = "whitetext2" x = "20" y = "375">
+          help me
+          </text>
+    </svg>
+  </div>
+  }
+}
+
 let userunregistered = false;
+
+let aboutusdisplay = false;
 
 function App() {
   const [CurrentGoogleUser, SetCurrentGoogleUser] = useState<string>("");
@@ -230,14 +325,13 @@ function App() {
     }
   }
 
-
   return (
     <div className="App">
       <p className="App-header" aria-label = "App header">
-      {/* {CurrentGoogleUser} */}
-      {(CurrentGoogleUser == "") && 
-      <button className="google-button" onClick = {()=>{let x = signInWithGoogle(SetCurrentGoogleUser)}} aria-label = "Click here to sign in with google">Sign in With Google</button>}
-      <img className = "tuneinlogo" src="https://i.ibb.co/rFTJDTr/tuneinlogo2.png" aria-label = "Logo for the tunedin website"/>
+        {/* {CurrentGoogleUser} */}
+        {(CurrentGoogleUser == "") && 
+        <button className="google-button" onClick = {()=>{let x = signInWithGoogle(SetCurrentGoogleUser)}} aria-label = "Click here to sign in with google">Sign in With Google</button>}
+        <img className = "tuneinlogo" src="https://i.ibb.co/rFTJDTr/tuneinlogo2.png" aria-label = "Logo for the tunedin website"/>
       </p>
       {GraphVis(showgoogleuserstring(), spotifyLinked && !userunregistered, usersloaded, fetchingusers, usersongparams, userdatastrings, matchesdata, Timer,
        userIDs, CircleData, SortParameter, SortIndex, camcenter, SelectIndex, zoomval, zoomed, alltime, curruserindex,
@@ -253,9 +347,11 @@ function App() {
         setfetchingusers = {setfetchingusers}
         />
       </div>
+      {aboutus()}
+      {aboutusinfo()}
       {warningscreen()}
-      <p>{"Google id: " + CurrentGoogleUser}</p>
-      <p>{"Spotify status: " + spotifyLinked}</p>
+      {/* <p>{"Google id: " + CurrentGoogleUser}</p>
+      <p>{"Spotify status: " + spotifyLinked}</p> */}
     </div>
   );
 }
