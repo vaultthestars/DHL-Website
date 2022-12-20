@@ -54,11 +54,14 @@ Navigate to the frontend directory. Ensure that all dependencies are installed b
 #### UserDatabase Interface
 - This interface has three methods called within our various handlers: `getUser(userId)`, `updateUser(userId, user)`, and `getAllUserIds()`.
 - We have two classes `LocalDatabase` and `FirestoreDatabase` that implement our `UserDatabase` interface.
-- `LocalDatabase` contains an hashmap() of all users ids mapped to User objects.
-- `FirestoreDatabase` is wrapper class representing the Firestore database. It takes care of all funcitonality related to reading data from and writing data to Firestore.
+- `LocalDatabase` contains an hashmap() of all users ids mapped to User objects. It's used to store mock users parsed from a CSV file. 
+- `FirestoreDatabase` is wrapper class containing our initialization of the Firestore database. It takes care of all funcitonality related to reading data from and writing data to Firestore.
 #### User & Song Classes
+- `User` class represents an individual TuneIn user and houses essential user-specific information. It implements KdTreeNode so that users can be used to build the User-Tree. 
+- `Song` class represents a specific song and stores related information (user id, title, song id, list of artists, array of audio features, k-d tree dimension). It implements KdTreeNode so that songs can be used to build the Song-Tree. 
 #### K-D Tree Alogrithm 
-#### Server Class:
+-
+#### Server Class
 - Our Server is set up with four handlers and their corresponding endpoints: load-song-features, load-connections, get-user, get-all-user-ids.
 - The Server has an enviroment variable that controls whether we are using a local database with mock users or initializing the Firestore database to hold actual users (users who login on our frontend web-app).
 - `LoadSongFeaturesHandler()` retrieves each user's most recently listened to song and then updates their user reference in the database. If we are using Firestore, we loop through every user retrieved from the database to make three calls are made to the Spotify API (exchanging refresh token for authentification token, retrieving most recently played track, retrieving audio features for that track). Then, we update each user in Firestore to reflect the song data retrieved via Spotify API calls. 
