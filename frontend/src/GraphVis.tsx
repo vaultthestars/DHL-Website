@@ -369,7 +369,10 @@ function dots(Timer: number): string{
 }
 
 function textbuff(str: string, len: number): string{
-    if (str.length < len){
+    if(str == undefined){
+        return "STRING NOT FOUND"
+    }
+    else if (str.length < len){
         return str
     }
     return str.slice(0,len) + "..."
@@ -439,7 +442,7 @@ export default function GraphVis(CurrentGoogleUser: string, spotifyLinked: boole
                         return <circle 
                         key= {"loadcircle_"+num.toString()} 
                         cx= {700} cy= {300} 
-                        r={4*(40+5*num + 2*Math.sin(tau*Timer+(num*tau/4)))} 
+                        r={4*(40+5*num + 2*Math.sin(2*tau*Timer+(num*tau/4)))} 
                         fill="none"
                         stroke = "hsla(0 100% 100%)"
                         strokeWidth = "1"
@@ -448,7 +451,7 @@ export default function GraphVis(CurrentGoogleUser: string, spotifyLinked: boole
                         }
                     )}
                 <text key = {"loadingtext"} className = "whitetextbig" x= "600" y= "314" aria-label="Loading..."> 
-                {"Loading"+ dots((3*Timer)%1)} 
+                {"Loading"+ dots((6*Timer)%1)} 
                 </text>
             </svg>
         </div>
@@ -548,11 +551,10 @@ export default function GraphVis(CurrentGoogleUser: string, spotifyLinked: boole
                                 })}
                             </svg>
                         <div className= {fullyloggedin(!zoomed,"defaultbardescriptors")}>
-                            <p>HELLO HELLO HELLO THIS IS A LOT OF TEXT</p>
-                            <p>HELLO HELLO HELLO THIS IS A LOT OF TEXT</p>
-                            <p>HELLO HELLO HELLO THIS IS A LOT OF TEXT</p>
-                            <p>HELLO HELLO HELLO THIS IS A LOT OF TEXT</p>
-                            <p>HELLO HELLO HELLO THIS IS A LOT OF TEXT</p>
+                            <p className = "bottomtext">Tunedin uses your historical song data to find the top five users who match your music taste the most.
+                            These matches are calculated from the six parameters Spotify's API provides for a song: 
+                            Acousticness, Energy, Danceability, Instrumentalness, Speechiness, and Valence.
+                            </p>
                         </div>
                     </div>
                     {/* userbar, aka zoomed in sidebar panel */}  
@@ -602,11 +604,13 @@ export default function GraphVis(CurrentGoogleUser: string, spotifyLinked: boole
                             })}
                         </svg>
                         <div className= {fullyloggedin(zoomed,"parameterdescriptors")}>
-                            <p>Song parameters:</p>
-                            <p>Acousticness: This parameter measures how acoustic a user's song is.</p>
-                            <p>Energy: This parameter measures how energetic a user's song is.</p>
-                            <p>HELLO HELLO HELLO THIS IS A LOT OF TEXT</p>
-                            <p>HELLO HELLO HELLO THIS IS A LOT OF TEXT</p>
+                            <p>Scroll for more info on these parameters!</p>
+                            <p>Acousticness: This parameter measures how acoustic a user's song is. For example, a heavy metal song with a jarring baseline might score lower than a classical guitar cover.</p>
+                            <p>Danceability: This parameter measures how suited a user's song is for dancing. For example, a hip hop or pop song with a steady beat might score higher than a slow-moving ballad.</p>
+                            <p>Energy: This parameter measures how energetic a user's song is. Loud and fast paced music tends to score higher on this scale.</p> 
+                            <p>Instrumentalness: This parameter measures Spotify's certainty that a song contains no vocals. A Bach concerto will score high on this scale, while lyrical music often scores quite low.</p>
+                            <p>Valence: This parameter measures how happy or cheerful a song sounds, regardless of the actual content of the lyrics.</p>
+                            <br></br>
                         </div>
                     </div>
                 </div>
@@ -680,7 +684,7 @@ export default function GraphVis(CurrentGoogleUser: string, spotifyLinked: boole
                         )}
                     </svg>
                 </div>
-                <svg className="fixedscreenbutton" width = {(140+9*getparamname(SortParameter).length).toString() + 5} height = "160">
+                <svg className="fixedscreenbutton" width = {(140+9*getparamname(SortParameter).length+15).toString()} height = "160">
                             {/* button for changing the parameter we sort by */}
                         {<rect 
                             key = "paramsortbutton"

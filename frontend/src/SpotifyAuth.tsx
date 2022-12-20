@@ -130,7 +130,7 @@ export const SpotifyLoginButton: React.FC<SpotifyLoginButtonProps> = (parameters
         y = {yval.toString()}
         onClick={handleClick}
         />
-        <text className = "whitetext" x= {(xval+6).toString()} y= {(yval+25).toString()}
+        <text className="blacktext" x= {(xval+6).toString()} y= {(yval+25).toString()}
         onClick = {handleClick}> 
         Link TunedIn with Spotify </text>
       </svg>

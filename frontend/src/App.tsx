@@ -70,9 +70,18 @@ function getcurruserindex(userIDs: Array<string>,googleuser: string): number{
   if(userIDs.includes(googleuser)){
       return userIDs.indexOf(googleuser)
   }
-  console.log(userIDs + " does not contain " + googleuser)
-  return 0;
+  else{
+    userunregistered = true;
+    console.log(userIDs + " does not contain " + googleuser)
+    return 0;
+  }
 }
+
+function sawtooth(x: number): number{
+  return Math.abs(((2*x) % 2)-1)
+}
+
+let userunregistered = false;
 
 function App() {
   const [CurrentGoogleUser, SetCurrentGoogleUser] = useState<string>("");
@@ -92,8 +101,6 @@ function App() {
   const [zoomval, Setzoomval] = useState<number>(0);
   const [zoomed, Setzoomed] = useState<boolean>(false);
   const [alltime, Setalltime] = useState<boolean>(false);
-  
-  // Current user index. Currently set to default value of 0.
   const [curruserindex, Setcurruserindex] = useState<number>(0);
 
   const Speed = 10;
@@ -115,7 +122,7 @@ function App() {
         // console.log("no current google user, only " + CurrentGoogleUser.toString())
       }
       //UPDATING USERS DISPLAYED
-      setTimer((Timer + 0.003) % 1)
+      setTimer((Timer + 0.001) % 1)
             if(!usersloaded){
               // console.log("Users aren't loaded yet but our google id is" + CurrentGoogleUser)
                 if (!fetchingusers){
@@ -160,10 +167,7 @@ function App() {
   const app = initializeApp(firebaseConfig);
   const db = getFirestore(app);
     // check if the user's Spotify is linked
-  
   async function checkSpotifyLinked() {
-    console.log("HEEYYYY")
-    console.log(CurrentGoogleUser)
     const localUID = localStorage.getItem("UID")
     if (localUID != null) {
       let userDoc = await getDoc(doc(db, "users", localUID))
@@ -171,18 +175,15 @@ function App() {
       console.log(data)
       // if the user rexists
       if (data != undefined) {
-
         // if the user spotify is linked
         if (data["refreshToken"] != "" && data["refreshToken"] != undefined) {
           console.log("there is a refresh token")
           return true;
-          
         // if the user spotify is not linked
         } else {
           console.log("there was no refresh token detected")
           return false;
         }
-      
       // if the user does not exist
       } else {
         console.log("this user has not logged into their google account yet")
@@ -203,6 +204,31 @@ function App() {
     }
   }
 
+  function showgoogleuserstring(){
+    if(userunregistered){
+      return ""
+    }
+    else{
+      return CurrentGoogleUser
+    }
+  }
+
+  function warningscreen(){
+    if(userunregistered){
+      return <svg className="warningscreen" width = "100%" height = "100%">
+        {[0,1,2,3,4].map((x)=> {return <image href="https://i.ibb.co/8dYvrr8/Screen-Shot-2022-12-20-at-12-40-41-AM.png"
+        x={0+800*sawtooth(3*(Timer+x/5))}
+        y={0 + 275*sawtooth(2*(Timer+x/5))}
+        />})}
+        <image href="https://i.ibb.co/8dYvrr8/Screen-Shot-2022-12-20-at-12-40-41-AM.png"
+        x={800*0.5}
+        y={275*0.5}
+        />
+      </svg>
+    }
+  }
+
+
   return (
     <div className="App">
       <p className="App-header" aria-label = "App header">
@@ -211,8 +237,7 @@ function App() {
       <button className="google-button" onClick = {()=>{let x = signInWithGoogle(SetCurrentGoogleUser)}} aria-label = "Click here to sign in with google">Sign in With Google</button>}
       <img className = "tuneinlogo" src="https://i.ibb.co/rFTJDTr/tuneinlogo2.png" aria-label = "Logo for the tunedin website"/>
       </p>
-      {/* NOTE: Currently I'm pretending the user is automatically logged in for testing purposes*/}
-      {GraphVis(CurrentGoogleUser, spotifyLinked, usersloaded, fetchingusers, usersongparams, userdatastrings, matchesdata, Timer,
+      {GraphVis(showgoogleuserstring(), spotifyLinked && !userunregistered, usersloaded, fetchingusers, usersongparams, userdatastrings, matchesdata, Timer,
        userIDs, CircleData, SortParameter, SortIndex, camcenter, SelectIndex, zoomval, zoomed, alltime, curruserindex,
        Setalltime, setSelectIndex, Setzoomed, setSortParameter, setSortIndex)}
       <div className = {hidebutton()} aria-label = "Click here to log in to spotify">
@@ -226,6 +251,7 @@ function App() {
         setfetchingusers = {setfetchingusers}
         />
       </div>
+      {warningscreen()}
       <p>{"Google id: " + CurrentGoogleUser}</p>
       <p>{"Spotify status: " + spotifyLinked}</p>
     </div>

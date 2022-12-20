@@ -164,10 +164,16 @@ body{
   opacity: var(--sidebar-mode)
 }
 
+.warningscreen{
+  position: absolute;
+  top: 110px;
+  left: 0;
+}
+
 .wrapper .sidebar .defaultbar .defaultbardescriptors{
   display: block;
   position: relative;
-  top: 500px;
+  top: 460px;
   right:0px;
   width: 240px;
   height: 225px;
@@ -250,6 +256,12 @@ body{
   height: 387.5px;
   opacity: calc(2*var(--sidebar-mode) - 1);
   transition: all 0.5s ease;
+}
+
+.bottomtext{
+  padding: 15px;
+  text-indent: 30px;
+  text-align: left;
 }
 
 .wrapper .svgwindow{
