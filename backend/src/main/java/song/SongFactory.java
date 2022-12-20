@@ -9,6 +9,9 @@ public class SongFactory implements CreatorFromRow<Song> {
 
   @Override
   public Song create(List<String> row) throws FactoryFailureException {
+    if (row.size() != 4) {
+      throw new FactoryFailureException(row);
+    }
     String title = row.get(0);
     String id = row.get(1);
     List<String> artists = Arrays.asList(row.get(2).split(";"));

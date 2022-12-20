@@ -370,7 +370,7 @@ function dots(Timer: number): string{
 
 function textbuff(str: string, len: number): string{
     if(str == undefined){
-        return "STRING NOT FOUND"
+        return "STRING UNDEFINED"
     }
     else if (str.length < len){
         return str

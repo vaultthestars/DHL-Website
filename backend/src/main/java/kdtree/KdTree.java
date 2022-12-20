@@ -280,4 +280,107 @@ public class KdTree<T extends KdTreeNode> {
   public List<T> getKdTreeNodes() {
     return this.kdTreeNodes;
   }
+
+  /**
+   * Deletes the given node from the tree.
+   *
+   * @param nodeToDelete - the node to delete
+   * @return - the new tree after deletion
+   */
+  public KdTree<T> deleteNode(T nodeToDelete) {
+    this.kdTreeNodes.remove(nodeToDelete);
+    return this.deleteNodeRecursive(nodeToDelete, 0);
+  }
+
+  /**
+   * Deletes the given node from the tree recursively.
+   *
+   * @param nodeToDelete - the node to delete
+   * @param depth - the current depth from the original root
+   * @return - the current tree after deletion
+   */
+  private KdTree<T> deleteNodeRecursive(KdTreeNode nodeToDelete, int depth) {
+    int totalDimension = this.getHead().getDimension();
+    int currentDimension = depth % totalDimension;
+
+    // if point to delete is present at root
+    if (this.getHead().equals(nodeToDelete)) {
+      if (this.getRight().getHead() != null) {
+        // find minimum in right subtree to get 'inorder successor' to replace position of the node being deleted
+        KdTree<T> minNode = this.right.findMinNode(currentDimension);
+        this.head = minNode.getHead();
+        this.right = this.right.deleteNodeRecursive(minNode.getHead(), depth + 1);
+      } else if (this.getLeft().getHead() != null) {
+        KdTree<T> minNode = this.left.findMinNode(currentDimension);
+        this.head = minNode.getHead();
+        this.right = this.left.deleteNodeRecursive(minNode.getHead(), depth + 1);
+      } else {
+        return new KdTree<>(new ArrayList<>(), depth + 1);
+      }
+      return this;
+    }
+    // point to delete is NOT present at root
+    if (nodeToDelete.getPoint()[currentDimension] < this.getHead().getPoint()[currentDimension]) {
+      this.left = this.left.deleteNodeRecursive(nodeToDelete, depth + 1);
+    } else {
+      this.right = this.right.deleteNodeRecursive(nodeToDelete, depth + 1);
+    }
+    return this;
+  }
+
+  /**
+   * Finds the node with the minimum value of the indicated axis
+   *
+   * @param axis - the axis to compare on
+   * @return the node with the minimum value
+   */
+  public KdTree<T> findMinNode(int axis) {
+    return this.findMinimumRecursive(axis, 0);
+  }
+
+  /**
+   * Finds the node with the minimum value of the indicated axis recursively.
+   *
+   * @param axis - the axis to compare on
+   * @param depth - the current depth of the tree from the original root
+   * @return - the node with the minimum value
+   */
+  private KdTree<T> findMinimumRecursive(int axis, int depth) {
+    int totalDimension = this.getHead().getDimension();
+    int currentDimension = depth % totalDimension;
+
+    // compare values of axis easily if it equals currentDimension
+    if (currentDimension == axis) {
+      if (this.left.getHead() == null) {
+        return this;
+      }
+      return this.left.findMinimumRecursive(axis, depth + 1);
+    }
+    // otherwise, a better minimum may be anywhere down the tree
+    // find the minimum of the given axis from here onward
+    return this.min(this,
+        this.left.findMinimumRecursive(axis, depth + 1),
+        this.right.findMinimumRecursive(axis, depth + 1),
+        axis);
+  }
+
+  /**
+   * Compare three nodes on a given axis and return the node with the minimum value
+   *
+   * @param node1 - the first node to compare
+   * @param node2 - the second node to compare
+   * @param node3 - the third node to compare
+   * @param axis - the axis to compare on
+   * @return the minimum node
+   */
+  private KdTree<T> min(KdTree<T> node1, KdTree<T> node2, KdTree<T> node3, int axis) {
+    KdTree<T> minNode = node1;
+    if (node2 != null && node2.getHead().getPoint()[axis] < minNode.getHead().getPoint()[axis]) {
+      minNode = node2;
+    }
+    if (node3 != null && node3.getHead().getPoint()[axis] < minNode.getHead().getPoint()[axis]) {
+      minNode = node3;
+    }
+    return minNode;
+  }
 }

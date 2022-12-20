@@ -68,16 +68,16 @@ public class User implements KdTreeNode, Cloneable {
     if (this == o) {
       return true;
     }
-    if (o == null || getClass() != o.getClass()) {
+    if (o == null || this.getClass() != o.getClass()) {
       return false;
     }
     User user = (User) o;
-    return membershipLength == user.membershipLength
-        && userId.equals(user.userId)
-        && currentSong.equals(user.currentSong)
-        && Arrays.equals(connections, user.connections)
-        && Arrays.equals(historicalSongPoint, user.historicalSongPoint)
-        && Arrays.equals(historicalConnections, user.historicalConnections);
+    return this.membershipLength == user.membershipLength && this.userId.equals(user.userId)
+        && this.displayName.equals(user.displayName) && Objects.equals(this.refreshToken,
+        user.refreshToken) && this.currentSong.equals(user.currentSong) && Arrays.equals(
+        this.connections, user.connections) && Arrays.equals(this.historicalSongPoint,
+        user.historicalSongPoint) && Arrays.equals(this.historicalConnections,
+        user.historicalConnections) && Objects.equals(this.songLibrary, user.songLibrary);
   }
 
   @Override
@@ -272,13 +272,17 @@ public class User implements KdTreeNode, Cloneable {
   public void updateHistoricalSongPoint(double[] newSongPoint) {
     // current average point + [(new point - current average point) / membershipLength]
     this.membershipLength++; // n increases by 1 because a new point is being added to average
-    double[] newHistoricalSongPoint = new double[6];
-    for (int i = 0; i < newSongPoint.length; i++) {
-      newHistoricalSongPoint[i] = newSongPoint[i] - this.getHistoricalSongPoint()[i];
-      newHistoricalSongPoint[i] = newHistoricalSongPoint[i] / this.getMembershipLength();
-      newHistoricalSongPoint[i] = newHistoricalSongPoint[i] + this.getHistoricalSongPoint()[i];
+    if (this.membershipLength == 1) {
+      this.setHistoricalSongPoint(this.getCurrentSong().getPoint());
+    } else {
+      double[] newHistoricalSongPoint = new double[6];
+      for (int i = 0; i < newSongPoint.length; i++) {
+        newHistoricalSongPoint[i] = newSongPoint[i] - this.getHistoricalSongPoint()[i];
+        newHistoricalSongPoint[i] = newHistoricalSongPoint[i] / this.getMembershipLength();
+        newHistoricalSongPoint[i] = newHistoricalSongPoint[i] + this.getHistoricalSongPoint()[i];
+      }
+      this.setHistoricalSongPoint(newHistoricalSongPoint);
     }
-    this.setHistoricalSongPoint(newHistoricalSongPoint);
   }
 
   @Override
@@ -307,11 +311,12 @@ public class User implements KdTreeNode, Cloneable {
     excluded.add(this.getCurrentSong());
     PriorityQueue<Song> connectionsQueue = songTree.kdTreeSearch(
         "neighbors", 5, this.getCurrentSong(), new DistanceSorter(this.getCurrentSong()), excluded);
+    // reverse order of connections for array bc queue is in decreasing order of distance
     String[] connections = new String[5];
-    int i = 0;
+    int i = connectionsQueue.size() - 1;
     for (Song song : connectionsQueue) {
       connections[i] = song.getUserId();
-      i++;
+      i--;
     }
     return connections;
   }
@@ -321,11 +326,12 @@ public class User implements KdTreeNode, Cloneable {
     excluded.add(this);
     PriorityQueue<User> connectionsQueue = userTree.kdTreeSearch(
         "neighbors", 5, this, new DistanceSorter(this), excluded);
+    // reverse order of connections for array bc queue is in decreasing order of distance
     String[] connections = new String[5];
-    int i = 0;
+    int i = connectionsQueue.size() - 1;
     for (User user : connectionsQueue) {
       connections[i] = user.getUserId();
-      i++;
+      i--;
     }
     return connections;
   }
