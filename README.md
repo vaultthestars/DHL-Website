@@ -40,15 +40,30 @@ Run the server file (our preferred method is to run `Server.main()` in IntelliJ)
 
 Navigate to the frontend directory. Ensure that all dependencies are installed by running `npm install`, followed by `npm install firebase`. Ensure that the backend is already running on `localhost:3232`. Then, run `npm start` to start the frontend server on `localhost:3000`.
 
-
 ## Design Choices:
 ### Frontend
+- Written in Typescript and React.
+- A single dynamic page with no dynamic routing.
+- Not currently suitable for mobile. Exclusively functiional for standard desktop web browser dimensions.
 
+#### Authentication
+- Has three states: logged into Google and not Spotify, logged into both, logged into neither.
+- Uses a setters within useState() web hooks called through logging in processes (buttons or use effects, in the case of Spotify) to decide which state to display.
+- After the first time a person signs in with Google, we automatically create a user object in Firestore.
+- If they have logged in before, we check if they have linked their Spotify by seeing if their Firestore user object contains a refresh token.
+- If it doesn't, they may link their Spotify. The linking process uses the OAuth2.0 code flow without PKCE for Spotify Authentication, which sends back a code that is used to retrieve tokens in the URL after redirecting offsite. To combine this behavior with our goal to not use any router-DOM type package and keep the site to one page, we have a useEffect running at all times that checks the page URL for a code parameter field. 
+- A log out procedure was not implemented due to time constraints, but all we would need to do is set our useState variables for Google and Spotify user to an empty string and a false boolean respectively and the reactive nature of our site would take care of the rest.
+
+#### Visualization
+- Calls a backend handler in the main file (App.tsx) and passes the data into the needed sections to allow for different components to be individually testable.
+- One enormous infinite loop allows us to render all the bubbles in a beautiful visualization. This method of rendering works well up to around 1000 bubbles prior to displaying noticeable lagging.
+- 
 ### Firestore Database
 - All users are stored a as document entry in a users collection stored on Firestore 
-- When a user logins in with their Google information, a new user document is created in Firestore with the correct fields. 
-- When a user links their Spotify account, a refresh token is generated for that user, and their document reference in Firestore is updated to contain the refresh token. 
+- When a user logs in for the first time with their Google information, a new user document is created in Firestore with the correct fields. 
+- When a user links their Spotify account for the first time, a refresh token is generated for that user, and their document reference in Firestore is updated to contain the refresh token. 
 - The Backend Server contains a FirestoreDatabase class that takes care of retrieving and updating user documents in Firestore. 
+- The Frontend communicates with the backend to retrieve this data.
 
 ### Backend 
 #### UserDatabase Interface
