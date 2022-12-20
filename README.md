@@ -34,13 +34,9 @@ Each user can view their daily connections and historical connections (other use
 
 ### Running the backend server:
 
-Run the server file (our preferred method is to run `Server.main()` in IntelliJ). Then, use a web browser to navigate to `localhost:3232` which is where the server is locally hosted. There are many different endpoints, some listed below:
+Run the server file (our preferred method is to run `Server.main()` in IntelliJ). Then, use a web browser to navigate to `localhost:3232` which is where the server is locally hosted. 
 
-```
-Examples:
-
-```
-### Running the frontend server:
+### Running the frontend web-app:
 
 Navigate to the frontend directory. Ensure that all dependencies are installed by running `npm install`, followed by `npm install firebase`. Ensure that the backend is already running on `localhost:3232`. Then, run `npm start` to start the frontend server on `localhost:3000`.
 
@@ -56,15 +52,20 @@ Navigate to the frontend directory. Ensure that all dependencies are installed b
 
 ### Backend 
 #### UserDatabase Interface
+- This interface has three methods called within our various handlers: `getUser(userId)`, `updateUser(userId, user)`, and `getAllUserIds()`.
+- We have two classes `LocalDatabase` and `FirestoreDatabase` that implement our `UserDatabase` interface.
+- `LocalDatabase` contains an hashmap() of all users ids mapped to User objects.
+- `FirestoreDatabase` is wrapper class representing the Firestore database. It takes care of all funcitonality related to reading data from and writing data to Firestore.
 #### User & Song Classes
 #### K-D Tree Alogrithm 
-#### Handlers:
+#### Server Class:
 - Our Server is set up with four handlers and their corresponding endpoints: load-song-features, load-connections, get-user, get-all-user-ids.
 - The Server has an enviroment variable that controls whether we are using a local database with mock users or initializing the Firestore database to hold actual users (users who login on our frontend web-app).
 - `LoadSongFeaturesHandler()` retrieves each user's most recently listened to song and then updates their user reference in the database. If we are using Firestore, we loop through every user retrieved from the database to make three calls are made to the Spotify API (exchanging refresh token for authentification token, retrieving most recently played track, retrieving audio features for that track). Then, we update each user in Firestore to reflect the song data retrieved via Spotify API calls. 
-- `LoadConnectionsHandler()`
-- `GetUserHandler()`
-- `GetUserIdsHandler()`
+- `LoadConnectionsHandler()` builds a User-Tree and a Song-Tree from the database entries. The User-Tree is used to find each user's historical connections (based on aggregate song feature information). The Song-Tree is used to find each user's connections (based on six song features). After calculating each user's connections and historical connections, their refrenece in the database is updated. 
+- `GetUserHandler()` generates a user object from its database reference. 
+- `GetUserIdsHandler()` generates a list of all user ids from the database. 
+- 
 ## Errors/Bugs:
 
 At this time, there are no known bugs with our program.
