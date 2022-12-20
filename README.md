@@ -5,7 +5,7 @@ Dylan Lee (dlee197)\
 Dani Tamesis (dtamesis)\
 Chance Emerson (cemerso3)
 
-**Repository Link:** https://github.com/cs0320-f2022/term-project-cemerso3-dlee197-dtamesis-sminars/
+[Repository Link](https://github.com/cs0320-f2022/term-project-cemerso3-dlee197-dtamesis-sminars/)
 
 ## What is TunedIn?
 
@@ -40,30 +40,15 @@ Run the server file (our preferred method is to run `Server.main()` in IntelliJ)
 
 Navigate to the frontend directory. Ensure that all dependencies are installed by running `npm install`, followed by `npm install firebase`. Ensure that the backend is already running on `localhost:3232`. Then, run `npm start` to start the frontend server on `localhost:3000`.
 
+
 ## Design Choices:
 ### Frontend
-- Written in Typescript and React.
-- A single dynamic page with no dynamic routing.
-- Not currently suitable for mobile. Exclusively functiional for standard desktop web browser dimensions.
 
-#### Authentication
-- Has three states: logged into Google and not Spotify, logged into both, logged into neither.
-- Uses a setters within useState() web hooks called through logging in processes (buttons or use effects, in the case of Spotify) to decide which state to display.
-- After the first time a person signs in with Google, we automatically create a user object in Firestore.
-- If they have logged in before, we check if they have linked their Spotify by seeing if their Firestore user object contains a refresh token.
-- If it doesn't, they may link their Spotify. The linking process uses the OAuth2.0 code flow without PKCE for Spotify Authentication, which sends back a code that is used to retrieve tokens in the URL after redirecting offsite. To combine this behavior with our goal to not use any router-DOM type package and keep the site to one page, we have a useEffect running at all times that checks the page URL for a code parameter field. 
-- A log out procedure was not implemented due to time constraints, but all we would need to do is set our useState variables for Google and Spotify user to an empty string and a false boolean respectively and the reactive nature of our site would take care of the rest.
-
-#### Visualization
-- Calls a backend handler in the main file (App.tsx) and passes the data into the needed sections to allow for different components to be individually testable.
-- One enormous infinite loop allows us to render all the bubbles in a beautiful visualization. This method of rendering works well up to around 1000 bubbles prior to displaying noticeable lagging.
-- 
 ### Firestore Database
 - All users are stored a as document entry in a users collection stored on Firestore 
-- When a user logs in for the first time with their Google information, a new user document is created in Firestore with the correct fields. 
-- When a user links their Spotify account for the first time, a refresh token is generated for that user, and their document reference in Firestore is updated to contain the refresh token. 
+- When a user logins in with their Google information, a new user document is created in Firestore with the correct fields. 
+- When a user links their Spotify account, a refresh token is generated for that user, and their document reference in Firestore is updated to contain the refresh token. 
 - The Backend Server contains a FirestoreDatabase class that takes care of retrieving and updating user documents in Firestore. 
-- The Frontend communicates with the backend to retrieve this data.
 
 ### Backend 
 #### UserDatabase Interface
@@ -75,7 +60,9 @@ Navigate to the frontend directory. Ensure that all dependencies are installed b
 - `User` class represents an individual TuneIn user and houses essential user-specific information. It implements KdTreeNode so that users can be used to build the User-Tree. 
 - `Song` class represents a specific song and stores related information (user id, title, song id, list of artists, array of audio features, k-d tree dimension). It implements KdTreeNode so that songs can be used to build the Song-Tree. 
 #### K-D Tree Alogrithm 
--
+- Tuned-In displays the top 5 connections for each user on a given day and also their top 5 all-time (historical) connections. 
+- To find the top 5 connections for each user, we search for 5 nearest neighbors in a Song-Tree whose nodes are all the current songs identified to particular users via user ids (song point = 6 numerical audio features). 
+- To find the 5 all-time connections for each user, we search 5 nearest neighbors in a User-Tree whose nodes are all the users (historical song point = aggregate average of each user's song point data). 
 #### Server Class
 - Our Server is set up with four handlers and their corresponding endpoints: load-song-features, load-connections, get-user, get-all-user-ids.
 - The Server has an enviroment variable that controls whether we are using a local database with mock users or initializing the Firestore database to hold actual users (users who login on our frontend web-app).
@@ -83,7 +70,7 @@ Navigate to the frontend directory. Ensure that all dependencies are installed b
 - `LoadConnectionsHandler()` builds a User-Tree and a Song-Tree from the database entries. The User-Tree is used to find each user's historical connections (based on aggregate song feature information). The Song-Tree is used to find each user's connections (based on six song features). After calculating each user's connections and historical connections, their refrenece in the database is updated. 
 - `GetUserHandler()` generates a user object from its database reference. 
 - `GetUserIdsHandler()` generates a list of all user ids from the database. 
-- 
+
 ## Errors/Bugs:
 
 At this time, there are no known bugs with our program.
