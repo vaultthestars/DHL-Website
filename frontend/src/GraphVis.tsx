@@ -369,7 +369,10 @@ function dots(Timer: number): string{
 }
 
 function textbuff(str: string, len: number): string{
-    if (str.length < len){
+    if(str == undefined){
+        return "STRING UNDEFINED"
+    }
+    else if (str.length < len){
         return str
     }
     return str.slice(0,len) + "..."
