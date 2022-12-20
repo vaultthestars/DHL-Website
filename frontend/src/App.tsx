@@ -10,6 +10,7 @@ import { getFirestore, doc, setDoc, getDoc } from "firebase/firestore";
 import { initializeApp } from "firebase/app";
 import { updateuserdata } from './backendhandler';
 
+// DONE TODOS:
 //[DONE]: We need to be able to render a whole ton of circles.
 //[DONE]: Add the actual parameters we want
 //[DONE]: Change background color
@@ -31,12 +32,13 @@ import { updateuserdata } from './backendhandler';
 //[DONE]: Make current user index update when you log in! Edit the initdist functions
 //[DONE]: Aria label the heck out of everything
 //[DONE]: Re-render users once you've logged in fully!
+//[DONE]: Fix long title formatting!
+//[DONE]: Add a pretty gradient bar on the side to denote how things are being sorted from bottom to top
+//[DONE]: Turn off the user outline circles when you aren't logged in
+//[DONE]: If you can't find the current google user in the userlist(mocked data), consider making a separate screen?
 
 //FRONTEND TODO:
-//TODO: Fix long title formatting!
-//TODO: Add a pretty gradient bar on the side to denote how things are being sorted from bottom to top
-//TODO: Turn off the user outline circles when you aren't logged in
-//TODO: If you can't find the current google user in the userlist(mocked data), consider making a separate screen?
+//TODO: COMMENT EVERYTHING
 //TODO: CLEAN UP AND TEST
 
 

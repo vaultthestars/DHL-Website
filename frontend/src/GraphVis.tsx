@@ -546,7 +546,7 @@ export default function GraphVis(CurrentGoogleUser: string, spotifyLinked: boole
                                     }}
                                     aria-label={"Match " + x2 + ": " + getdatastrings(getdatamatches(SelectIndex, alltime, matchindex, matchesdata),0, userdatastrings)}
                                     >
-                                    {textbuff(getdatastrings(getdatamatches(SelectIndex, alltime, matchindex, matchesdata),0, userdatastrings),15)}
+                                    {textbuff(getdatastrings(getdatamatches(curruser, alltime, matchindex, matchesdata),0, userdatastrings),15)}
                                     </text>
                                 })}
                             </svg>
