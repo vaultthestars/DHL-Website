@@ -292,8 +292,9 @@ public class KdTreeTest {
 
     Point pointToDelete = new Point(new double[] {4, 1});
 
-    this.kdTree.deleteNode(pointToDelete);
-    assertEquals(false, this.kdTree.getKdTreeNodes().contains(pointToDelete));
+    KdTree<KdTreeNode> returned = this.kdTree.deleteNode(pointToDelete);
+    assertFalse(this.kdTree.getKdTreeNodes().contains(pointToDelete));
+    assertEquals(returned.toString(), this.kdTree.toString());
 
     // assert correct root
     assertEquals(2, kdTree.getHead().getDimension());
@@ -315,7 +316,7 @@ public class KdTreeTest {
     KdTree<KdTreeNode> rightLeft = kdTree.getRight().getLeft();
     KdTree<KdTreeNode> rightRight = kdTree.getRight().getRight();
 
-    assertEquals(null, leftLeft.getHead()); // deleted leaf's head is now null
+    assertNull(leftLeft.getHead()); // deleted leaf's head is now null
     assertEquals(2, leftRight.getHead().getDimension());
     assertEquals(2, rightLeft.getHead().getDimension());
     assertEquals(2, rightRight.getHead().getDimension());
@@ -328,20 +329,198 @@ public class KdTreeTest {
   /**
    * Tests delete node, where the node is the root.
    */
+  @Test
+  public void testDeleteRoot() {
+    setUpOddPoints();
 
-  /**
-   * Tests delete node, where the node has a right child.
-   */
+    Point pointToDelete = new Point(new double[] {6, 5});
+
+    KdTree<KdTreeNode> returned = this.kdTree.deleteNode(pointToDelete);
+    assertFalse(this.kdTree.getKdTreeNodes().contains(pointToDelete));
+    assertEquals(returned.toString(), this.kdTree.toString());
+
+    // assert correct root
+    assertEquals(2, kdTree.getHead().getDimension());
+    // root (6,5) replaced by (6,2)
+    assertEquals("[6.0, 2.0]", Arrays.toString(kdTree.getHead().getPoint()));
+
+    // assert correct children
+    KdTree<KdTreeNode> left = kdTree.getLeft();
+    KdTree<KdTreeNode> right = kdTree.getRight();
+
+    assertEquals(2, left.getHead().getDimension());
+    assertEquals(2, right.getHead().getDimension());
+    assertEquals("[0.0, 5.0]", Arrays.toString(left.getHead().getPoint()));
+    // (6,2)'s old position replaced by (6,4):
+    assertEquals("[6.0, 4.0]", Arrays.toString(right.getHead().getPoint()));
+
+    // assert correct children's children
+    KdTree<KdTreeNode> leftLeft = kdTree.getLeft().getLeft();
+    KdTree<KdTreeNode> leftRight = kdTree.getLeft().getRight();
+
+    KdTree<KdTreeNode> rightLeft = kdTree.getRight().getLeft();
+    KdTree<KdTreeNode> rightRight = kdTree.getRight().getRight();
+
+    assertEquals(2, leftLeft.getHead().getDimension());
+    assertEquals(2, leftRight.getHead().getDimension());
+    assertEquals(2, rightLeft.getHead().getDimension());
+
+    assertEquals("[4.0, 1.0]", Arrays.toString(leftLeft.getHead().getPoint()));
+    assertEquals("[3.0, 6.0]", Arrays.toString(leftRight.getHead().getPoint()));
+    assertEquals("[7.0, 0.0]", Arrays.toString(rightLeft.getHead().getPoint()));
+    // (6,4)'s old position is now null:
+    assertNull(rightRight.getHead());
+  }
 
   /**
    * Tests delete node, where the node is in the middle and has 2 children.
    */
+  @Test
+  public void testDeleteMiddle() {
+    setUpOddPoints();
+
+    Point pointToDelete = new Point(new double[] {0, 5});
+
+    KdTree<KdTreeNode> returned = this.kdTree.deleteNode(pointToDelete);
+    assertFalse(this.kdTree.getKdTreeNodes().contains(pointToDelete));
+    assertEquals(returned.toString(), this.kdTree.toString());
+
+    // assert correct root
+    assertEquals(2, kdTree.getHead().getDimension());
+    assertEquals("[6.0, 5.0]", Arrays.toString(kdTree.getHead().getPoint()));
+
+    // assert correct children
+    KdTree<KdTreeNode> left = kdTree.getLeft();
+    KdTree<KdTreeNode> right = kdTree.getRight();
+
+    assertEquals(2, left.getHead().getDimension());
+    assertEquals(2, right.getHead().getDimension());
+    // (0,5) replaced by (3,6):
+    assertEquals("[3.0, 6.0]", Arrays.toString(left.getHead().getPoint()));
+    assertEquals("[6.0, 2.0]", Arrays.toString(right.getHead().getPoint()));
+
+    // assert correct children's children
+    KdTree<KdTreeNode> leftLeft = kdTree.getLeft().getLeft();
+    KdTree<KdTreeNode> leftRight = kdTree.getLeft().getRight();
+
+    KdTree<KdTreeNode> rightLeft = kdTree.getRight().getLeft();
+    KdTree<KdTreeNode> rightRight = kdTree.getRight().getRight();
+
+    assertEquals(2, leftLeft.getHead().getDimension());
+    assertEquals(2, rightLeft.getHead().getDimension());
+    assertEquals(2, rightRight.getHead().getDimension());
+
+    assertEquals("[4.0, 1.0]", Arrays.toString(leftLeft.getHead().getPoint()));
+    // (3,6)'s old position is now null:
+    assertNull(leftRight.getHead());
+    assertEquals("[7.0, 0.0]", Arrays.toString(rightLeft.getHead().getPoint()));
+    assertEquals("[6.0, 4.0]", Arrays.toString(rightRight.getHead().getPoint()));
+  }
+
+  /**
+   * Tests delete node, where the node has only a left child.
+   */
+  @Test
+  public void testDeleteWithLeftChild() {
+    setUpOddPoints();
+    // delete root to set up
+    this.kdTree.deleteNode(new Point(new double[] {6, 5}));
+
+    Point pointToDelete = new Point(new double[] {6, 4});
+
+    KdTree<KdTreeNode> returned = this.kdTree.deleteNode(pointToDelete);
+    assertFalse(this.kdTree.getKdTreeNodes().contains(pointToDelete));
+    assertEquals(returned.toString(), this.kdTree.toString());
+
+    // assert correct root
+    assertEquals(2, kdTree.getHead().getDimension());
+    // IN SET UP, root (6,5) replaced by (6,2):
+    assertEquals("[6.0, 2.0]", Arrays.toString(kdTree.getHead().getPoint()));
+
+    // assert correct children
+    KdTree<KdTreeNode> left = kdTree.getLeft();
+    KdTree<KdTreeNode> right = kdTree.getRight();
+
+    assertEquals(2, left.getHead().getDimension());
+    assertEquals(2, right.getHead().getDimension());
+    assertEquals("[0.0, 5.0]", Arrays.toString(left.getHead().getPoint()));
+    // IN SET UP, (6,2)'s old position replaced by (6,4), but then (6,4) was replaced by (7,0):
+    assertEquals("[7.0, 0.0]", Arrays.toString(right.getHead().getPoint()));
+
+    // assert correct children's children
+    KdTree<KdTreeNode> leftLeft = kdTree.getLeft().getLeft();
+    KdTree<KdTreeNode> leftRight = kdTree.getLeft().getRight();
+
+    KdTree<KdTreeNode> rightLeft = kdTree.getRight().getLeft();
+    KdTree<KdTreeNode> rightRight = kdTree.getRight().getRight();
+
+    assertEquals(2, leftLeft.getHead().getDimension());
+    assertEquals(2, leftRight.getHead().getDimension());
+
+    assertEquals("[4.0, 1.0]", Arrays.toString(leftLeft.getHead().getPoint()));
+    assertEquals("[3.0, 6.0]", Arrays.toString(leftRight.getHead().getPoint()));
+    // IN SET UP, (6,4)'s old position was null, but then it was replaced by (7,0)
+    // Now, (7,0)'s position is also null:
+    assertNull(rightLeft.getHead());
+    assertNull(rightRight.getHead());
+  }
 
   /**
    * Tests delete node, where the node is not in the tree.
    */
+  @Test
+  public void testDeleteAbsent() {
+    setUpOddPoints();
+
+    Point pointToDelete = new Point(new double[] {1, 2});
+
+    KdTree<KdTreeNode> returned = this.kdTree.deleteNode(pointToDelete);
+    assertFalse(this.kdTree.getKdTreeNodes().contains(pointToDelete));
+    assertEquals(returned.toString(), this.kdTree.toString());
+
+    // assert correct root
+    assertEquals(2, kdTree.getHead().getDimension());
+    assertEquals("[6.0, 5.0]", Arrays.toString(kdTree.getHead().getPoint()));
+
+    // assert correct children
+    KdTree<KdTreeNode> left = kdTree.getLeft();
+    KdTree<KdTreeNode> right = kdTree.getRight();
+
+    assertEquals(2, left.getHead().getDimension());
+    assertEquals(2, right.getHead().getDimension());
+    assertEquals("[0.0, 5.0]", Arrays.toString(left.getHead().getPoint()));
+    assertEquals("[6.0, 2.0]", Arrays.toString(right.getHead().getPoint()));
+
+    // assert correct children's children
+    KdTree<KdTreeNode> leftLeft = kdTree.getLeft().getLeft();
+    KdTree<KdTreeNode> leftRight = kdTree.getLeft().getRight();
+
+    KdTree<KdTreeNode> rightLeft = kdTree.getRight().getLeft();
+    KdTree<KdTreeNode> rightRight = kdTree.getRight().getRight();
+
+    assertEquals(2, leftLeft.getHead().getDimension());
+    assertEquals(2, leftRight.getHead().getDimension());
+    assertEquals(2, rightLeft.getHead().getDimension());
+
+    assertEquals("[4.0, 1.0]", Arrays.toString(leftLeft.getHead().getPoint()));
+    assertEquals("[3.0, 6.0]", Arrays.toString(leftRight.getHead().getPoint()));
+    assertEquals("[7.0, 0.0]", Arrays.toString(rightLeft.getHead().getPoint()));
+    assertEquals("[6.0, 4.0]", Arrays.toString(rightRight.getHead().getPoint()));
+  }
 
   /**
    * Tests delete node, where the tree is empty.
    */
+  @Test
+  public void testDeleteFromEmpty() {
+    setUpEmptyTree();
+
+    Point pointToDelete = new Point(new double[] {1, 2});
+
+    KdTree<KdTreeNode> returned = this.kdTree.deleteNode(pointToDelete);
+    assertFalse(this.kdTree.getKdTreeNodes().contains(pointToDelete));
+    assertEquals(returned.toString(), this.kdTree.toString());
+
+    assertNull(this.kdTree.getHead());
+  }
 }
