@@ -133,7 +133,7 @@ export function linsort(pt: Array<number>, SortParameterIndex: number, loggedin:
     if(loggedin && pt[0] == curruser){
         x = 1;
     }
-    return [pt[0], x,300-(600*getdata(pt[0],SortParameterIndex, usersongparams))] //trying to do it with 0 y instead of pt[2]
+    return [pt[0], x,200-(400*getdata(pt[0],SortParameterIndex, usersongparams))] //trying to do it with 0 y instead of pt[2]
 }
 
 // Simple boilerplate function for fetching the paramindex'th song data value of the userindex'th user.
@@ -357,6 +357,13 @@ function dots(Timer: number): string{
     return "..."
 }
 
+function textbuff(str: string, len: number): string{
+    if (str.length < len){
+        return str
+    }
+    return str.slice(0,len) + "..."
+}
+
 
 
 // Our main rendering function. Returns everything below the header in our app.
@@ -400,7 +407,6 @@ export default function GraphVis(CurrentGoogleUser: string, spotifyLinked: boole
     setSortParameter: ((num: number)=>void), setSortIndex: ((num: number)=>void)) {
 
     // All of our wonderful react state variables
-    const [ShowCircLabels, SetShowCircLabels] = useState<boolean>(true);
     const SELECTEDUSERSONGSTRING: string = getdatastrings(SelectIndex,0, userdatastrings) + " is listening to " + getdatastrings(SelectIndex,1, userdatastrings) + "by " + getdatastrings(SelectIndex,2, userdatastrings)
 
     //Ok there's some weird stuff going on with userIDs now
@@ -445,7 +451,7 @@ export default function GraphVis(CurrentGoogleUser: string, spotifyLinked: boole
                     {/* defaultbar, aka zoomed out sidebar panel */}
                     <div key = "defaultbar" className = {fullyloggedin(spotifyLinked,"defaultbar")} aria-label="user sidebar for displaying your current matches">
                         <h3 aria-label={"Welcome, " + getdatastrings(curruser,0, userdatastrings) + "!"}>
-                            {"Welcome, " + getdatastrings(curruser,0, userdatastrings) + "!"}
+                            {"Welcome, " + textbuff(getdatastrings(curruser,0, userdatastrings),25) + "!"}
                             </h3>
                         <h2 aria-label="Who's on your wavelength?">Who's on your wavelength?</h2>
                         {/* lovely wave logo made in Desmos */}
@@ -527,18 +533,25 @@ export default function GraphVis(CurrentGoogleUser: string, spotifyLinked: boole
                                     }}
                                     aria-label={"Match " + x2 + ": " + getdatastrings(getdatamatches(SelectIndex, alltime, matchindex, matchesdata),0, userdatastrings)}
                                     >
-                                    {getdatastrings(getdatamatches(SelectIndex, alltime, matchindex, matchesdata),0, userdatastrings)}
+                                    {textbuff(getdatastrings(getdatamatches(SelectIndex, alltime, matchindex, matchesdata),0, userdatastrings),15)}
                                     </text>
                                 })}
                             </svg>
+                        <div className= {fullyloggedin(!zoomed,"defaultbardescriptors")}>
+                            <p>HELLO HELLO HELLO THIS IS A LOT OF TEXT</p>
+                            <p>HELLO HELLO HELLO THIS IS A LOT OF TEXT</p>
+                            <p>HELLO HELLO HELLO THIS IS A LOT OF TEXT</p>
+                            <p>HELLO HELLO HELLO THIS IS A LOT OF TEXT</p>
+                            <p>HELLO HELLO HELLO THIS IS A LOT OF TEXT</p>
+                        </div>
                     </div>
                     {/* userbar, aka zoomed in sidebar panel */}  
                     <div key = "userbar" className={fullyloggedin(zoomed,"userbar")} aria-label = "sidebar for viewing a selected user's current song statistics">
                         {/* main song string info */}
-                        <p aria-label={SELECTEDUSERSONGSTRING}>{getdatastrings(SelectIndex,0, userdatastrings)}</p>
+                        <p aria-label={SELECTEDUSERSONGSTRING}>{textbuff(getdatastrings(SelectIndex,0, userdatastrings),24)}</p>
                         <p aria-label={SELECTEDUSERSONGSTRING}>{"is listening to"}</p>
-                        <h2 aria-label={SELECTEDUSERSONGSTRING}>{getdatastrings(SelectIndex,1, userdatastrings)}</h2>
-                        <h3 aria-label={SELECTEDUSERSONGSTRING}>{"by " + getdatastrings(SelectIndex,2, userdatastrings)}</h3>
+                        <h2 aria-label={SELECTEDUSERSONGSTRING}>{textbuff(getdatastrings(SelectIndex,1, userdatastrings),18)}</h2>
+                        <h3 aria-label={SELECTEDUSERSONGSTRING}>{"by " + textbuff(getdatastrings(SelectIndex,2, userdatastrings),16)}</h3>
                         {/* song data value display */}
                         <svg id="paramdisplay" className = "paramdisplay" width = "100%" height = "500">
                             {[0,1,2,3,4,5].map((x)=>{
@@ -578,6 +591,13 @@ export default function GraphVis(CurrentGoogleUser: string, spotifyLinked: boole
                                 Math.round(getdata(SelectIndex,x, usersongparams)*100) + "percent"}> {getparamname(x)+":"} </text>
                             })}
                         </svg>
+                        <div className= {fullyloggedin(zoomed,"parameterdescriptors")}>
+                            <p>Song parameters:</p>
+                            <p>Acousticness: This parameter measures how acoustic a user's song is.</p>
+                            <p>Energy: This parameter measures how energetic a user's song is.</p>
+                            <p>HELLO HELLO HELLO THIS IS A LOT OF TEXT</p>
+                            <p>HELLO HELLO HELLO THIS IS A LOT OF TEXT</p>
+                        </div>
                     </div>
                 </div>
                 {/* user bubble display */}
@@ -635,8 +655,7 @@ export default function GraphVis(CurrentGoogleUser: string, spotifyLinked: boole
                     })}
                     {/* username tags for displayed bubbles */}
                     {CircleData.map((entry) => 
-                        {if(ShowCircLabels){
-                            return (<text 
+                        { return (<text 
                                 key = {"username_"+entry[0].toString()}
                                 x={camcenter[0]*(entry[1]-24-camcenter[1])+centerx} 
                                 y={camcenter[0]*(entry[2]-24-camcenter[2])+300} 
@@ -646,7 +665,7 @@ export default function GraphVis(CurrentGoogleUser: string, spotifyLinked: boole
                             console.log("circle " + entry[0] + " clicked");
                             setSelectIndex(entry[0])
                         }} >
-                        {getdatastrings(entry[0],0, userdatastrings)}</text>)}}
+                        {getdatastrings(entry[0],0, userdatastrings)}</text>)}
                     )}
                     {/* button for changing the parameter we sort by */}
                     {<rect 
@@ -706,17 +725,29 @@ export default function GraphVis(CurrentGoogleUser: string, spotifyLinked: boole
                         >
                             Zoom out
                         </text>}
-                        <image className= "gradient" height = "450" y = "130" href = "https://i.ibb.co/8cN6FXd/transpgradbar.png"/>
+                        <text 
+                        key = {getparamname(SortParameter) + " level"}
+                        className = "whitetext2"
+                        x= "10"
+                        y= "140"
+                        >
+                            {getparamname(SortParameter) + " level:"}
+                        </text>
+                        {[0,0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1.0].map((x)=> 
+                        {return <text 
+                        key = {getparamname(SortParameter) + " level"}
+                        className = "whitetext2"
+                        x= "35"
+                        y= {165 + 410*(1-x)}
+                        >
+                            {x}
+                        </text>
+                    })}
+                        <image className= "gradient" height = "450" y = "140" href = "https://i.ibb.co/8cN6FXd/transpgradbar.png"/>
                 </svg>
                 {/* misc. developer tools. Kept for debugging purposes, nothing here is dangerous or alters the actual data,
                  which is why I've simply hidden it instead of omitting it completely via some boolean function */}
                 <div key = "developer stuff" className = "hidden">
-                    <button onClick= {() => {  
-                        // Toggle usernames on and off
-                        SetShowCircLabels(!ShowCircLabels);
-                    }}>
-                        {"Toggle Circle Labels"}
-                    </button>
                     {/* Note: We can't change the size of the circdata array, react won't allow it */}
                     <button onClick= {() => {  
                             // Change the sorting style between linear and radial, or some other sorting function if we decide to add more.

@@ -134,6 +134,7 @@ body{
     height: 600px;
     padding: 20px 0;
     transition: all 0.5s ease;
+    overflow-y: scroll;
 }
 
 .wrapper .sidebar .profile{
@@ -161,6 +162,26 @@ body{
   width: 240px;
   height: 225px;
   opacity: var(--sidebar-mode)
+}
+
+.wrapper .sidebar .defaultbar .defaultbardescriptors{
+  display: block;
+  position: relative;
+  top: 500px;
+  right:0px;
+  width: 240px;
+  height: 225px;
+  opacity: var(--sidebar-mode)
+}
+
+.wrapper .sidebar .userbar .parameterdescriptors{
+  display: block;
+  position: relative;
+  top: 500px;
+  right:0px;
+  width: 240px;
+  height: 225px;
+  opacity: calc(1 - var(--sidebar-mode))
 }
 
 .wrapper .sidebar .userbar h2{
@@ -287,6 +308,12 @@ rect {
 .wrapper .svgwindow .whitetext{
   /* font: italic 40px serif; */
       font: normal 20px helvetica;
+      fill: rgb(255, 255, 255);
+}
+
+.wrapper .svgwindow .whitetext2{
+  /* font: italic 40px serif; */
+      font: normal 15px helvetica;
       fill: rgb(255, 255, 255);
 }
 

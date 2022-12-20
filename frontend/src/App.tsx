@@ -210,7 +210,10 @@ function App() {
       <img className = "tuneinlogo" src="https://i.ibb.co/rFTJDTr/tuneinlogo2.png" aria-label = "Logo for the tunedin website"/>
       </p>
       {/* NOTE: Currently I'm pretending the user is automatically logged in for testing purposes*/}
-      {GraphVis(CurrentGoogleUser, spotifyLinked, usersloaded, fetchingusers, usersongparams, userdatastrings, matchesdata, Timer,
+      {/* {GraphVis(CurrentGoogleUser, spotifyLinked, usersloaded, fetchingusers, usersongparams, userdatastrings, matchesdata, Timer,
+       userIDs, CircleData, SortParameter, SortIndex, camcenter, SelectIndex, zoomval, zoomed, alltime, curruserindex,
+       Setalltime, setSelectIndex, Setzoomed, setSortParameter, setSortIndex)} */}
+       {GraphVis("YES I AM A GOOGLE USER", true, usersloaded, fetchingusers, usersongparams, userdatastrings, matchesdata, Timer,
        userIDs, CircleData, SortParameter, SortIndex, camcenter, SelectIndex, zoomval, zoomed, alltime, curruserindex,
        Setalltime, setSelectIndex, Setzoomed, setSortParameter, setSortIndex)}
       {/* {GraphVis("HELLO I AM A USER",true)} */}
