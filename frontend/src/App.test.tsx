@@ -1,14 +1,41 @@
 import React from 'react';
-import { render, screen } from '@testing-library/react';
+import { cleanup, render, screen } from '@testing-library/react';
 import App, { initdist } from './App';
 import userEvent from '@testing-library/user-event';
 import '@testing-library/jest-dom'
 import GraphVis, {genrandomstring, mag, sech, radsort, linsort, getdata, getdatastrings, getdatamatches, repulse, towardsort, sortshift, updatecamcenter, getsortname, getparamname} from './GraphVis';
 
+const genericGraphviz = GraphVis(
+    "uid2", //CurrentGoogleUser
+    true, //spotifyLinked
+    true, //usersloaded
+    false, //fetchingusers
+    new Map([[0, [1, 1, 1, 1, 1, 1]], [1, [1, 1, 1, 1, 1, 1]]]), //usersongparams
+    new Map([[0, ["songName", "songArtist"]], [1, ["songName2", "songArtist2"]]]), //userdatastrings, 
+    new Map([[1, [[0], [0]]], [0, [[1], [1]]]]), //matchesdata,
+    .5, //Timer
+    ["uid1", "uid2"], //userIDs
+    [[0, 1, 2], [1, 2, 3]], //CircleData [us]
+    1, //SortParameter for default
+    1, //SortIndex for sort style
+    [1, 0, 0], //camcenter, 
+    1, //SelectIndex, 
+    0, //zoomval, 
+    false, //zoomed, 
+    false, //alltime, 
+    0, //curruserindex,
+    (bool: boolean) => {}, //Setalltime, 
+    (num: number) => {}, //setSelectIndex, 
+    (bool: boolean) => {}, //setZoomed, 
+    (num: number) => {}, //setSortParameter, 
+    (num: number) => {}, //setSortIndex
+    );
+
 beforeEach(() => {
 });
 
 afterEach(() => {
+    cleanup;
 });
 
 //testing based on the idea of 'tests for this front-end application should be written in terms of what the end-user can perceive'
@@ -93,52 +120,89 @@ test('mag()', () => {
     expect(result2).toBe(NaN) // DYLAN DYLAN note that edge case outputs NaN
 });
 
-
-//TODO: Fix the arguments for radsort! View graphvis for reference
-// test('radsort() NaN behavior', () => {
-//     const point = [2, 5, 6] // id, x, y
-//     const result = radsort(point, 0)
-//     expect(result).toStrictEqual([2, NaN, NaN])
-// });
-
-// need to implement linsort, radsort testing by mocking data not sure how bc that is picked up in graphviz instantiation itself
-test('linsort()', () => {
-});
-
 test('radsort()', () => {
+        render(genericGraphviz);
+        const point1 = [0, 1, 2] // id, x, y
+        const result1 = radsort(point1, 0, true, 0, new Map([[0, [1, 1, 1, 1, 1, 1]], [1, [1, 1, 1, 1, 1, 1]]]))
+        expect([result1[0], Math.floor(result1[1]), Math.floor(result1[2])]).toStrictEqual([0, 357, 715])
+        const point = [0, 0, 0] // id, x, y
+        const result = radsort(point, 0, true, 0, new Map([[0, [1, 1, 1, 1, 1, 1]], [1, [1, 1, 1, 1, 1, 1]]]))
+        expect([result[0], Math.floor(result[1]), Math.floor(result[2])]).toStrictEqual([0, 0, 0])
 });
 
+test('linsort()', () => {
+    genericGraphviz;
 
+    const point1 = [0, 1, 2] // id, x, y
+    const result1 = linsort(point1, 1, true, 0, new Map([[0, [1, 1, 1, 1, 1, 1]], [1, [1, 1, 1, 1, 1, 1]]]))
+    expect([result1[0], Math.floor(result1[1]), Math.floor(result1[2])]).toStrictEqual([0, 1, -200])
 
-// test('repulse()', () => {
-//     const result: Array<number> = repulse([1, 2, 3], [2, 2, 6])
-//     expect(result.length).toBe(2)
-//     expect(result[0]).is[0]
-//     expect(result[1] < -0.99 && result[1]>-1).toBe(true)
-//     // should only repulse in the y direction if they are in the same x position
-// });
+    const point = [0, 0, 0] // id, x, y
+    const result = linsort(point, 1, true, 0, new Map([[0, [1, 1, 1, 1, 1, 1]], [1, [1, 1, 1, 1, 1, 1]]]))
+    expect([result[0], Math.floor(result[1]), Math.floor(result[2])]).toStrictEqual([0, 1, -200])
+});
+
+test('repulse()', () => {
+    render(genericGraphviz);
+    const result: Array<number> = repulse([0, 2, 3], [1, 2, 6])
+    expect(result.length).toBe(2)
+    expect(result[0]).toBe(0)
+    expect(Math.floor(result[1])).toBe(-1)
+
+    const result1: Array<number> = repulse([0, 2, 3], [1, 2, 3])
+    expect(result1.length).toBe(2)
+    expect(result1[0]).toBe(0)
+    expect(Math.floor(result1[1])).toBe(0)
+});
 
 test('towardsort()', () => {
+    render(genericGraphviz)
+    const point1 = [0, 1, 2] // id, x, y
+    const result1 = towardsort(point1, 0, [[0, 1, 2], [1, 2, 3]], radsort, 1, true, 0, new Map([[0, [1, 1, 1, 1, 1, 1]], [1, [1, 1, 1, 1, 1, 1]]]))
+    expect([result1[0], Math.floor(result1[1]), Math.floor(result1[2])]).toStrictEqual([0, -1, 1])
+
 });
 
-// how to set mock data if graphviz imports from backend directly
-// test('getdata()', () => {
-//     usersongparams.set(1, ["this is a song", "this is an artist"])
-//     const result = getdata(1, 0)
-//     expect(result).toBe("this is a song")
-//     const result2 = getdata(1, 2)
-//     expect(result2).toBe("this is an artist")
-// });
+test('getdata()', () => {
+    render(genericGraphviz)
+    const result = getdata(1, 0, new Map([[0, [.1, .2, .3, .4, .5, .6]], [1, [.1, .2, .3, .4, .5, .6]]]))
+    expect(result).toBe(.1)
+    const result2 = getdata(0, 5, new Map([[0, [.1, .2, .3, .4, .5, .6]], [1, [.1, .2, .3, .4, .5, .6]]]))
+    expect(result2).toBe(.6)
+});
 
 test('getdatamatches()', () => {
+    render(genericGraphviz)
+    const result = getdatamatches(0, true, 0, new Map([[1, [[0], [0]]], [0, [[1], [1]]]]))
+    expect(result).toBe(1)
+    const result2 = getdatamatches(1, false, 0, new Map([[1, [[0], [0]]], [0, [[1], [1]]]]))
+    expect(result2).toBe(0)
 });
 
 test('getdatastrings()', () => {
+    render(genericGraphviz)
+    const result = getdatastrings(0, 0, new Map([[0, ["songName", "songArtist"]], [1, ["songName2", "songArtist2"]]]))
+    expect(result).toBe("songName")
+    const result2 = getdatastrings(1, 1, new Map([[0, ["songName", "songArtist"]], [1, ["songName2", "songArtist2"]]]))
+    expect(result2).toBe("songArtist2")
 });
 
 test('sortShift()', () => {
+    render(genericGraphviz)
+
+    const result = sortshift([[0, 1, 2], [1, 2, 3]], 2, linsort, .5, true, 0, new Map([[0, [.1, .2, .3, .4, .5, .6]], [1, [.1, .2, .3, .4, .5, .6]]]))
+    expect([result[0][0], Math.floor(result[0][1]), Math.floor(result[0][2])]).toStrictEqual([0, -1, 0])
+    expect([result[1][0], Math.floor(result[1][1]), Math.floor(result[1][2])]).toStrictEqual([1, 3, 4])
+
+    const result1 = sortshift([[0, 1, 2], [1, 2, 3]], 0, radsort, .5, true, 0, new Map([[0, [1, 1, 1, 1, 1, 1]], [1, [1, 1, 1, 1, 1, 1]]]))
+    expect([result1[0][0], Math.floor(result1[0][1]), Math.floor(result1[0][2])]).toStrictEqual([0, -1, 0])
+    expect([result1[1][0], Math.floor(result1[1][1]), Math.floor(result1[1][2])]).toStrictEqual([1, 3, 4])
+
 });
 
 test('updatecamcenter()', () => {
+    const result1 = updatecamcenter([0, 0, 0], [1, 1, 1])
+    expect([Math.floor(result1[0]*100), Math.floor(result1[1]*100), Math.floor(result1[2]*100)]).toStrictEqual([3, 3, 3])
+
 });
 
