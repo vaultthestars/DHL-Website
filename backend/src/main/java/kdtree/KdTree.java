@@ -300,10 +300,13 @@ public class KdTree<T extends KdTreeNode> {
    * @return - the current tree after deletion
    */
   private KdTree<T> deleteNodeRecursive(KdTreeNode nodeToDelete, int depth) {
+    if (this.getHead() == null) {
+      return this;
+    }
     int totalDimension = this.getHead().getDimension();
     int currentDimension = depth % totalDimension;
 
-    // if point to delete is present at root
+    // if point to delete is present at this root
     if (this.getHead().equals(nodeToDelete)) {
       if (this.getRight().getHead() != null) {
         // find minimum in right subtree to get 'inorder successor' to replace position of the node being deleted
@@ -314,6 +317,10 @@ public class KdTree<T extends KdTreeNode> {
         KdTree<T> minNode = this.left.findMinNode(currentDimension);
         this.head = minNode.getHead();
         this.right = this.left.deleteNodeRecursive(minNode.getHead(), depth + 1);
+        // added the line below bc test with only left child failed
+        // (7,0) replaced the deleted (6,4) head, but it was still present at the left field as well
+        // so (7,0) was in the tree twice
+        this.left = new KdTree<>(new ArrayList<>(), depth + 1);
       } else {
         return new KdTree<>(new ArrayList<>(), depth + 1);
       }
@@ -346,6 +353,10 @@ public class KdTree<T extends KdTreeNode> {
    * @return - the node with the minimum value
    */
   private KdTree<T> findMinimumRecursive(int axis, int depth) {
+    // base case
+    if (this.getHead() == null) {
+      return null;
+    }
     int totalDimension = this.getHead().getDimension();
     int currentDimension = depth % totalDimension;
 
@@ -354,7 +365,10 @@ public class KdTree<T extends KdTreeNode> {
       if (this.left.getHead() == null) {
         return this;
       }
-      return this.left.findMinimumRecursive(axis, depth + 1);
+      return this.min(this,
+          this.left.findMinimumRecursive(axis, depth + 1),
+          null,
+          axis);
     }
     // otherwise, a better minimum may be anywhere down the tree
     // find the minimum of the given axis from here onward
@@ -382,5 +396,19 @@ public class KdTree<T extends KdTreeNode> {
       minNode = node3;
     }
     return minNode;
+  }
+
+  @Override
+  public String toString() {
+    if (this.head == null) {
+      return "null";
+    }
+    return "KdTree{" +
+        "head=" + head.toString() +
+        ", left=" + left.toString() +
+        ", right=" + right.toString() +
+        ", axis=" + axis +
+        ", kdTreeNodes=" + kdTreeNodes.toString() +
+        '}';
   }
 }
