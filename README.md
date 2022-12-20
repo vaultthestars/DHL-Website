@@ -28,12 +28,43 @@ Our app will allow anybody to view the most recent TunedIn of other users. They 
 
 <b>Valence</b>  - A measure from 0.0 to 1.0 describing the musical positiveness conveyed by a track. Tracks with high valence sound more positive (e.g. happy, cheerful, euphoric), while tracks with low valence sound more negative (e.g. sad, depressed, angry).
 
-Our app will group users with similar music preferences (based on those six metrics) together by calculating a general distance metric between any two users based on their present and historical music data. Finally, our app will provide a beautiful data visualization for our users, displaying each user as a bubble in a vast floating landscape of other users, allowing the user to sort the bubbles (visual clustering) by any category they wish, as well as click on individual bubbles to view the users themselves and their most recent activity. Our project will also form an overall sense of community amongst users via this musical exchange, and hopefully help people discover others who either share their tastes, or enjoy something completely different.
+Each user can view their daily connections and historical connections (other users will similar music taste) calculated via a 6-d tree alorigthm using those six song metrics. Finally, our app will provide a beautiful data visualization for our users, displaying each user as a bubble in a vast floating landscape of other users, allowing the user to sort the bubbles (visual clustering) by any category they wish, as well as click on individual bubbles to view the users themselves and their most recent activity. Our project will also form an overall sense of community amongst users via this musical exchange, and hopefully help people discover others who either share their tastes, or enjoy something completely different.
+
+## How-To Run TunedIn:
+
+### Running the backend server:
+
+Run the server file (our preferred method is to run `Server.main()` in IntelliJ). Then, use a web browser to navigate to `localhost:3232` which is where the server is locally hosted. There are many different endpoints, some listed below:
+
+```
+Examples:
+
+```
+### Running the frontend server:
+
+Navigate to the frontend directory. Ensure that all dependencies are installed by running `npm install`, followed by `npm install firebase`. Ensure that the backend is already running on `localhost:3232`. Then, run `npm start` to start the frontend server on `localhost:3000`.
+
 
 ## Design Choices:
+### Frontend
 
-There is a frontend and a backend. There is firebase.
+### Firestore Database
+- All users are stored a as document entry in a users collection stored on Firestore 
+- When a user logins in with their Google information, a new user document is created in Firestore with the correct fields. 
+- When a user links their Spotify account, a refresh token is generated for that user, and their document reference in Firestore is updated to contain the refresh token. 
+- The Backend Server contains a FirestoreDatabase class that takes care of retrieving and updating user documents in Firestore. 
 
+### Backend 
+#### UserDatabase Interface
+#### User & Song Classes
+#### K-D Tree Alogrithm 
+#### Handlers:
+- Our Server is set up with four handlers and their corresponding endpoints: load-song-features, load-connections, get-user, get-all-user-ids.
+- The Server has an enviroment variable that controls whether we are using a local database with mock users or initializing the Firestore database to hold actual users (users who login on our frontend web-app).
+- `LoadSongFeaturesHandler()` retrieves each user's most recently listened to song and then updates their user reference in the database. If we are using Firestore, we loop through every user retrieved from the database to make three calls are made to the Spotify API (exchanging refresh token for authentification token, retrieving most recently played track, retrieving audio features for that track). Then, we update each user in Firestore to reflect the song data retrieved via Spotify API calls. 
+- `LoadConnectionsHandler()`
+- `GetUserHandler()`
+- `GetUserIdsHandler()`
 ## Errors/Bugs:
 
 At this time, there are no known bugs with our program.
@@ -46,23 +77,8 @@ For the backend, enter the backend folder and type `mvn test` in the terminal to
 
 For the frontend, enter the frontend folder and type `npm test` in the terminal to run the tests.
 
-## How-To:
 
-### Running the backend server:
-
-Run the server file (our preferred method is to run `Server.main()` in IntelliJ). Then, use a web browser to navigate to `localhost:3232` which is where the server
-is locally hosted. There are many different endpoints, some listed below:
-
-```
-Examples:
-
-```
-### Running the frontend server:
-
-Navigate to the frontend directory. Ensure that all dependencies are installed by running `npm install`, followed by `npm install firebase`. Ensure that the backend is already running on `localhost:3232`. Then, run `npm start` to start the frontend server on `localhost:3000`.
-
-
-## Assorted Sources:
+## References:
 
 Spotify API:
 https://developer.spotify.com/documentation/web-api/quick-start/
@@ -81,5 +97,11 @@ https://khalilstemmler.com/articles/tutorials/getting-the-currently-playing-song
 Google Login:
 [Button CSS Styling](https://codepen.io/mupkoo/pen/YgddgB0) & 
 [Sign-In Functionality](https://firebase.google.com/docs/auth/web/google-signin)
+
+Firestore: 
+[Initialzing Cloud Firestore](https://firebase.google.com/docs/firestore/quickstart#java_3)
+[Admin SDK](https://firebase.google.com/docs/admin/setup)
+[Reading Data](https://firebase.google.com/docs/firestore/query-data/get-data)
+[Writing Data](https://firebase.google.com/docs/firestore/manage-data/add-data)
 
 
