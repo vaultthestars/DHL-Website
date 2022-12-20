@@ -79,7 +79,7 @@ https://developer.spotify.com/documentation/general/guides/authorization/code-fl
 https://khalilstemmler.com/articles/tutorials/getting-the-currently-playing-song-spotify/
 
 Google Login:
-Button CSS Styling => https://codepen.io/mupkoo/pen/YgddgB
-Login Functionaliy => https://firebase.google.com/docs/auth/web/google-signin
+[Button CSS Styling](https://codepen.io/mupkoo/pen/YgddgB0)
+[Sign-In Functionality](https://firebase.google.com/docs/auth/web/google-signin)
 
 
