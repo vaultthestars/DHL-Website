@@ -756,3 +756,5 @@ export default function GraphVis(CurrentGoogleUser: string, spotifyLinked: boole
     }
             
 }
+
+export {genrandomstring, mag, sech, radsort, linsort, getdata, getdatastrings, getdatamatches, repulse, towardsort, sortshift, updatecamcenter, getsortname, getparamname};
