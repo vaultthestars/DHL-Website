@@ -311,11 +311,12 @@ public class User implements KdTreeNode, Cloneable {
     excluded.add(this.getCurrentSong());
     PriorityQueue<Song> connectionsQueue = songTree.kdTreeSearch(
         "neighbors", 5, this.getCurrentSong(), new DistanceSorter(this.getCurrentSong()), excluded);
+    // reverse order of connections for array bc queue is in decreasing order of distance
     String[] connections = new String[5];
-    int i = 0;
+    int i = connectionsQueue.size() - 1;
     for (Song song : connectionsQueue) {
       connections[i] = song.getUserId();
-      i++;
+      i--;
     }
     return connections;
   }
@@ -325,11 +326,12 @@ public class User implements KdTreeNode, Cloneable {
     excluded.add(this);
     PriorityQueue<User> connectionsQueue = userTree.kdTreeSearch(
         "neighbors", 5, this, new DistanceSorter(this), excluded);
+    // reverse order of connections for array bc queue is in decreasing order of distance
     String[] connections = new String[5];
-    int i = 0;
+    int i = connectionsQueue.size() - 1;
     for (User user : connectionsQueue) {
       connections[i] = user.getUserId();
-      i++;
+      i--;
     }
     return connections;
   }
