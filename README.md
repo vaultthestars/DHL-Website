@@ -62,5 +62,20 @@ Examples:
 Navigate to the frontend directory. Ensure that all dependencies are installed by running `npm install`, followed by `npm install firebase`. Ensure that the backend is already running on `localhost:3232`. Then, run `npm start` to start the frontend server on `localhost:3000`.
 
 
-## Sources:
+## Assorted Sources:
+
+Spotify API:
+https://developer.spotify.com/documentation/web-api/quick-start/
+https://stackoverflow.com/questions/39887342/how-can-i-get-an-access-token-spotify-api
+https://kaylouisebennett.medium.com/getting-started-with-spotifys-web-api-part-1-cff30c1b23ef
+https://dev.to/jpreagan/starting-a-personal-dashboard-with-the-spotify-api-526p
+https://medium.com/@davidjtomczyk/spotify-api-authorization-flow-with-react-and-rails-7f42845a43c
+https://www.newline.co/search?query=spotify+api&sortBy=positiveReviewCount%3AHighest+Rated%2CnumStudents%3AMost+Popular%2CcreatedAt%3AMost+Recent
+https://stackoverflow.com/questions/73737341/spotify-api-refresh-token-doesnt-return-a-token-with-refresh-token
+https://stackoverflow.com/questions/68155590/spotify-web-api-giving-me-illegal-scope-no-matter-what
+https://developer.spotify.com/documentation/web-api/guides/using-connect-web-api/
+https://react-hook-form.com/api/useform/setvalue/
+https://developer.spotify.com/documentation/general/guides/authorization/code-flow/
+https://khalilstemmler.com/articles/tutorials/getting-the-currently-playing-song-spotify/
+
 
