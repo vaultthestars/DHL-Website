@@ -78,14 +78,15 @@ export const SpotifyLoginButton: React.FC<SpotifyLoginButtonProps> = (parameters
       .then((response) => response.json()
       .then((data) => {
         if (refreshToken == "" && refreshToken != undefined) {
-          refreshToken = data.refresh_token;}
-          let iNSERT_UID_HERE = localStorage.getItem("UID");
-          if (iNSERT_UID_HERE != null) {
+          refreshToken = data.refresh_token;
+        }
+        let iNSERT_UID_HERE = localStorage.getItem("UID");
+        if (iNSERT_UID_HERE != null) {
           setDoc(doc(db, "users", iNSERT_UID_HERE), {
             refreshToken: refreshToken,
           }, { merge: true }); 
           localStorage.setItem("spotify", iNSERT_UID_HERE)
-          // console.log(localStorage)
+          // console.log("setting local storage and google user to be " + iNSERT_UID_HERE)
           setUser2(iNSERT_UID_HERE)
         }
         if (accessToken == "" && accessToken != undefined) {
@@ -110,7 +111,8 @@ export const SpotifyLoginButton: React.FC<SpotifyLoginButtonProps> = (parameters
 
   if ((localStorage.getItem("spotify") != "" && localStorage.getItem("spotify") != null) || spotifyLinked ) {
     setspotifyLinked(true)
-    setUser2(localStorage.getItem("spotify"))
+    // console.log("local storage exists and so we are setting it to be" + localStorage.getItem("spotify") + " and not " + localStorage.getItem("UID"))
+    setUser2(localStorage.getItem("UID"))
     return (
       <p></p>
     )

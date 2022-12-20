@@ -12,8 +12,11 @@ import { match } from 'assert';
 // Number of mocked users to display. Can go up to 1000 without significant slowdowns.
 let maxnum = 150;
 
-// x-center of the svg window
-let centerx = 600;
+// x-center of the svg window coordinates
+let centerx = 700;
+
+// y-center of the svg window coordinates
+let centery = 250;
 
 // The radius of the filtering circle around each point 
 // that is used to cut down on how many repulsive forces we must calculate
@@ -119,6 +122,7 @@ export function linsort(pt: Array<number>, SortParameterIndex: number, loggedin:
     // it wasn't worth creating an entire React myRef variable for something this subtle.
     const maxwidth = 400;
     let x = pt[1];
+    let y = 200-(400*getdata(pt[0],SortParameterIndex, usersongparams))
     if(pt[0] < 0){
         return [-1,-1000,-1000]
     }
@@ -133,7 +137,14 @@ export function linsort(pt: Array<number>, SortParameterIndex: number, loggedin:
     if(loggedin && pt[0] == curruser){
         x = 1;
     }
-    return [pt[0], x,200-(400*getdata(pt[0],SortParameterIndex, usersongparams))] //trying to do it with 0 y instead of pt[2]
+    if(y < -200){
+        y = -200
+    }
+    else if(y > 200){
+        y = 200
+    }
+
+    return [pt[0], x,y] //trying to do it with 0 y instead of pt[2]
 }
 
 // Simple boilerplate function for fetching the paramindex'th song data value of the userindex'th user.
@@ -443,7 +454,6 @@ export default function GraphVis(CurrentGoogleUser: string, spotifyLinked: boole
         </div>
     }
     else{
-        // console.log(userIDs)
         // console.log(CircleData)
         return <div key = "wrapper" className = "wrapper">
                 {/* Sidebar background */}
@@ -601,149 +611,155 @@ export default function GraphVis(CurrentGoogleUser: string, spotifyLinked: boole
                     </div>
                 </div>
                 {/* user bubble display */}
-                <svg className="svgwindow" fill = "true"
-                 width="100%" height="600" >
-                    {/* current user outline circles */}
-                    {[0,1,2,3].map((num) => 
-                        {if (spotifyLinked){
-                        return <circle 
-                        key= {"usercircleoutline_"+num.toString()} 
-                        cx= {camcenter[0]*(CircleData[curruser][1]-camcenter[1])+centerx} cy= {camcenter[0]*(CircleData[curruser][2]-camcenter[2])+300} 
-                        r={camcenter[0]*(20+10*num) + 4*Math.sin(0.1*CircleData[curruser][0]+tau*Timer)} 
-                        fill="none"
-                        stroke = "hsla(0 100% 100%)"
-                        strokeWidth = "1"
-                        >
-                        </circle>
-                        }}
-                    )}
-                    {/* selected user outline circles */}
-                    {[0,1].map((num) => 
-                        {
-                        return <circle 
-                        key= {"selectedcircleoutline_"+num.toString()} 
-                        cx= {camcenter[0]*(CircleData[SelectIndex][1]-camcenter[1])+centerx} cy= {camcenter[0]*(CircleData[SelectIndex][2]-camcenter[2])+300} 
-                        r={camcenter[0]*20 + 20 + 20*num + 10*Math.sin(0.1*CircleData[curruser][0]+tau*Timer)} 
-                        fill="none"
-                        stroke = {renderstroke(zoomed,getdata(SelectIndex,SortParameter, usersongparams))}
-                        strokeWidth = "2"
-                        >
-                        </circle>
+                <div className = "bubblecontainer">
+                    <svg className="svgwindow" fill = "true"
+                    width="1600" height="800" >
+                        {/* current user outline circles */}
+                        {[0,1,2,3].map((num) => 
+                            {if (spotifyLinked){
+                            return <circle 
+                            key= {"usercircleoutline_"+num.toString()} 
+                            cx= {camcenter[0]*(CircleData[curruser][1]-camcenter[1])+centerx} cy= {camcenter[0]*(CircleData[curruser][2]-camcenter[2])+centery} 
+                            r={camcenter[0]*(20+10*num) + 4*Math.sin(0.1*CircleData[curruser][0]+tau*Timer)} 
+                            fill="none"
+                            stroke = "hsla(0 100% 100%)"
+                            strokeWidth = "1"
+                            >
+                            </circle>
+                            }}
+                        )}
+                        {/* selected user outline circles */}
+                        {[0,1].map((num) => 
+                            {
+                            return <circle 
+                            key= {"selectedcircleoutline_"+num.toString()} 
+                            cx= {camcenter[0]*(CircleData[SelectIndex][1]-camcenter[1])+centerx} cy= {camcenter[0]*(CircleData[SelectIndex][2]-camcenter[2])+centery} 
+                            r={camcenter[0]*20 + 20 + 20*num + 10*Math.sin(0.1*CircleData[curruser][0]+tau*Timer)} 
+                            fill="none"
+                            stroke = {renderstroke(zoomed,getdata(SelectIndex,SortParameter, usersongparams))}
+                            strokeWidth = "2"
+                            >
+                            </circle>
+                            }
+                        )}
+                        {/* all user bubbles */}
+                        {CircleData.map((entry) => {
+                            if (Number.isNaN(entry[1])){
+                                return null
+                            }
+                            else{
+                            return <circle 
+                            key= {entry[0]} 
+                            className = {entry[0].toString()} 
+                            cx= {camcenter[0]*(entry[1]-camcenter[1])+centerx} cy= {camcenter[0]*(entry[2]-camcenter[2])+centery} 
+                            r={camcenter[0]*20 + 4*Math.sin(0.1*entry[0]+tau*Timer)} fill={"hsla(" + 200+90*getdata(entry[0],SortParameter, usersongparams) + ", 50%, 50%, 1)"}
+                            stroke = "none"
+                            strokeWidth = "5"
+                            onClick= {() => {
+                                Setzoomed(true);
+                                console.log("circle " + entry[0] + " clicked");
+                                setSelectIndex(entry[0])
+                            }}
+                            />
                         }
-                    )}
-                    {/* all user bubbles */}
-                    {CircleData.map((entry) => {
-                        if (Number.isNaN(entry[1])){
-                            return null
-                        }
-                        else{
-                        return <circle 
-                        key= {entry[0]} 
-                        className = {entry[0].toString()} 
-                        cx= {camcenter[0]*(entry[1]-camcenter[1])+centerx} cy= {camcenter[0]*(entry[2]-camcenter[2])+300} 
-                        r={camcenter[0]*20 + 4*Math.sin(0.1*entry[0]+tau*Timer)} fill={"hsla(" + 200+90*getdata(entry[0],SortParameter, usersongparams) + ", 50%, 50%, 1)"}
-                        stroke = "none"
-                        strokeWidth = "5"
-                        onClick= {() => {
-                            Setzoomed(true);
-                            console.log("circle " + entry[0] + " clicked");
-                            setSelectIndex(entry[0])
-                        }}
-                        />
-                    }
 
-                    })}
-                    {/* username tags for displayed bubbles */}
-                    {CircleData.map((entry) => 
-                        { return (<text 
-                                key = {"username_"+entry[0].toString()}
-                                x={camcenter[0]*(entry[1]-24-camcenter[1])+centerx} 
-                                y={camcenter[0]*(entry[2]-24-camcenter[2])+300} 
-                                fontSize={camcenter[0]*10}
-                        className="small"
-                        onClick= {() => {
-                            console.log("circle " + entry[0] + " clicked");
-                            setSelectIndex(entry[0])
-                        }} >
-                        {getdatastrings(entry[0],0, userdatastrings)}</text>)}
-                    )}
-                    {/* button for changing the parameter we sort by */}
-                    {<rect 
-                        key = "paramsortbutton"
-                        width = {(140+9*getparamname(SortParameter).length).toString()}
-                        height = "50"
-                        x= "10"
-                        y= "10"
-                        rx="5"
-                        ry="5"
-                        onClick= {() => {  
-                            // change the parameter sorting mode
-                            setSortParameter((SortParameter + 1) % parameternames.size);
-                        }}
-                        aria-label = {"Currently sorting users by: " + getparamname(SortParameter) + ". Click to change the sorting method."}
-                        >
-                        </rect>}
-                        {<text 
-                        key = "paramsorttext"
-                        className = "whitetext"
-                        x= "20"
-                        y= "42"
-                        onClick= {() => {  
-                            // change the parameter sorting mode
-                            setSortParameter((SortParameter + 1) % parameternames.size);
-                        }}
-                        aria-label = {"Currently sorting users by: " + getparamname(SortParameter) + ". Click to change the sorting method."}
-                        >
-                            {"Sorting by: " + getparamname(SortParameter)}
-                        </text>}
-                    {/* button for zooming the camera out after we've clicked a bubble */}
-                    {<rect 
-                        key = "zoomoutbutton"
-                        width = "150"
-                        height = "50"
-                        x= "10"
-                        y= "70"
-                        rx="5"
-                        ry="5"
-                        opacity = {camcenter[0]-1.1}
-                        onClick= {() => {  
-                            Setzoomed(false);
-                        }}
-                        aria-label = "Click to zoom out"
-                        >
-                        </rect>}
-                        {<text 
-                        key = "zoomouttext"
-                        className = "whitetext"
-                        x= "42"
-                        y= "102"
-                        opacity = {camcenter[0]-1.1}
-                        onClick= {() => {  
-                            Setzoomed(false);
-                        }}
-                        aria-label = "Click to zoom out"
-                        >
-                            Zoom out
-                        </text>}
-                        <text 
+                        })}
+                        {/* username tags for displayed bubbles */}
+                        {CircleData.map((entry) => 
+                            { return (<text 
+                                    key = {"username_"+entry[0].toString()}
+                                    x={camcenter[0]*(entry[1]-24-camcenter[1])+centerx} 
+                                    y={camcenter[0]*(entry[2]-24-camcenter[2])+centery} 
+                                    fontSize={camcenter[0]*10}
+                            className="small"
+                            onClick= {() => {
+                                console.log("circle " + entry[0] + " clicked");
+                                setSelectIndex(entry[0])
+                            }} >
+                            {getdatastrings(entry[0],0, userdatastrings)}</text>)}
+                        )}
+                    </svg>
+                </div>
+                <svg className="fixedscreenbutton" width = {(140+9*getparamname(SortParameter).length).toString() + 5} height = "160">
+                            {/* button for changing the parameter we sort by */}
+                        {<rect 
+                            key = "paramsortbutton"
+                            width = {(140+9*getparamname(SortParameter).length).toString()}
+                            height = "50"
+                            x= "10"
+                            y= "10"
+                            rx="5"
+                            ry="5"
+                            onClick= {() => {  
+                                // change the parameter sorting mode
+                                setSortParameter((SortParameter + 1) % parameternames.size);
+                            }}
+                            aria-label = {"Currently sorting users by: " + getparamname(SortParameter) + ". Click to change the sorting method."}
+                            >
+                            </rect>}
+                            {<text 
+                            key = "paramsorttext"
+                            className = "whitetext"
+                            x= "20"
+                            y= "42"
+                            onClick= {() => {  
+                                // change the parameter sorting mode
+                                setSortParameter((SortParameter + 1) % parameternames.size);
+                            }}
+                            aria-label = {"Currently sorting users by: " + getparamname(SortParameter) + ". Click to change the sorting method."}
+                            >
+                                {"Sorting by: " + getparamname(SortParameter)}
+                            </text>}
+                        {/* button for zooming the camera out after we've clicked a bubble */}
+                        {<rect 
+                            key = "zoomoutbutton"
+                            width = "150"
+                            height = "50"
+                            x= "10"
+                            y= "70"
+                            rx="5"
+                            ry="5"
+                            opacity = {camcenter[0]-1.1}
+                            onClick= {() => {  
+                                Setzoomed(false);
+                            }}
+                            aria-label = "Click to zoom out"
+                            >
+                            </rect>}
+                            {<text 
+                            key = "zoomouttext"
+                            className = "whitetext"
+                            x= "42"
+                            y= "102"
+                            opacity = {camcenter[0]-1.1}
+                            onClick= {() => {  
+                                Setzoomed(false);
+                            }}
+                            aria-label = "Click to zoom out"
+                            >
+                                Zoom out
+                            </text>}
+                    <text 
                         key = {getparamname(SortParameter) + " level"}
                         className = "whitetext2"
                         x= "10"
-                        y= "140"
+                        y= "145"
                         >
                             {getparamname(SortParameter) + " level:"}
-                        </text>
-                        {[0,0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1.0].map((x)=> 
+                    </text>
+                </svg>
+                <svg className="fixedscreengradient" width = "75" height = "480">
+                    {[0,0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1.0].map((x)=> 
                         {return <text 
-                        key = {getparamname(SortParameter) + " level"}
+                        key = {"decimal notch " + x}
                         className = "whitetext2"
                         x= "35"
-                        y= {165 + 410*(1-x)}
+                        y= {65 + 410*(1-x)}
                         >
                             {x}
                         </text>
                     })}
-                        <image className= "gradient" height = "450" y = "140" href = "https://i.ibb.co/8cN6FXd/transpgradbar.png"/>
+                    <image className= "gradient" height = "450" y = "40" href = "https://i.ibb.co/8cN6FXd/transpgradbar.png"/>
                 </svg>
                 {/* misc. developer tools. Kept for debugging purposes, nothing here is dangerous or alters the actual data,
                  which is why I've simply hidden it instead of omitting it completely via some boolean function */}

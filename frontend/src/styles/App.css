@@ -256,6 +256,25 @@ body{
   background: rgb(95, 163, 223);
 }
 
+.wrapper .fixedscreenbutton{
+  position: absolute;
+  top: 110px;
+  left: 0;
+}
+
+.wrapper .fixedscreengradient{
+  position: absolute;
+  top: 220px;
+  left: 0;
+}
+
+.wrapper .bubblecontainer{
+  width: 100%;
+  height: 600px;
+  overflow-x: scroll;
+  overflow-y: scroll;
+}
+
 .google-button {
   position:absolute;
   right: 25px;
@@ -305,19 +324,19 @@ rect {
   stroke:rgb(0,0,0)
 }
 
-.wrapper .svgwindow .whitetext{
+.whitetext{
   /* font: italic 40px serif; */
       font: normal 20px helvetica;
       fill: rgb(255, 255, 255);
 }
 
-.wrapper .svgwindow .whitetext2{
+.whitetext2{
   /* font: italic 40px serif; */
       font: normal 15px helvetica;
       fill: rgb(255, 255, 255);
 }
 
-.wrapper .svgwindow .whitetextbig{
+.whitetextbig{
   /* font: italic 40px serif; */
       font: normal 50px helvetica;
       fill: rgb(255, 255, 255);

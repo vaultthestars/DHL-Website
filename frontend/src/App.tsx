@@ -55,7 +55,7 @@ export function initdist(num: number): Array<Array<number>>{
 }
 
 //This returns a promise that will only resolve when all users' data have been updated
-async function setuserdata(userIDs:Array<string>, googleuserid: string, usersongparams: Map<number, Array<number>>,
+async function setuserdata(userIDs:Array<string>, usersongparams: Map<number, Array<number>>,
   userdatastrings: Map<number, Array<string>>, matchesdata: Map<number, Array<Array<number>>>, 
   setusersongparams: ((map: Map<number, Array<number>>) => void), setuserdatastrings: ((map: Map<number, Array<string>>) => void), 
   setmatchesdata: ((map: Map<number, Array<Array<number>>>) => void)): Promise<void[]>{
@@ -70,7 +70,7 @@ function getcurruserindex(userIDs: Array<string>,googleuser: string): number{
   if(userIDs.includes(googleuser)){
       return userIDs.indexOf(googleuser)
   }
-  // console.log(userIDs + " does not contain " + googleuser)
+  console.log(userIDs + " does not contain " + googleuser)
   return 0;
 }
 
@@ -103,20 +103,21 @@ function App() {
       if(CurrentGoogleUser != ""){
         // console.log("there is a google user " + CurrentGoogleUser.toString())
         if(!spotifyLinked){
-          console.log("spotify isn't linked")
+          // console.log("spotify isn't linked")
           checkSpotifyLinked().then((result)=>{
-            if(result != undefined){
+            if(result == true){
             setspotifyLinked(result);
             }
           });
         }
       }
       else{
-        console.log("no current google user, only " + CurrentGoogleUser.toString())
+        // console.log("no current google user, only " + CurrentGoogleUser.toString())
       }
       //UPDATING USERS DISPLAYED
       setTimer((Timer + 0.003) % 1)
             if(!usersloaded){
+              // console.log("Users aren't loaded yet but our google id is" + CurrentGoogleUser)
                 if (!fetchingusers){
                     // console.log("we need to get stuff")
                     setfetchingusers(true)
@@ -127,7 +128,7 @@ function App() {
                             setCircleData(initdist(ids.length))
                             fetch("http://localhost:3232/load-song-features").then(()=>{
                                 fetch("http://localhost:3232/load-connections").then(()=>{
-                                    setuserdata(ids, CurrentGoogleUser, usersongparams, userdatastrings, matchesdata, setusersongparams, setuserdatastrings, setmatchesdata).then(()=>
+                                    setuserdata(ids, usersongparams, userdatastrings, matchesdata, setusersongparams, setuserdatastrings, setmatchesdata).then(()=>
                                     {
                                         setusersloaded(true)
                                     })
@@ -139,6 +140,7 @@ function App() {
             }
             if(usersloaded){
                 // console.log("finding user " + googleuser + " in " + userIDs)
+                // console.log("users are loaded with current user" + CurrentGoogleUser)
             Setcurruserindex(getcurruserindex(userIDs,CurrentGoogleUser))
             setCircleData(sortshift(CircleData, SortParameter, getsortmethod(SortIndex), Speed, spotifyLinked, curruserindex, usersongparams))
             Setcamcenter(updatecamcenter(camcenter,
@@ -210,13 +212,9 @@ function App() {
       <img className = "tuneinlogo" src="https://i.ibb.co/rFTJDTr/tuneinlogo2.png" aria-label = "Logo for the tunedin website"/>
       </p>
       {/* NOTE: Currently I'm pretending the user is automatically logged in for testing purposes*/}
-      {/* {GraphVis(CurrentGoogleUser, spotifyLinked, usersloaded, fetchingusers, usersongparams, userdatastrings, matchesdata, Timer,
-       userIDs, CircleData, SortParameter, SortIndex, camcenter, SelectIndex, zoomval, zoomed, alltime, curruserindex,
-       Setalltime, setSelectIndex, Setzoomed, setSortParameter, setSortIndex)} */}
-       {GraphVis("YES I AM A GOOGLE USER", true, usersloaded, fetchingusers, usersongparams, userdatastrings, matchesdata, Timer,
+      {GraphVis(CurrentGoogleUser, spotifyLinked, usersloaded, fetchingusers, usersongparams, userdatastrings, matchesdata, Timer,
        userIDs, CircleData, SortParameter, SortIndex, camcenter, SelectIndex, zoomval, zoomed, alltime, curruserindex,
        Setalltime, setSelectIndex, Setzoomed, setSortParameter, setSortIndex)}
-      {/* {GraphVis("HELLO I AM A USER",true)} */}
       <div className = {hidebutton()} aria-label = "Click here to log in to spotify">
         <SpotifyLoginButton clientId={"213450855ac44f5aa842c2359939fded"} 
         redirectUri={'http://localhost:3000/callback/'} 
