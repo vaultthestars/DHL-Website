@@ -9,9 +9,6 @@ import { initializeApp } from 'firebase/app';
 import { domainToASCII } from 'url';
 import { match } from 'assert';
 
-// Number of mocked users to display. Can go up to 1000 without significant slowdowns.
-let maxnum = 150;
-
 // x-center of the svg window coordinates
 let centerx = 700;
 
@@ -286,7 +283,7 @@ export function renderstroke(showselected: boolean, datanum: number){
     }
 }
 
-// Tau is always useful! We use it in our useEffect loop to make our points pulse on screen via a sine function.
+// Tau is always useful! We use it to make our points pulse on screen via a sine function.
 const tau = 2*Math.PI;
 
 // A function that returns the number of digits in a number(base 10). Used for determining the size of the text box needed to
@@ -368,6 +365,8 @@ function dots(Timer: number): string{
     return "..."
 }
 
+// A simple function that takes in a string and replaces the end of the string with "..."
+// if the string has more than "len" characters.
 function textbuff(str: string, len: number): string{
     if(str == undefined){
         return "STRING UNDEFINED"
@@ -378,16 +377,10 @@ function textbuff(str: string, len: number): string{
     return str.slice(0,len) + "..."
 }
 
-
-
 // Our main rendering function. Returns everything below the header in our app.
-// Takes in the current google user ID and whether or not spotify is linked, as these affect which elements are rendered.
 
 // Here's an outline of the general structure of this function since it's so large:
-// -State variables
-// -UseEffect main loop
-// -Other variables
-// Huuuuge return statement:
+// -Loading screen
 // -Main wrapper
 //      -Sidebar wrapper
 //          -Default sidebar(zoomed out state)
@@ -400,18 +393,6 @@ function textbuff(str: string, len: number): string{
 //          -On-screen buttons(change parameter to sort by, zoom out)
 //      -Developer tool buttons
 
-// A map from a user's number/index to the numerical data of their last listened to last song, in the following order:
-// Acousticness, Danceability, Energy, Instrumentalness, Speechiness, Valence
-// export let usersongparams: Map<number, Array<number>> = new Map<number, Array<number>>();
-
-// A map from a user's number/index to their string data, in the following order:
-// Username, name of most recently listened to song, artist of most recently listened to song
-// export let userdatastrings: Map<number, Array<string>> = new Map<number, Array<string>>();
-
-// The current user's top 5 user matches, in the following order:
-// Current top 5 matches, All time top 5 matches
-// export let matchesdata: Map<number, Array<Array<number>>> = new Map<number, Array<Array<number>>>();
-
 export default function GraphVis(CurrentGoogleUser: string, spotifyLinked: boolean, usersloaded: boolean, fetchingusers: boolean, 
     usersongparams: Map<number, Array<number>>, userdatastrings: Map<number, Array<string>>,
     matchesdata: Map<number,Array<Array<number>>>, Timer: number, userIDs: Array<string>, 
@@ -420,19 +401,10 @@ export default function GraphVis(CurrentGoogleUser: string, spotifyLinked: boole
     Setalltime: ((bool: boolean)=>void), setSelectIndex: ((num: number)=>void), Setzoomed: ((bool: boolean)=> void), 
     setSortParameter: ((num: number)=>void), setSortIndex: ((num: number)=>void)) {
 
-    // All of our wonderful react state variables
+    // An especially long aria label string I moved up here
     const SELECTEDUSERSONGSTRING: string = getdatastrings(SelectIndex,0, userdatastrings) + " is listening to " + getdatastrings(SelectIndex,1, userdatastrings) + "by " + getdatastrings(SelectIndex,2, userdatastrings)
 
-    //Ok there's some weird stuff going on with userIDs now
-
-    //What is the best way to go about this? You will probably have to set usersloaded and fetchingusers to be false again
-    //The question is, where do we do this? And how do we make sure it doesn't happen twice in a row?
-    //It seems like it would be best to move this loop of loading and fetching users to the main app loop.
-    //
-
-    // Main useEffect loop! Had to use a setInterval to stop React from reaching its max update depth and freaking out.
-
-    // Main return statement
+    // If users haven't been loaded yet, or we have no user ids in our array, display a loading screen
     if (!usersloaded || userIDs.length == 0){
         return <div key = "wrapper" className = "wrapper">
             <svg className="svgwindow" fill = "true"
@@ -456,8 +428,8 @@ export default function GraphVis(CurrentGoogleUser: string, spotifyLinked: boole
             </svg>
         </div>
     }
+    // Otherwise, display our main app window
     else{
-        // console.log(CircleData)
         return <div key = "wrapper" className = "wrapper">
                 {/* Sidebar background */}
                 <div key = "sidebardiv" className = {sidebarloggedin(CurrentGoogleUser,spotifyLinked)}>
@@ -528,7 +500,7 @@ export default function GraphVis(CurrentGoogleUser: string, spotifyLinked: boole
                                     ry="5"
                                     opacity = {(zoomval).toString()}
                                     onClick= {() => {  
-                                        setSelectIndex(getdatamatches(SelectIndex, alltime, matchindex, matchesdata))
+                                        setSelectIndex(getdatamatches(curruser, alltime, matchindex, matchesdata))
                                         Setzoomed(true)
                                     }}>
                                     </rect>
@@ -541,10 +513,10 @@ export default function GraphVis(CurrentGoogleUser: string, spotifyLinked: boole
                                     y= {(75+70*x2).toString()}
                                     opacity = {(zoomval).toString()}
                                     onClick= {() => {  
-                                        setSelectIndex(getdatamatches(SelectIndex, alltime, matchindex,matchesdata))
+                                        setSelectIndex(getdatamatches(curruser, alltime, matchindex,matchesdata))
                                         Setzoomed(true)
                                     }}
-                                    aria-label={"Match " + x2 + ": " + getdatastrings(getdatamatches(SelectIndex, alltime, matchindex, matchesdata),0, userdatastrings)}
+                                    aria-label={"Match " + x2 + ": " + getdatastrings(getdatamatches(curruser, alltime, matchindex, matchesdata),0, userdatastrings)}
                                     >
                                     {textbuff(getdatastrings(getdatamatches(curruser, alltime, matchindex, matchesdata),0, userdatastrings),15)}
                                     </text>
