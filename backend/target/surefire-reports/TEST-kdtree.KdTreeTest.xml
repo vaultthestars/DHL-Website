@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<testsuite xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="https://maven.apache.org/surefire/maven-surefire-plugin/xsd/surefire-test-report-3.0.xsd" version="3.0" name="csv.CSVParserTest" time="0.07" tests="8" errors="0" skipped="0" failures="0">
+<testsuite xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="https://maven.apache.org/surefire/maven-surefire-plugin/xsd/surefire-test-report-3.0.xsd" version="3.0" name="kdtree.KdTreeTest" time="0.036" tests="19" errors="0" skipped="0" failures="0">
   <properties>
     <property name="java.specification.version" value="17"/>
     <property name="sun.jnu.encoding" value="UTF-8"/>
@@ -41,7 +41,6 @@
     <property name="java.vendor.version" value="Homebrew"/>
     <property name="localRepository" value="/Users/dylanlee/.m2/repository"/>
     <property name="java.vendor.url.bug" value="https://github.com/Homebrew/homebrew-core/issues"/>
-    <property name="jetty.git.hash" value="450ba27947e13e66baa8cd1ce7e85a4461cacc1d"/>
     <property name="java.io.tmpdir" value="/var/folders/0r/dxm05dl54y734ctjgltc7_6m0000gn/T/"/>
     <property name="java.version" value="17.0.4.1"/>
     <property name="user.dir" value="/Users/dylanlee/Desktop/CS0320/SprintsProjects/term-project-cemerso3-dlee197-dtamesis-sminars/backend"/>
@@ -56,12 +55,23 @@
     <property name="socksNonProxyHosts" value="local|*.local|169.254/16|*.169.254/16"/>
     <property name="java.class.version" value="61.0"/>
   </properties>
-  <testcase name="testExceptions" classname="csv.CSVParserTest" time="0.023"/>
-  <testcase name="testBasicCase" classname="csv.CSVParserTest" time="0.001"/>
-  <testcase name="testMissingFieldsCase" classname="csv.CSVParserTest" time="0.012"/>
-  <testcase name="testEmptyCase" classname="csv.CSVParserTest" time="0"/>
-  <testcase name="testStringReaderCase" classname="csv.CSVParserTest" time="0"/>
-  <testcase name="testWithSpacesCase" classname="csv.CSVParserTest" time="0.016"/>
-  <testcase name="testUsersCase" classname="csv.CSVParserTest" time="0.008"/>
-  <testcase name="testSongFactory" classname="csv.CSVParserTest" time="0.005"/>
+  <testcase name="testEvenNumNodes" classname="kdtree.KdTreeTest" time="0.013"/>
+  <testcase name="testDeleteLeafNode" classname="kdtree.KdTreeTest" time="0.008"/>
+  <testcase name="testKIs0" classname="kdtree.KdTreeTest" time="0.001"/>
+  <testcase name="testNeighborsNoIgnore" classname="kdtree.KdTreeTest" time="0"/>
+  <testcase name="testRIs0NoPoint" classname="kdtree.KdTreeTest" time="0.001"/>
+  <testcase name="testEmptyTree" classname="kdtree.KdTreeTest" time="0"/>
+  <testcase name="testDeleteAbsent" classname="kdtree.KdTreeTest" time="0"/>
+  <testcase name="testDeleteMiddle" classname="kdtree.KdTreeTest" time="0"/>
+  <testcase name="testRadiusIgnore" classname="kdtree.KdTreeTest" time="0"/>
+  <testcase name="testCorrectChildren" classname="kdtree.KdTreeTest" time="0"/>
+  <testcase name="testRadiusNoIgnore" classname="kdtree.KdTreeTest" time="0.001"/>
+  <testcase name="testRIs0AtPoint" classname="kdtree.KdTreeTest" time="0"/>
+  <testcase name="testDeleteWithLeftChild" classname="kdtree.KdTreeTest" time="0"/>
+  <testcase name="testDeleteFromEmpty" classname="kdtree.KdTreeTest" time="0"/>
+  <testcase name="testCorrectRoot" classname="kdtree.KdTreeTest" time="0"/>
+  <testcase name="testDeleteRoot" classname="kdtree.KdTreeTest" time="0.001"/>
+  <testcase name="testCorrectChildrensChildren" classname="kdtree.KdTreeTest" time="0"/>
+  <testcase name="testEmptyTreeSearch" classname="kdtree.KdTreeTest" time="0"/>
+  <testcase name="testNeighborsIgnore" classname="kdtree.KdTreeTest" time="0"/>
 </testsuite>

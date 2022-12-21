@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<testsuite xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="https://maven.apache.org/surefire/maven-surefire-plugin/xsd/surefire-test-report-3.0.xsd" version="3.0" name="csv.CSVParserTest" time="0.07" tests="8" errors="0" skipped="0" failures="0">
+<testsuite xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="https://maven.apache.org/surefire/maven-surefire-plugin/xsd/surefire-test-report-3.0.xsd" version="3.0" name="server.HandlersTest" time="0.629" tests="6" errors="0" skipped="0" failures="1">
   <properties>
     <property name="java.specification.version" value="17"/>
     <property name="sun.jnu.encoding" value="UTF-8"/>
@@ -56,12 +56,14 @@
     <property name="socksNonProxyHosts" value="local|*.local|169.254/16|*.169.254/16"/>
     <property name="java.class.version" value="61.0"/>
   </properties>
-  <testcase name="testExceptions" classname="csv.CSVParserTest" time="0.023"/>
-  <testcase name="testBasicCase" classname="csv.CSVParserTest" time="0.001"/>
-  <testcase name="testMissingFieldsCase" classname="csv.CSVParserTest" time="0.012"/>
-  <testcase name="testEmptyCase" classname="csv.CSVParserTest" time="0"/>
-  <testcase name="testStringReaderCase" classname="csv.CSVParserTest" time="0"/>
-  <testcase name="testWithSpacesCase" classname="csv.CSVParserTest" time="0.016"/>
-  <testcase name="testUsersCase" classname="csv.CSVParserTest" time="0.008"/>
-  <testcase name="testSongFactory" classname="csv.CSVParserTest" time="0.005"/>
+  <testcase name="testInvalidGetUser" classname="server.HandlersTest" time="0.346"/>
+  <testcase name="testGetAllUserIds" classname="server.HandlersTest" time="0.012"/>
+  <testcase name="testGetUser" classname="server.HandlersTest" time="0.013">
+    <failure type="org.opentest4j.AssertionFailedError"><![CDATA[org.opentest4j.AssertionFailedError: expected: <GetUserSuccessResponse[result=success, user=User{userId='TJWATWNITXLQCVcSroz1', displayName='Georgia Black', refreshToken='', membershipLength=0, currentSong=Song{userId='TJWATWNITXLQCVcSroz1', title='Bandit (with YoungBoy Never Broke Again)', id='1oWM79mUVdZGCGYjSirHZR', artists=[Juice WRLD, YoungBoy Never Broke Again], features=[0.06870000064373016, 0.4740000069141388, 0.6309999823570251, 0.0, 0.34299999475479126, 0.42399999499320984], dimension=6}, connections=[oA3bltmGZg4X5fP0P2Ig, FXlY823hC4B7wSnZ4es2, hnoIwH1NsS9PlKbQrftr, ROTAwCWqCXn5f3NMupJD, cm3h0v6rjZpGU1EEPV1s], historicalSongPoint=[0.46, 0.67, 0.55, 0.93, 0.4, 0.9], historicalConnections=[oA3bltmGZg4X5fP0P2Ig, FXlY823hC4B7wSnZ4es2, hnoIwH1NsS9PlKbQrftr, ROTAwCWqCXn5f3NMupJD, cm3h0v6rjZpGU1EEPV1s], songLibrary=song.SongLibrary@530712d}]> but was: <GetUserSuccessResponse[result=success, user=User{userId='TJWATWNITXLQCVcSroz1', displayName='Georgia Black', refreshToken='', membershipLength=0, currentSong=Song{userId='TJWATWNITXLQCVcSroz1', title='Bandit (with YoungBoy Never Broke Again)', id='1oWM79mUVdZGCGYjSirHZR', artists=[Juice WRLD, YoungBoy Never Broke Again], features=[0.06870000064373016, 0.4740000069141388, 0.6309999823570251, 0.0, 0.34299999475479126, 0.42399999499320984], dimension=6}, connections=[oA3bltmGZg4X5fP0P2Ig, FXlY823hC4B7wSnZ4es2, hnoIwH1NsS9PlKbQrftr, ROTAwCWqCXn5f3NMupJD, cm3h0v6rjZpGU1EEPV1s], historicalSongPoint=[0.46, 0.67, 0.55, 0.93, 0.4, 0.9], historicalConnections=[oA3bltmGZg4X5fP0P2Ig, FXlY823hC4B7wSnZ4es2, hnoIwH1NsS9PlKbQrftr, ROTAwCWqCXn5f3NMupJD, cm3h0v6rjZpGU1EEPV1s], songLibrary=null}]>
+	at server.HandlersTest.testGetUser(HandlersTest.java:151)
+]]></failure>
+  </testcase>
+  <testcase name="testLoadConnections" classname="server.HandlersTest" time="0.072"/>
+  <testcase name="testLoadSongFeatures" classname="server.HandlersTest" time="0.028"/>
+  <testcase name="integrationTest" classname="server.HandlersTest" time="0.035"/>
 </testsuite>

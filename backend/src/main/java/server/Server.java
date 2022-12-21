@@ -1,10 +1,8 @@
 package server;
 
 import static server.Constants.FIRESTORE_JSON_FILEPATH;
-import static server.Constants.FIRESTORE_PROJECT_ID;
 import static server.Constants.MOCK_SONGS_FILEPATH;
 import static server.Constants.MOCK_USERS_FILEPATH;
-import static server.Constants.USING_MOCKS;
 import static spark.Spark.after;
 
 import csv.CSVParser;
@@ -39,11 +37,12 @@ public class Server {
    */
   public static LocalDatabase createLocalDatabase() {
     try {
-      CSVParser<Song> songCSVParser = new CSVParser<>(new FileReader(MOCK_SONGS_FILEPATH), new SongFactory());
+      CSVParser<Song> songCSVParser =
+          new CSVParser<>(new FileReader(MOCK_SONGS_FILEPATH), new SongFactory());
       SongLibrary songLibrary = new SongLibrary(songCSVParser);
 
-      CSVParser<User> userCSVParser = new CSVParser<>(
-          new FileReader(MOCK_USERS_FILEPATH), new UserFactory(songLibrary));
+      CSVParser<User> userCSVParser =
+          new CSVParser<>(new FileReader(MOCK_USERS_FILEPATH), new UserFactory(songLibrary));
 
       return new LocalDatabase(userCSVParser.getParsedData());
     } catch (IOException | FactoryFailureException e) {
@@ -80,11 +79,12 @@ public class Server {
 
     // instantiate database
     UserDatabase db;
-    if (USING_MOCKS) {
+    if (System.getenv("USING_MOCKS").equals("true")) {
       db = createLocalDatabase();
     } else {
-      db = new FirestoreDatabase(FIRESTORE_JSON_FILEPATH, FIRESTORE_PROJECT_ID);
+      db = new FirestoreDatabase(FIRESTORE_JSON_FILEPATH, System.getenv("FIRESTORE_PROJECT_ID"));
     }
+    System.out.println(System.getenv("FIRESTORE_PROJECT_ID"));
 
     // Setting up the handler for the GET endpoints
     Spark.get("load-song-features", new LoadSongFeaturesHandler(db));
