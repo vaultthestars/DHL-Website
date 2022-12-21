@@ -140,4 +140,21 @@ Firestore:
 - [Reading Data](https://firebase.google.com/docs/firestore/query-data/get-data)
 - [Writing Data](https://firebase.google.com/docs/firestore/manage-data/add-data)
 
+HTML and CSS:
+- [Make div scrollable](https://stackoverflow.com/questions/21227287/make-div-scrollable)
+- [Make a promise from a group of promises](https://stackoverflow.com/questions/37841721/wait-for-multiple-promises-to-finish)
+- [Formatting multiple scope values to oath](https://stackoverflow.com/questions/8449544/multiple-scope-values-to-oauth2)
+- [Changing CSS variables with Javascript part 1](https://stackoverflow.com/questions/29564884/use-a-javascript-variable-in-css-to-control-the-visibility-of-the-object)
+- [Changing CSS variables with Javascript part 2](https://www.w3schools.com/css/css3_variables_javascript.asp)
+- [Using calc for CSS variables](https://stackoverflow.com/questions/53244501/css-calc-with-variables-and-multiplication)
+- [Clickable buttons in svgs](https://stackoverflow.com/questions/39917883/button-element-inside-svg)
+- [svg rectangles](https://www.w3schools.com/graphics/svg_rect.asp)
+- [CSS transforms](https://www.w3schools.com/css/css3_2dtransforms.asp)
+- [Collapseable sidebar with CSS and Javascript](https://www.w3schools.com/howto/howto_js_collapse_sidebar.asp)
+
+Typescript and React:
+- [Generating random strings in Javascript](https://stackoverflow.com/questions/1349404/generate-random-string-characters-in-javascript)
+- [Integer rounding in Javascript](https://stackoverflow.com/questions/1684202/how-to-round-an-integer-up-or-down-to-the-nearest-10-using-javascript)
+- [Building the game of life with React- used for fixing infinite loop bug](https://dev.to/toluagboola/build-the-game-of-life-with-react-and-typescript-5e0d)
+- 
 
