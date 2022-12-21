@@ -96,6 +96,7 @@ Spotify API:
 - [Spotify API Java Wrapper library for making calls on backend with complicated authorization steps](https://github.com/spotify-web-api-java/spotify-web-api-java)
 - [Spotify API Get Recently Played Docs](https://developer.spotify.com/documentation/web-api/reference/#/operations/get-recently-played)
 - [Spotify Web API Authorization Guides and App Modes](https://developer.spotify.com/documentation/web-api/guides/development-extended-quota-modes/) (for client secret, client id, access tokens, etc. and developer app’s allowlist of 25 users)
+- [Random Song search through Spotify API](https://perryjanssen.medium.com/getting-random-tracks-using-the-spotify-api-61889b0c0c27)
 - https://stackoverflow.com/questions/39887342/how-can-i-get-an-access-token-spotify-api
 - https://kaylouisebennett.medium.com/getting-started-with-spotifys-web-api-part-1-cff30c1b23ef
 - https://dev.to/jpreagan/starting-a-personal-dashboard-with-the-spotify-api-526p
