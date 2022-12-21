@@ -84,30 +84,38 @@ For the backend, enter the backend folder and type `mvn test` in the terminal to
 For the frontend, enter the frontend folder and type `npm test` in the terminal to run the tests.
 
 
-## References:
+## External Resources:
+
+k-D Tree:
+- cs0320 kd-tree codebase package
+- [cs0320 Spring 2022 k-D Tree Notes](https://hackmd.io/Hf6nxNbjQEWzG23KSGM2TA)
+- [deleteNode for kD Tree](https://www.geeksforgeeks.org/k-dimensional-tree-set-3-delete/)
 
 Spotify API:
-https://developer.spotify.com/documentation/web-api/quick-start/
-https://stackoverflow.com/questions/39887342/how-can-i-get-an-access-token-spotify-api
-https://kaylouisebennett.medium.com/getting-started-with-spotifys-web-api-part-1-cff30c1b23ef
-https://dev.to/jpreagan/starting-a-personal-dashboard-with-the-spotify-api-526p
-https://medium.com/@davidjtomczyk/spotify-api-authorization-flow-with-react-and-rails-7f42845a43c
-https://www.newline.co/search?query=spotify+api&sortBy=positiveReviewCount%3AHighest+Rated%2CnumStudents%3AMost+Popular%2CcreatedAt%3AMost+Recent
-https://stackoverflow.com/questions/73737341/spotify-api-refresh-token-doesnt-return-a-token-with-refresh-token
-https://stackoverflow.com/questions/68155590/spotify-web-api-giving-me-illegal-scope-no-matter-what
-https://developer.spotify.com/documentation/web-api/guides/using-connect-web-api/
-https://react-hook-form.com/api/useform/setvalue/
-https://developer.spotify.com/documentation/general/guides/authorization/code-flow/
-https://khalilstemmler.com/articles/tutorials/getting-the-currently-playing-song-spotify/
+- [Spotify Web API Documentation](https://developer.spotify.com/documentation/web-api/quick-start/)
+- [Spotify API Java Wrapper library for making calls on backend with complicated authorization steps](https://github.com/spotify-web-api-java/spotify-web-api-java)
+- [Spotify API Get Recently Played Docs](https://developer.spotify.com/documentation/web-api/reference/#/operations/get-recently-played)
+- [Spotify Web API Authorization Guides and App Modes](https://developer.spotify.com/documentation/web-api/guides/development-extended-quota-modes/) (for client secret, client id, access tokens, etc. and developer app’s allowlist of 25 users)
+- https://stackoverflow.com/questions/39887342/how-can-i-get-an-access-token-spotify-api
+- https://kaylouisebennett.medium.com/getting-started-with-spotifys-web-api-part-1-cff30c1b23ef
+- https://dev.to/jpreagan/starting-a-personal-dashboard-with-the-spotify-api-526p
+- https://medium.com/@davidjtomczyk/spotify-api-authorization-flow-with-react-and-rails-7f42845a43c
+- https://www.newline.co/search?query=spotify+api&sortBy=positiveReviewCount%3AHighest+Rated%2CnumStudents%3AMost+Popular%2CcreatedAt%3AMost+Recent
+- https://stackoverflow.com/questions/73737341/spotify-api-refresh-token-doesnt-return-a-token-with-refresh-token
+- https://stackoverflow.com/questions/68155590/spotify-web-api-giving-me-illegal-scope-no-matter-what
+- https://developer.spotify.com/documentation/web-api/guides/using-connect-web-api/
+- https://react-hook-form.com/api/useform/setvalue/
+- https://developer.spotify.com/documentation/general/guides/authorization/code-flow/
+- https://khalilstemmler.com/articles/tutorials/getting-the-currently-playing-song-spotify/
 
 Google Login:
-[Button CSS Styling](https://codepen.io/mupkoo/pen/YgddgB0) & 
-[Sign-In Functionality](https://firebase.google.com/docs/auth/web/google-signin)
+- [Button CSS Styling](https://codepen.io/mupkoo/pen/YgddgB0)
+- [Sign-In Functionality](https://firebase.google.com/docs/auth/web/google-signin)
 
 Firestore: 
-[Initialzing Cloud Firestore](https://firebase.google.com/docs/firestore/quickstart#java_3)
-[Admin SDK](https://firebase.google.com/docs/admin/setup)
-[Reading Data](https://firebase.google.com/docs/firestore/query-data/get-data)
-[Writing Data](https://firebase.google.com/docs/firestore/manage-data/add-data)
+- [Initialzing Cloud Firestore](https://firebase.google.com/docs/firestore/quickstart#java_3)
+- [Admin SDK](https://firebase.google.com/docs/admin/setup)
+- [Reading Data](https://firebase.google.com/docs/firestore/query-data/get-data)
+- [Writing Data](https://firebase.google.com/docs/firestore/manage-data/add-data)
 
 
