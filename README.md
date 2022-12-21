@@ -7,9 +7,11 @@ Chance Emerson (cemerso3)
 
 [Repository Link](https://github.com/cs0320-f2022/term-project-cemerso3-dlee197-dtamesis-sminars/)
 
+<figure>
 <img src="frontend/src/images/defaultview.png" width="100%" height="100%">
 
-<img src="frontend/src/images/zoomedin.png" width="100%" height="100%">
+<figcaption text-align = "center"><b>Default view of our app post login.</b></figcaption>
+</figure>
 
 ## What is TunedIn?
 
@@ -52,6 +54,13 @@ Navigate to the frontend directory. Ensure that all dependencies are installed b
   - Sidebar: This bar has two display modes depending on whether or not you have selected a user onscreen.
     - If no user is selected on screen, the sidebar will display the current user's username, as well as the names of the top five users who match their music taste. A slider above the list of matches lets one toggle between viewing their top five current matches and the top five matches of all time. Scrolling down on the page displays a small blurb that explains the K-D tree algorithm that calculates these matches.
     - If a user is selected on screen, the sidebar will display that user's username, as well as the song and artist that they are listening to. Underneath this information lies a set of six dials, each of which displays the Acousticness, Energy, Danceability, Instrumentalness, Speechiness, and Valence values of the song the selected user is listening to. Each song value is displayed as a percentage, and the circular outlines around each value fill and color themselves accordingly. Redder colors correspond to a low percentage, while the color slowly progresses to orange, yellow, and then green for a full 100 percent. This circular dial design for the value displays adds to the visual engagement of our sidebar, and makes the data more legible from a distance.
+
+<figure>
+<img src="frontend/src/images/zoomedin.png" width="100%" height="100%">
+
+<figcaption text-align = "center"><b>Selecting a user's bubble onscreen to view their statistics.</b></figcaption>
+</figure>
+
   - User bubble display: This section takes up the most space on our website; here, we fill a large window onscreen with a handful of colored bubbles, each bubble labeled with a username. For example, the current parameter we are sorting by is Acousticness, the user bubbles will distribute themselves vertically on the page based on the acousticness of the current song each user is listening to. User bubbles with higher acousticness will move higher on the screen, while user bubbles with lower acousticness will move towards the bottom. User bubbles will repel each other if they are too close, which prevents the bubbles from overlapping and becoming unreadable. The bubbles are also color coded by these parameter values: pinker bubbles correspond to higher values, while greener bubbles correspond to lower values. By clicking a button in the top left corner of the window, one can change the bubble sorting parameter, for example from from "Acousticness" to "Energy". One can also click on individual user bubbles to "zoom in" on a specific user and see what they are currently listening to.
 
 The initial prototyping of the frontend was done in Desmos at the following link: https://www.desmos.com/calculator/a2uov4zzsd
