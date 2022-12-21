@@ -7,6 +7,10 @@ Chance Emerson (cemerso3)
 
 [Repository Link](https://github.com/cs0320-f2022/term-project-cemerso3-dlee197-dtamesis-sminars/)
 
+<img src="frontend/src/images/defaultview.png" width="100%" height="100%">
+
+<img src="frontend/src/images/zoomedin.png" width="100%" height="100%">
+
 ## What is TunedIn?
 
 TunedIn provides a centralized application where users (specifically, college students in our first phase) automatically share the music that they are currently listening to on a given day, and are given the option to see other users that have similar music tastes to theirs as well as discover new music recommendations through peer users. 
@@ -14,7 +18,7 @@ TunedIn provides a centralized application where users (specifically, college st
 The issue that our project attempts to solve is the lack of a good social-media-type application solely for sharing music. We don’t count TikTok, since TikTok is primarily for sharing original video content. Although Spotify has a built-in social display feature, most people use Spotify just for their own music enjoyment and exploration instead of as a medium to connect with other people. We know that this is something people could use because our peers expressed enthusiasm about the project when we’ve asked them about it and we also have all had experiences where music has connected us. This article in particular highlights the importance of music in forming social bonds with others. 
 
 Because of the social-interaction focus of our project, our app may encourage people who do not typically listen to music to begin doing so in order to meet a greater community of people. Our project impacts people regardless of occupation, age, nationality, or racial group, but it definitely is biased towards people who can use the internet, as well as people who are not hearing impaired. In terms of accessibility, the app will likely be in English for the time being, but we may extend it to be more accessible to a wider range of languages in the future. Furthermore, at the beginning stages, this app will exclusively be accessible to college students at schools where we feel we can create enough buzz to start a user base.
-Our app will allow anybody to view the most recent TunedIn of other users. They could filter the display in terms of various metrics collected from Spotify as follows:
+Our app will allow anybody to view the most recent TunedIn of other users. Users can filter the display in terms of the following six parameters Spotify provides with each track:
 
 <b>Acousticness</b> - A confidence measure from 0.0 to 1.0 of whether the track is acoustic. 1.0 represents high confidence the track is acoustic.
 
@@ -34,18 +38,26 @@ Each user can view their daily connections and historical connections (other use
 
 ### Running the backend server:
 
-Run the server file (our preferred method is to run `Server.main()` in IntelliJ). Then, use a web browser to navigate to `localhost:3232` which is where the server is locally hosted. 
+Set the USING_MOCKS (boolean), FIRESTORE_PROJECT_ID (string), CLIENT_ID (string), and CLIENT_SECRET (string) environment variables in intelliJ. Setting USING_MOCKS to be "true" will display 100 mocked users on the frontend, while setting it to be false will only display real users of the app.
+Run the server file (our preferred method is to run `Server.main()` in IntelliJ. Then, use a web browser to navigate to `localhost:3232` which is where the server is locally hosted. 
 
 ### Running the frontend web-app:
 
-Navigate to the frontend directory. Ensure that all dependencies are installed by running `npm install`, followed by `npm install firebase`. Ensure that the backend is already running on `localhost:3232`. Then, run `npm start` to start the frontend server on `localhost:3000`.
-
+Navigate to the frontend directory. Ensure that all dependencies are installed by running `npm install`, followed by `npm install firebase`. Go into line 47 of App.tsx, located at frontend->src->App.tsx, and set the "usingmocks" local variable to match the value of USING_MOCKS in the intelliJ backend(aka false if false, true if true). Ensure that the backend is already running on `localhost:3232`. Then, run `npm start` to start the frontend server on `localhost:3000`.
 
 ## Design Choices:
 ### Frontend
+- The frontend web app has three main components: the header, the sidebar, and the user bubble display.
+  - Header: This bar runs across the top of the screen- it contains our tunedin app logo, the Google and Spotify Login buttons, and a small "about" button to the left that displays a popup window with information about the app and our team.
+  - Sidebar: This bar has two display modes depending on whether or not you have selected a user onscreen.
+    - If no user is selected on screen, the sidebar will display the current user's username, as well as the names of the top five users who match their music taste. A slider above the list of matches lets one toggle between viewing their top five current matches and the top five matches of all time. Scrolling down on the page displays a small blurb that explains the K-D tree algorithm that calculates these matches.
+    - If a user is selected on screen, the sidebar will display that user's username, as well as the song and artist that they are listening to. Underneath this information lies a set of six dials, each of which displays the Acousticness, Energy, Danceability, Instrumentalness, Speechiness, and Valence values of the song the selected user is listening to. Each song value is displayed as a percentage, and the circular outlines around each value fill and color themselves accordingly. Redder colors correspond to a low percentage, while the color slowly progresses to orange, yellow, and then green for a full 100 percent. This circular dial design for the value displays adds to the visual engagement of our sidebar, and makes the data more legible from a distance.
+  - User bubble display: This section takes up the most space on our website; here, we fill a large window onscreen with a handful of colored bubbles, each bubble labeled with a username. For example, the current parameter we are sorting by is Acousticness, the user bubbles will distribute themselves vertically on the page based on the acousticness of the current song each user is listening to. User bubbles with higher acousticness will move higher on the screen, while user bubbles with lower acousticness will move towards the bottom. User bubbles will repel each other if they are too close, which prevents the bubbles from overlapping and becoming unreadable. The bubbles are also color coded by these parameter values: pinker bubbles correspond to higher values, while greener bubbles correspond to lower values. By clicking a button in the top left corner of the window, one can change the bubble sorting parameter, for example from from "Acousticness" to "Energy". One can also click on individual user bubbles to "zoom in" on a specific user and see what they are currently listening to.
+
+The initial prototyping of the frontend was done in Desmos at the following link: https://www.desmos.com/calculator/a2uov4zzsd
 
 ### Firestore Database
-- All users are stored a as document entry in a users collection stored on Firestore 
+- All users are stored as a document entry in a users collection stored on Firestore 
 - When a user logins in with their Google information, a new user document is created in Firestore with the correct fields. 
 - When a user links their Spotify account, a refresh token is generated for that user, and their document reference in Firestore is updated to contain the refresh token. 
 - The Backend Server contains a FirestoreDatabase class that takes care of retrieving and updating user documents in Firestore. 
