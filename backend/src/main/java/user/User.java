@@ -270,6 +270,7 @@ public class User implements KdTreeNode, Cloneable {
     clone.setConnections(this.getConnections());
     clone.setHistoricalSongPoint(this.getHistoricalSongPoint());
     clone.setHistoricalConnections(this.getHistoricalConnections());
+    clone.setSongLibrary(this.getSongLibrary());
     return clone;
   }
 
@@ -413,6 +414,10 @@ public class User implements KdTreeNode, Cloneable {
 
   public void setHistoricalConnections(String[] historicalConnections) {
     this.historicalConnections = historicalConnections;
+  }
+
+  public SongLibrary getSongLibrary() {
+    return this.songLibrary;
   }
 
   public void setSongLibrary(SongLibrary songLibrary) {
