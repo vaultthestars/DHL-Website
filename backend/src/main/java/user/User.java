@@ -8,7 +8,6 @@ import java.util.List;
 import java.util.Objects;
 import java.util.PriorityQueue;
 import java.util.Set;
-import java.util.concurrent.ExecutionException;
 import kdtree.DistanceSorter;
 import kdtree.KdTree;
 import kdtree.KdTreeNode;
@@ -28,9 +27,7 @@ import se.michaelthelin.spotify.requests.data.tracks.GetAudioFeaturesForTrackReq
 import song.Song;
 import song.SongLibrary;
 
-/**
- * Class representing a TunedIn user, which houses essential user-specific information.
- */
+/** Class representing a TunedIn user, which houses essential user-specific information. */
 public class User implements KdTreeNode, Cloneable {
   private String userId;
   private String displayName;
@@ -62,8 +59,8 @@ public class User implements KdTreeNode, Cloneable {
   }
 
   /**
-   * Identifies a mock-specific attribute to identify a mock user.
-   * Checker used in other user methods to handle the absence of spotify-essential information.
+   * Identifies a mock-specific attribute to identify a mock user. Checker used in other user
+   * methods to handle the absence of spotify-essential information.
    *
    * @return true if the user is mocked
    */
@@ -82,15 +79,19 @@ public class User implements KdTreeNode, Cloneable {
   }
 
   /**
-   * Gets the most recently played song from the Spotify API if the user has a refreshToken. If the user is mocked, selects a random song from the local SongLibrary. Otherwise, no song update is made (i.e. the current song).
+   * Gets the most recently played song from the Spotify API if the user has a refreshToken. If the
+   * user is mocked, selects a random song from the local SongLibrary. Otherwise, no song update is
+   * made (i.e. the current song).
    *
    * @return a Song object representing the new most-recently played song
    * @throws IOException if an I/O exception occurs when executing a Spotify GET request
-   * @throws ParseException if an exception occurs when parsing the String parameters for Spotify API GET requests.
-   * @throws SpotifyWebApiException if an exception occurs when getting an authorization token using the refresh token, executing the spotify GET request for most recently played, or executing the GET request for the audio features of the most recently played song.
+   * @throws ParseException if an exception occurs when parsing the String parameters for Spotify
+   *     API GET requests.
+   * @throws SpotifyWebApiException if an exception occurs when getting an authorization token using
+   *     the refresh token, executing the spotify GET request for most recently played, or executing
+   *     the GET request for the audio features of the most recently played song.
    */
-  public Song getMostRecentSong()
-      throws ParseException, SpotifyWebApiException, IOException {
+  public Song getMostRecentSong() throws ParseException, SpotifyWebApiException, IOException {
     // if spotify has been linked & registered to firestore:
     if (this.hasRefreshToken()) {
       System.out.println("Refresh token present: " + this.getRefreshToken());
@@ -196,8 +197,8 @@ public class User implements KdTreeNode, Cloneable {
 
   /**
    * Uses a nearest neighbors search on the user given a KdTree of Songs to find their connections
-   * based on everyone's most recently played song. Note that this user is excluded from the
-   * nearest neighbors search to prevent a user from being their own connection.
+   * based on everyone's most recently played song. Note that this user is excluded from the nearest
+   * neighbors search to prevent a user from being their own connection.
    *
    * @param songTree - a KdTree with Songs as nodes, using the features point
    * @return an array of userIds representing top 5 ranked user connections.
@@ -205,8 +206,13 @@ public class User implements KdTreeNode, Cloneable {
   public String[] findConnections(KdTree<Song> songTree) {
     HashSet<Song> excluded = new HashSet<Song>();
     excluded.add(this.getCurrentSong());
-    PriorityQueue<Song> connectionsQueue = songTree.kdTreeSearch(
-        "neighbors", 5, this.getCurrentSong(), new DistanceSorter(this.getCurrentSong()), excluded);
+    PriorityQueue<Song> connectionsQueue =
+        songTree.kdTreeSearch(
+            "neighbors",
+            5,
+            this.getCurrentSong(),
+            new DistanceSorter(this.getCurrentSong()),
+            excluded);
     // reverse order of connections for array bc queue is in decreasing order of distance
     String[] connections = new String[5];
     int i = connectionsQueue.size() - 1;
@@ -219,8 +225,8 @@ public class User implements KdTreeNode, Cloneable {
 
   /**
    * Uses a nearest neighbors search on the user given a KdTree of Users to find their all-time
-   * connections based on everyone's running average of retrieved song data. Note that this user
-   * is excluded from the nearest neighbors search to prevent a user from being their own connection.
+   * connections based on everyone's running average of retrieved song data. Note that this user is
+   * excluded from the nearest neighbors search to prevent a user from being their own connection.
    *
    * @param userTree - a KdTree with Users as nodes, using the historicalSongPoint
    * @return an array of userIds representing top 5 ranked user connections.
@@ -228,8 +234,8 @@ public class User implements KdTreeNode, Cloneable {
   public String[] findHistoricalConnections(KdTree<User> userTree) {
     HashSet<User> excluded = new HashSet<User>();
     excluded.add(this);
-    PriorityQueue<User> connectionsQueue = userTree.kdTreeSearch(
-        "neighbors", 5, this, new DistanceSorter(this), excluded);
+    PriorityQueue<User> connectionsQueue =
+        userTree.kdTreeSearch("neighbors", 5, this, new DistanceSorter(this), excluded);
     // reverse order of connections for array bc queue is in decreasing order of distance
     String[] connections = new String[5];
     int i = connectionsQueue.size() - 1;
@@ -264,6 +270,7 @@ public class User implements KdTreeNode, Cloneable {
     clone.setConnections(this.getConnections());
     clone.setHistoricalSongPoint(this.getHistoricalSongPoint());
     clone.setHistoricalConnections(this.getHistoricalConnections());
+    clone.setSongLibrary(this.getSongLibrary());
     return clone;
   }
 
@@ -297,12 +304,15 @@ public class User implements KdTreeNode, Cloneable {
       return false;
     }
     User user = (User) o;
-    return this.membershipLength == user.membershipLength && this.userId.equals(user.userId)
-        && this.displayName.equals(user.displayName) && Objects.equals(this.refreshToken,
-        user.refreshToken) && this.currentSong.equals(user.currentSong) && Arrays.equals(
-        this.connections, user.connections) && Arrays.equals(this.historicalSongPoint,
-        user.historicalSongPoint) && Arrays.equals(this.historicalConnections,
-        user.historicalConnections) && Objects.equals(this.songLibrary, user.songLibrary);
+    return this.membershipLength == user.membershipLength
+        && this.userId.equals(user.userId)
+        && this.displayName.equals(user.displayName)
+        && Objects.equals(this.refreshToken, user.refreshToken)
+        && this.currentSong.equals(user.currentSong)
+        && Arrays.equals(this.connections, user.connections)
+        && Arrays.equals(this.historicalSongPoint, user.historicalSongPoint)
+        && Arrays.equals(this.historicalConnections, user.historicalConnections)
+        && Objects.equals(this.songLibrary, user.songLibrary);
   }
 
   @Override
@@ -317,17 +327,29 @@ public class User implements KdTreeNode, Cloneable {
 
   @Override
   public String toString() {
-    return "User{" +
-        "userId='" + userId + '\'' +
-        ", displayName='" + displayName + '\'' +
-        ", refreshToken='" + refreshToken + '\'' +
-        ", membershipLength=" + membershipLength +
-        ", currentSong=" + currentSong +
-        ", connections=" + Arrays.toString(connections) +
-        ", historicalSongPoint=" + Arrays.toString(historicalSongPoint) +
-        ", historicalConnections=" + Arrays.toString(historicalConnections) +
-        ", songLibrary=" + songLibrary +
-        '}';
+    return "User{"
+        + "userId='"
+        + userId
+        + '\''
+        + ", displayName='"
+        + displayName
+        + '\''
+        + ", refreshToken='"
+        + refreshToken
+        + '\''
+        + ", membershipLength="
+        + membershipLength
+        + ", currentSong="
+        + currentSong
+        + ", connections="
+        + Arrays.toString(connections)
+        + ", historicalSongPoint="
+        + Arrays.toString(historicalSongPoint)
+        + ", historicalConnections="
+        + Arrays.toString(historicalConnections)
+        + ", songLibrary="
+        + songLibrary
+        + '}';
   }
 
   public String getUserId() {
@@ -392,6 +414,10 @@ public class User implements KdTreeNode, Cloneable {
 
   public void setHistoricalConnections(String[] historicalConnections) {
     this.historicalConnections = historicalConnections;
+  }
+
+  public SongLibrary getSongLibrary() {
+    return this.songLibrary;
   }
 
   public void setSongLibrary(SongLibrary songLibrary) {
