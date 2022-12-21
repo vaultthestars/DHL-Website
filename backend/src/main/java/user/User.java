@@ -25,7 +25,6 @@ import se.michaelthelin.spotify.model_objects.specification.TrackSimplified;
 import se.michaelthelin.spotify.requests.authorization.authorization_code.AuthorizationCodeRefreshRequest;
 import se.michaelthelin.spotify.requests.data.player.GetCurrentUsersRecentlyPlayedTracksRequest;
 import se.michaelthelin.spotify.requests.data.tracks.GetAudioFeaturesForTrackRequest;
-import server.Constants;
 import song.Song;
 import song.SongLibrary;
 
@@ -98,8 +97,8 @@ public class User implements KdTreeNode, Cloneable {
       String authToken = this.getAuthToken();
       SpotifyApi spotifyApi =
           new SpotifyApi.Builder()
-              .setClientId(Constants.CLIENT_ID)
-              .setClientSecret(Constants.CLIENT_SECRET)
+              .setClientId(System.getenv("CLIENT_ID"))
+              .setClientSecret(System.getenv("CLIENT_SECRET"))
               .setAccessToken(authToken)
               .build();
 
@@ -156,8 +155,8 @@ public class User implements KdTreeNode, Cloneable {
     try {
       SpotifyApi spotifyApi =
           new SpotifyApi.Builder()
-              .setClientId(Constants.CLIENT_ID)
-              .setClientSecret(Constants.CLIENT_SECRET)
+              .setClientId(System.getenv("CLIENT_ID"))
+              .setClientSecret(System.getenv("CLIENT_SECRET"))
               .setRefreshToken(this.getRefreshToken())
               .build();
       AuthorizationCodeRefreshRequest authorizationCodeRefreshRequest =

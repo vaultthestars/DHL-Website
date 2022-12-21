@@ -17,7 +17,7 @@ import se.michaelthelin.spotify.model_objects.specification.Track;
 import se.michaelthelin.spotify.requests.authorization.authorization_code.AuthorizationCodeRefreshRequest;
 import se.michaelthelin.spotify.requests.data.search.simplified.SearchTracksRequest;
 import se.michaelthelin.spotify.requests.data.tracks.GetAudioFeaturesForTrackRequest;
-import server.Constants;
+
 
 /**
  * Class used solely for getting random songs from the spotify API
@@ -62,8 +62,8 @@ public class RandomSpotifySongSearch {
   private String generateAuthToken() {
     SpotifyApi spotifyApi =
         new SpotifyApi.Builder()
-            .setClientId(Constants.CLIENT_ID)
-            .setClientSecret(Constants.CLIENT_SECRET)
+            .setClientId(System.getenv("CLIENT_ID"))
+            .setClientSecret(System.getenv("CLIENT_SECRET"))
             .setRefreshToken("AQAQcVJhyLYllahLB7R5wklN-ovXc9_RsRQxbkNsC8kqnP2KNA-sHmt5YR0Nqe0O70jKV9Y6Xobhgebi26nt1aAQ3RryvPg6_E-ty04PAoXC3r8P9usQsW01PnmxslJCBxk")
             .build();
     AuthorizationCodeRefreshRequest authorizationCodeRefreshRequest =
@@ -88,8 +88,8 @@ public class RandomSpotifySongSearch {
 
     SpotifyApi spotifyApi =
         new SpotifyApi.Builder()
-            .setClientId(Constants.CLIENT_ID)
-            .setClientSecret(Constants.CLIENT_SECRET)
+            .setClientId(System.getenv("CLIENT_ID"))
+            .setClientSecret(System.getenv("CLIENT_SECRET"))
             .setAccessToken(this.generateAuthToken())
             .build();
     SearchTracksRequest searchTracksRequest = spotifyApi.searchTracks(search)
