@@ -126,7 +126,7 @@ function aboutusinfo(){
           />
           <text className = "whitetext2" x = "20" y = "25"
           onClick={()=>{aboutusdisplay = false}}>
-          {"[Click to close window]"}
+          {"[Click right here to close this window]"}
           </text>
 
           <text className = "whitetext2" x = "20" y = "75">
