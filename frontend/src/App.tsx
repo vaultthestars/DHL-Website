@@ -2,7 +2,7 @@ import React, { useState, Dispatch, SetStateAction, useEffect, useCallback } fro
 import GraphVis, { camtarg, getsortmethod, slidenum, sortshift, updatecamcenter } from './GraphVis'
 import logo from './logo.svg';
 import './styles/App.css';
-import {firebaseConfig} from './private/firebaseconfig'
+import {firebaseConfig, privClientID, privClientSecret} from './private/firebaseconfig'
 import * as d3 from 'd3';
 import { signInWithGoogle } from './GoogleLogin';
 import { SpotifyLoginButton} from './SpotifyAuth';
