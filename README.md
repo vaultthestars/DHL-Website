@@ -55,7 +55,7 @@ Navigate to the frontend directory. Ensure that all dependencies are installed b
 - This interface has three methods called within our various handlers: `getUser(userId)`, `updateUser(userId, user)`, and `getAllUserIds()`.
 - We have two classes `LocalDatabase` and `FirestoreDatabase` that implement our `UserDatabase` interface.
 - `LocalDatabase` contains an hashmap() of all users ids mapped to User objects. It's used to store mock users parsed from a CSV file. 
-- `FirestoreDatabase` is wrapper class containing our initialization of the Firestore database. It takes care of all funcitonality related to reading data from and writing data to Firestore.
+- `FirestoreDatabase` is wrapper class containing our initialization of the Firestore database. It takes care of all functionality related to reading data from and writing data to Firestore.
 #### User & Song Classes
 - `User` class represents an individual TuneIn user and houses essential user-specific information. It implements KdTreeNode so that users can be used to build the User-Tree. 
 - `Song` class represents a specific song and stores related information (user id, title, song id, list of artists, array of audio features, k-d tree dimension). It implements KdTreeNode so that songs can be used to build the Song-Tree. 
