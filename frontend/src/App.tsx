@@ -43,7 +43,7 @@ import { updateuserdata } from './backendhandler';
 // TODO: CLEAN UP AND TEST
 
 // set this to be true or false depending on if you want to display mocked users or not. This value should match
-// the value of the USING_MOCKS environment variable on the backend
+// the value of the USING_MOCKS environment variable on the backend.
 let usingmocks: boolean = false;
 
 // A function takes maxnum and randomly generates that many user coordinates across our screen.
