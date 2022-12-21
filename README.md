@@ -36,6 +36,12 @@ Our app will allow anybody to view the most recent TunedIn of other users. Users
 
 Each user can view their daily connections and historical connections (other users will similar music taste) calculated via a 6-d tree algorithm using those six song metrics. Finally, our app will provide a beautiful data visualization for our users, displaying each user as a bubble in a vast floating landscape of other users, allowing the user to sort the bubbles (visual clustering) by any category they wish, as well as click on individual bubbles to view the users themselves and their most recent activity. Our project will also form an overall sense of community amongst users via this musical exchange, and hopefully help people discover others who either share their tastes, or enjoy something completely different.
 
+## Contributors:
+
+David Fryd (dfryd), for staying up with us until 3:00 AM debugging and locating a crucial missing step in our Spotify Authentication scheme, as well as for emotional support.
+
+Galen Winsor (gwinsor), for providing constructive criticism on frontend design and general mentorship. 
+
 ## How-To Run TunedIn:
 
 ### Running the backend server:
@@ -156,5 +162,3 @@ Typescript and React:
 - [Generating random strings in Javascript](https://stackoverflow.com/questions/1349404/generate-random-string-characters-in-javascript)
 - [Integer rounding in Javascript](https://stackoverflow.com/questions/1684202/how-to-round-an-integer-up-or-down-to-the-nearest-10-using-javascript)
 - [Building the game of life with React- used for fixing infinite loop bug](https://dev.to/toluagboola/build-the-game-of-life-with-react-and-typescript-5e0d)
-- 
-
