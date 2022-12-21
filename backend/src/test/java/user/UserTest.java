@@ -347,15 +347,4 @@ public class UserTest {
     assertEquals("[user2, user4, user5, user6, user3]", Arrays.toString(actualConn));
     assertEquals("[user4, user7, user5, user6, user2]", Arrays.toString(actualHistConn));
   }
-
-  //  /**
-  //   * Testing exceptions
-  //   */
-  //  @Test
-  //  public void testExceptions() {
-  //    setUpNewUser();
-  //    this.newUser.setRefreshToken("invalid refresh token");
-  //    assertThrows(new SpotifyWebApiException().class,
-  //    () -> this.newUser.getMostRecentSong());
-  //  }
 }
