@@ -2,6 +2,7 @@ import React, { useState, Dispatch, SetStateAction, useEffect, useCallback } fro
 import GraphVis from './GraphVis'
 import './styles/App.css';
 
+//THINGS YOU NEED TO RUN: npm install (usually only when cloning for the first time), npm run start
 //TODO: Reorganize code. Move calculations into App, do rendering in graphvis.
 
 function App() {
