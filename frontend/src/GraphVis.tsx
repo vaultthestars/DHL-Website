@@ -124,11 +124,20 @@ function linterp(a: number, b: number, t: number){
     return a + t*(b-a)
 }
 
-function mouseinbox(mouse: point, reccenter: point, recdims: point): number{
-    if((Math.abs(mouse.x-reccenter.x)<recdims.x/2) && (Math.abs(mouse.y-reccenter.y)<recdims.y/2)){
-        return 1
+function clamplr(x: number,l: number, r: number){
+    if(x<l){
+        return l
     }
-    return 0
+    if(x>r){
+        return r
+    }
+    return x
+}
+
+//TODO: Figure out the minutia of this stuff right here
+
+function boxdist(mouse: point, reccenter: point, recdims: point): number{
+    return clamplr(1-(Math.abs(mouse.x-reccenter.x)/(recdims.x/2))+(Math.abs(mouse.y-reccenter.y)/(recdims.y/2)),0,1)
 }
 
 export default function GraphVis(Timer: number) {
@@ -140,6 +149,7 @@ export default function GraphVis(Timer: number) {
     const numlayers = 8;
     let center = {x: window.innerWidth/2, y: window.innerHeight/2};
 
+    const frameweight = 16
     const framedims = {x: 420, y: 200}
 
     return <div key = "wrapper" className = "wrapper">
@@ -162,9 +172,9 @@ export default function GraphVis(Timer: number) {
                 {Array.from(Array(pages.length).keys()).map((num) => {
                     const N = pages.length
                     const widd = 0.75*center.x/N
-                    const reccenter = {x: center.x + 1.25*center.x/N*(num-(N-1)/2),y: center.y + framedims.y + 75}
                     const recdims = {x: widd,y: 0.3*widd}
-                    const mousebump = 10*mouseinbox(mouse,reccenter,recdims)
+                    const reccenter = {x: center.x + (framedims.x-recdims.x/2+frameweight/2)*(num-(N-1)/2)*(2/(N-1)),y: center.y + framedims.y + 75}
+                    const mousebump = 10*boxdist(mouse,reccenter,recdims)
                     return <g>
                         <rect
                         key = {"Button " + num.toString()}
@@ -195,6 +205,13 @@ export default function GraphVis(Timer: number) {
                     </g>
                     }
                 )}
+                {/* <circle
+                key = "mousecircle"
+                r = "10"
+                cx = {mouse.x}
+                cy = {mouse.y}
+                fill = "hsl(0 100% 100%)"
+                /> */}
                 {Array.from(Array(numlayers*3).keys()).map((num) => {
                         const l0 =  Math.floor(num/3)/(numlayers-1)
                         return <polygon 
@@ -216,7 +233,7 @@ export default function GraphVis(Timer: number) {
                 height = {2*framedims.y}
                 fill = "none"
                 stroke = "hsl(0 0% 100%)"
-                strokeWidth= "1"
+                strokeWidth= {frameweight}
                 />
             </svg>
             <p>
