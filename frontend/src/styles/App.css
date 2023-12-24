@@ -71,6 +71,10 @@
   }
 }
 
+.pagewrapper .svgwindow{
+  background: rgb(207, 23, 23);
+}
+
 .wrapper .svgwindow{
   background: rgb(0, 0, 0);
 }

@@ -1,7 +1,8 @@
 import { stringify } from 'querystring';
 import React, { useState, Dispatch, SetStateAction, useEffect, useCallback } from 'react';
 import {Dstring, Hstring, Lstring} from "./LetterData";
-import Animationpage from './pages/animation';
+import App from "./App"
+import {pages, pagesetter} from "./App"
 
 const tau = 2*Math.PI
 
@@ -13,14 +14,10 @@ type hsl = {h: number, s: number, l: number};
 //Animation, Desmos. Music/Tabs. Sculpture? ehhh.
 //How to store these buttons? Maybe make a custom thing.
 
-type pagebutton = {name: string, page: ()=>{}}
-const pages = [{name: "MUSIC", page: Animationpage},
-{name: "ANIMATION", page: Animationpage},
-{name: "DESMOS", page: Animationpage}]
 //So how are we gonna do page navigation? Maybe it should be a map from a string to an actual function.
 
 
-const useMousePosition = () => {
+export const useMousePosition = () => {
     const [
       mousePosition,
       setMousePosition
@@ -37,25 +34,25 @@ const useMousePosition = () => {
     return mousePosition;
   };
 
-  const useClick = () => {
-    const [
-        clickPosition,
-        setclickPosition
-      ] = React.useState({ x: null, y: null });
-    React.useEffect(() => {
-    const updateclickPosition = (ev: { x: any; y: any; }) => {
-        setclickPosition({ x: ev.x, y: ev.y });
+export const useClick = () => {
+const [
+    clickPosition,
+    setclickPosition
+    ] = React.useState({ x: null, y: null });
+React.useEffect(() => {
+const updateclickPosition = (ev: { x: any; y: any; }) => {
+    setclickPosition({ x: ev.x, y: ev.y });
+};
+window.addEventListener("click", updateclickPosition);
+return () => {
+    window.removeEventListener('mousemove', updateclickPosition);
     };
-    window.addEventListener("click", updateclickPosition);
-    return () => {
-        window.removeEventListener('mousemove', updateclickPosition);
-      };
-    }, []);
-    return clickPosition;
-  };
+}, []);
+return clickPosition;
+};
 
 
-function stringtonum(x: any): number{
+export function stringtonum(x: any): number{
     if(JSON.stringify(x) == "null"){
         return 0
     }
@@ -137,16 +134,18 @@ function clamplr(x: number,l: number, r: number){
 //TODO: Figure out the minutia of this stuff right here
 
 function boxdist(mouse: point, reccenter: point, recdims: point): number{
-    return clamplr(1-(Math.abs(mouse.x-reccenter.x)/(recdims.x/2))+(Math.abs(mouse.y-reccenter.y)/(recdims.y/2)),0,1)
+    return clamplr(1-(Math.abs(mouse.x-reccenter.x)/(recdims.x/2)),0,1)*clamplr(1-(Math.abs(mouse.y-reccenter.y)/(recdims.y/2)),0,1)
 }
 
-export default function GraphVis(Timer: number) {
+export default function Homepage(Timer: number, setPage: pagesetter) {
     const mousePosition = useMousePosition();
     const clicked = useClick();
-    const mouse = {x: stringtonum(mousePosition.x), y: stringtonum(mousePosition.y)}
+    const mouse = {x: stringtonum(mousePosition.x), y: stringtonum(mousePosition.y)+window.scrollY}
+    // -window.scrollY
     // const clickx = stringtonum(clicked.x)
     // const clicky = stringtonum(clicked.y)
     const numlayers = 8;
+    const buttonlayers = 3;
     let center = {x: window.innerWidth/2, y: window.innerHeight/2};
 
     const frameweight = 16
@@ -174,23 +173,37 @@ export default function GraphVis(Timer: number) {
                     const widd = 0.75*center.x/N
                     const recdims = {x: widd,y: 0.3*widd}
                     const reccenter = {x: center.x + (framedims.x-recdims.x/2+frameweight/2)*(num-(N-1)/2)*(2/(N-1)),y: center.y + framedims.y + 75}
-                    const mousebump = 10*boxdist(mouse,reccenter,recdims)
+                    const centerdist = 2*boxdist(mouse,reccenter,recdims)
                     return <g>
                         <rect
                         key = {"Button " + num.toString()}
                         x = {reccenter.x-recdims.x/2}
-                        y = {reccenter.y-recdims.y/2-mousebump}
+                        y = {reccenter.y-recdims.y/2}
                         width = {recdims.x}
                         height = {recdims.y}
                         fill = "hsl(0 0% 100%)"
                         stroke = "hsl(0 0% 100%)"
-                        // onClick={()=>{redirect()}}
+                        onClick={()=>{setPage(num+1)}}
                         strokeWidth= "1"
                         />
+                        {Array.from(Array(buttonlayers).keys()).map((layernum)=>{
+                            const rectmargin = 10*clamplr(buttonlayers*2*centerdist,0,layernum+1)
+                            return <rect
+                            key = {"Button outline" + num.toString() + "-" + layernum.toString()}
+                            x = {reccenter.x-recdims.x/2-rectmargin/2}
+                            y = {reccenter.y-recdims.y/2}
+                            width = {recdims.x + rectmargin}
+                            height = {recdims.y + rectmargin}
+                            fill = "none"
+                            stroke = "hsl(0 0% 100%)"
+                            // onClick={()=>{redirect()}}
+                            strokeWidth= "1"
+                            />
+                        })}
                         <text
                         key = {"nav label" + num.toString()}
                         x = {reccenter.x}
-                        y = {reccenter.y - mousebump}
+                        y = {reccenter.y}
                         text-anchor="middle"
                         dominant-baseline = "central"
                         fontSize={0.1*widd}
@@ -199,6 +212,7 @@ export default function GraphVis(Timer: number) {
                         fill = "hsl(0 0% 0%)"
                         fontFamily='Helvetica'
                         fontWeight= "bold"
+                        onClick={()=>{setPage(num+1)}}
                         >
                             {pages[num].name}
                         </text>
@@ -206,7 +220,6 @@ export default function GraphVis(Timer: number) {
                     }
                 )}
                 {/* <circle
-                key = "mousecircle"
                 r = "10"
                 cx = {mouse.x}
                 cy = {mouse.y}

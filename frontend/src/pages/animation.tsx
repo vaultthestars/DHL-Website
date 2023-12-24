@@ -1,5 +1,9 @@
 import { stringify } from 'querystring';
 import React, { useState, Dispatch, SetStateAction, useEffect, useCallback } from 'react';
+import {pages, pagesetter} from "../App"
+import {useMousePosition, useClick, stringtonum} from  "../Homepage"
+import './subpages.css'
+
 
 const tau = 2*Math.PI
 
@@ -7,95 +11,77 @@ type point = {x: number, y: number};
 type hsv = {h: number, s: number, v: number};
 type hsl = {h: number, s: number, l: number};
 
-//What sub-pages do we want?
-//Animation, Desmos. Music/Tabs. Sculpture? ehhh.
-//How to store these buttons? Maybe make a custom thing.
+type entry = {imageurl: string, description: JSX.Element, link: string}
 
-type pagebutton = {name: string, url: string}
-const pages = [{name: "Animation", url: "hey"}, {name: "Desmos", url: "hello"}]
-//So how are we gonna do page navigation? Maybe it should be a map from a string to an actual function.
+const pagentries:entry[] = []
 
+const teststring = "hello here is a &lt;br /> test of some string formatting"
 
-const useMousePosition = () => {
-    const [
-      mousePosition,
-      setMousePosition
-    ] = React.useState({ x: null, y: null });
-    React.useEffect(() => {
-      const updateMousePosition = (ev: { clientX: any; clientY: any; }) => {
-        setMousePosition({ x: ev.clientX, y: ev.clientY });
-      };
-      window.addEventListener('mousemove', updateMousePosition);
-      return () => {
-        window.removeEventListener('mousemove', updateMousePosition);
-      };
-    }, []);
-    return mousePosition;
-  };
+// How do we want this to look? 
+// Maybe create some sort of simple image gallery with buttons and film grain. 
+// Clicking left or right makes the image blink closed and then open again.
+// Keep it simple at first.
 
-  const useClick = () => {
-    const [
-        clickPosition,
-        setclickPosition
-      ] = React.useState({ x: null, y: null });
-    React.useEffect(() => {
-    const updateclickPosition = (ev: { x: any; y: any; }) => {
-        setclickPosition({ x: ev.x, y: ev.y });
-    };
-    window.addEventListener("click", updateclickPosition);
-    return () => {
-        window.removeEventListener('mousemove', updateclickPosition);
-      };
-    }, []);
-    return clickPosition;
-  };
+// const img = new Image();
+// img.onload = function() {
+//   alert(img.width + 'x' + img.height);
+// }
+// img.src = 'http://www.google.com/intl/en_ALL/images/logo.gif';
 
-
-function stringtonum(x: any): number{
-    if(JSON.stringify(x) == "null"){
-        return 0
-    }
-    else{
-        return +x
-    }
-}
-
-function hsvtohsl(hsvin: hsv): hsl{
-    const L = hsvin.v*(1-hsvin.s/2)
-    let S = 0
-    if(L == 0 || L == 1){
-        S = 0
-    }
-    else{
-        S = (hsvin.v-L)/Math.min(L,1-L)
-    }
-    return {h:hsvin.h,s: S,l: L}
-}
-
-export default function Animationpage() {
+export default function Animationpage(Timer: number, setPage: pagesetter) {
     const mousePosition = useMousePosition();
     const clicked = useClick();
-    const mouse = {x: stringtonum(mousePosition.x), y: stringtonum(mousePosition.y)}
+    const mouse = {x: stringtonum(mousePosition.x), y: stringtonum(mousePosition.y)+window.scrollY}
     // const clickx = stringtonum(clicked.x)
     // const clicky = stringtonum(clicked.y)
     const numlayers = 8;
     let center = {x: window.innerWidth/2, y: window.innerHeight/2};
 
+    const frameweight = 16
     const framedims = {x: 420, y: 200}
 
-    return <div key = "animwrapper" className = "wrapper">
+    return <div key = "pagewrapper" className = "pagewrapper">
             <svg className="animsvg" fill = "true"
-                 width="100%" height={window.innerHeight} aria-label="loading screen">
+                 width="100%" height={4*window.innerHeight} aria-label="loading screen">
                 <rect
-                key = "animFrame"
+                key = "Frame"
                 x = {center.x-framedims.x}
                 y = {center.y-framedims.y}
                 width = {2*framedims.x}
                 height = {2*framedims.y}
                 fill = "none"
-                stroke = "hsl(0 50% 100%)"
-                strokeWidth= "1"
+                stroke = "hsl(0 0% 100%)"
+                strokeWidth= {frameweight}
                 />
+                <text className="verse"
+                key = "verse"
+                // text-anchor="middle"
+                dominant-baseline = "central"
+                letterSpacing={5}
+                // textLength={0.75*widd}
+                fill = "hsl(0 100% 100%)"
+                fontFamily='Helvetica'
+                fontWeight= "bold"
+                >
+        <tspan dy="1.2em" x="100"
+               >How doth the little crocodile</tspan>
+        <tspan dy="1.2em" x="100" dx="1em"
+               >Improve his shining tail,</tspan>
+        <tspan dy="1.2em" x="100"
+               >And pour the waters of the Nile</tspan>
+        <tspan dy="1.2em" x="100" dx="1em"
+               >On every golden scale!</tspan>
+        <tspan dy="1.2em" x="100" dx="1em"
+               >Link below vvv</tspan>
+              </text>
+              <a href="https://www.youtube.com/watch?v=MO7Qn6GVxOk&t=1s&ab_channel=DylanLee">
+                <circle cx="50" cy="40" r="35" fill = "hsl(0 100% 100%)"/>
+              </a>
+              <g transform="rotate(-10 50 100)
+               translate(100 45.5)">
+              <image href="https://play-lh.googleusercontent.com/1-hPxafOxdYpYZEOKzNIkSP43HXCNftVJVttoo4ucl7rsMASXW3Xr6GlXURCubE1tA=w3840-h2160-rw" 
+              width="200" />
+              </g>
             </svg>
         </div>
     // Otherwise, display our main app window
