@@ -16,51 +16,6 @@ type hsl = {h: number, s: number, l: number};
 
 //So how are we gonna do page navigation? Maybe it should be a map from a string to an actual function.
 
-
-export const useMousePosition = () => {
-    const [
-      mousePosition,
-      setMousePosition
-    ] = React.useState({ x: null, y: null });
-    React.useEffect(() => {
-      const updateMousePosition = (ev: { clientX: any; clientY: any; }) => {
-        setMousePosition({ x: ev.clientX, y: ev.clientY });
-      };
-      window.addEventListener('mousemove', updateMousePosition);
-      return () => {
-        window.removeEventListener('mousemove', updateMousePosition);
-      };
-    }, []);
-    return mousePosition;
-  };
-
-export const useClick = () => {
-const [
-    clickPosition,
-    setclickPosition
-    ] = React.useState({ x: null, y: null });
-React.useEffect(() => {
-const updateclickPosition = (ev: { x: any; y: any; }) => {
-    setclickPosition({ x: ev.x, y: ev.y });
-};
-window.addEventListener("click", updateclickPosition);
-return () => {
-    window.removeEventListener('mousemove', updateclickPosition);
-    };
-}, []);
-return clickPosition;
-};
-
-
-export function stringtonum(x: any): number{
-    if(JSON.stringify(x) == "null"){
-        return 0
-    }
-    else{
-        return +x
-    }
-}
-
 function pointlisttostring(pointlist: point[]): string{
     let returnstring = ""
     for(let i = 0; i < pointlist.length; i++){
@@ -112,7 +67,7 @@ function hsvtohsl(hsvin: hsv): hsl{
     return {h:hsvin.h,s: S,l: L}
 }
 
-function getcolorstring(hsvin: hsv): string{
+export function getcolorstring(hsvin: hsv): string{
     const newhsl = hsvtohsl(hsvin)
     return "hsl(" + (newhsl.h).toString() + " " + (100*newhsl.s).toString() + "% " + (100*newhsl.l).toString() + "%)"
 }
@@ -137,10 +92,9 @@ function boxdist(mouse: point, reccenter: point, recdims: point): number{
     return clamplr(1-(Math.abs(mouse.x-reccenter.x)/(recdims.x/2)),0,1)*clamplr(1-(Math.abs(mouse.y-reccenter.y)/(recdims.y/2)),0,1)
 }
 
-export default function Homepage(Timer: number, setPage: pagesetter) {
-    const mousePosition = useMousePosition();
-    const clicked = useClick();
-    const mouse = {x: stringtonum(mousePosition.x), y: stringtonum(mousePosition.y)+window.scrollY}
+
+export default function Homepage(Timer: number, setPage: pagesetter, mousePosition: {x: any, y: any}) {
+    const mouse = mousePosition
     // -window.scrollY
     // const clickx = stringtonum(clicked.x)
     // const clicky = stringtonum(clicked.y)
@@ -253,7 +207,6 @@ export default function Homepage(Timer: number, setPage: pagesetter) {
                 Your cursor position:
                 <br />
                 {JSON.stringify(mousePosition)}
-                {JSON.stringify(clicked)}
             </p>
         </div>
     // Otherwise, display our main app window
