@@ -100,7 +100,7 @@ export default function Homepage(Timer: number, setPage: pagesetter, mousePositi
     // const clicky = stringtonum(clicked.y)
     const numlayers = 8;
     const buttonlayers = 3;
-    let center = {x: window.innerWidth/2, y: window.innerHeight/2};
+    let center = {x: window.innerWidth/2, y: 350};
 
     const frameweight = 16
     const framedims = {x: 420, y: 200}
@@ -124,7 +124,7 @@ export default function Homepage(Timer: number, setPage: pagesetter, mousePositi
                         </text>
                 {Array.from(Array(pages.length).keys()).map((num) => {
                     const N = pages.length
-                    const widd = 0.75*center.x/N
+                    const widd = 500/N
                     const recdims = {x: widd,y: 0.3*widd}
                     const reccenter = {x: center.x + (framedims.x-recdims.x/2+frameweight/2)*(num-(N-1)/2)*(2/(N-1)),y: center.y + framedims.y + 75}
                     const centerdist = 2*boxdist(mouse,reccenter,recdims)
@@ -161,7 +161,7 @@ export default function Homepage(Timer: number, setPage: pagesetter, mousePositi
                         text-anchor="middle"
                         dominant-baseline = "central"
                         fontSize={0.1*widd}
-                        letterSpacing={5}
+                        letterSpacing={5*widd/200}
                         // textLength={0.75*widd}
                         fill = "hsl(0 0% 0%)"
                         fontFamily='Helvetica'

@@ -1,31 +1,49 @@
-type entry = {imageurl: string, link: string, description: string[]}
-export const tabs = [{imageurl: "https://i.ytimg.com/vi/2oySNv1ySd8/hqdefault.jpg?sqp=-oaymwEcCNACELwBSFXyq4qpAw4IARUAAIhCGAFwAcABBg==&rs=AOn4CLC3PI0hrnXVp7DJ8uHgzU4tAnDyrQ", 
-link: "imageurl", description:
-["Never gonna give you up",
-"never gonna let you down",
-"never gonna run around and hurt you"]},
+type entry = {title: string, imageurl: string, imdms: {x: number, y: number}, description: string[]}
+export const tabs: entry[] = [
+{title: "DEMO REEL", imageurl: "https://www.youtube.com/embed/MO7Qn6GVxOk?si=AtlpWwSw9IGACIwr", 
+imdms: {x: 560, y:315}, description:
+["Programs used: Maya, Blender, Ibispaint, Desmos","",
+"A short compilation of my recent animation work including independent films,",
+"group / class projects, and ani-mathematical experiments."]},
 
-{imageurl: "https://encrypted-tbn0.gstatic.com/licensed-image?q=tbn:ANd9GcQ6Bo6MEIcEdnuFYjeHSlZFyToixYpSgoYdluAtL3zzEhjpb6DwZ7GeD4XdkfiBrsrnQa7sESt5j12MpKY", 
-link: "imageurl", description:
-["there once was a ship that went to sea",
-"the name of the ship was the billy of tea",
-"so and so blah blah blah blah blah"]},
+{title: "MAYA", imageurl: "https://www.youtube.com/embed/ZS8z87411Uw?si=mHcHJ9nW7UPJ6JvL",
+imdms: {x: 560, y:315},
+description:
+["Programs used: Blender, GuitarPro","",
+"An independent short film I created for my Intermediate Computer Animation Final Project.",
+"It started as a breakup song I wrote about Autodesk's Maya 3D and slowly",
+"evolved into an entire music video. I learned a lot more about Blender's rigging constraints",
+"while creating the mechanical protagonist of the film."]},
 
-{imageurl: "https://play-lh.googleusercontent.com/1-hPxafOxdYpYZEOKzNIkSP43HXCNftVJVttoo4ucl7rsMASXW3Xr6GlXURCubE1tA=w3840-h2160-rw", 
-link: "imageurl", description:
-["there once was a ship that went to sea",
-"the name of the ship was the billy of tea",
-"so and so blah blah blah blah blah"]},
+{title: "RUN, CYCLE", imageurl: "https://player.vimeo.com/video/782695057?badghe=0&amp;quality_selector=1&amp;player_id=0&amp", 
+imdms: {x: 560, y:315}, description:
+["Programs used: Maya, Blender","",
+"A short film I created with a group of three for my Beginner Computer Animation Final Project.",
+"We started with a simple narrative, then pushed the visual style as far into abstraction as we could.",
+"We scored the film over the course of three days, splicing together audio from late night jam sessions."]},
 
-{imageurl: "https://play-lh.googleusercontent.com/1-hPxafOxdYpYZEOKzNIkSP43HXCNftVJVttoo4ucl7rsMASXW3Xr6GlXURCubE1tA=w3840-h2160-rw", 
-link: "imageurl", description:
-["there once was a ship that went to sea",
-"the name of the ship was the billy of tea",
-"so and so blah blah blah blah blah"]},
+{title: "THE COLOR OF MORNING", imageurl: "https://www.youtube.com/embed/MO7Qn6GVxOk?si=AtlpWwSw9IGACIwr", 
+imdms: {x: 560, y:315}, description:
+["Programs used: Ibispaint, Procreate","",
+"A dance film I created with my friend Daniel Carroll for my Dance Theater Workshop piece / Senior Initiative.",
+"Because of the pandemic, we were unable to perform our works in person- I took advantage of this limitation",
+"and decided to hand-animate my dance. Daniel and I spent 8 hours a day illustrating each frame of the film",
+"for a span of three and a half months until the film's completion. Daniel used Procreate on his iPad,",
+"while I used IbisPaint on my phone."]},
 
-{imageurl: "https://play-lh.googleusercontent.com/1-hPxafOxdYpYZEOKzNIkSP43HXCNftVJVttoo4ucl7rsMASXW3Xr6GlXURCubE1tA=w3840-h2160-rw", 
-link: "imageurl", description:
-["hey hey hey check out this cool new tab",
-"here's another line but that's all you get",
-"actually heck let's add one more",
-"ok I promise this is the last one"]}]
+{title: "FOUR LINE CONICS", imageurl: "https://www.youtube.com/embed/2oySNv1ySd8?si=9M2RhVH5paO0D14X", 
+imdms: {x: 560, y:315}, description:
+["Programs used: Desmos, Blender, GuitarPro, Controlnet","",
+"The longest short film yet I've ever created. I pieced it together over the span of three weeks while teaching at",
+"a math program known as HCSSiM (Hampshire Summer Studies in Mathematics). It is a parody of the cult classic",
+"math movie \"Four Line Conics\" by the National Film Board of Canada, which features psychedelic animations of",
+"conic sections. I rendered a majority of the film using mathematical equations in Desmos Graphing Calculator",
+"and composed an original song in 5/4 for the score."]},
+
+{title: "UPDRAFTS", imageurl: "https://play-lh.googleusercontent.com/1-hPxafOxdYpYZEOKzNIkSP43HXCNftVJVttoo4ucl7rsMASXW3Xr6GlXURCubE1tA=w3840-h2160-rw", 
+imdms: {x: 560, y:315}, description:
+["Programs used: Maya, Blender","",
+"A 6-8 minute long short film I am currently working on with a team of 12.",
+"The story centers around a father struggling to understand his daughter through her art.",
+"I worked on the story and character design during the preproduction phase, and am currently",
+"shooting live action for / animating the film's scenes in Maya."]}]
