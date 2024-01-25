@@ -3,6 +3,7 @@ import React, { useState, Dispatch, SetStateAction, useEffect, useCallback } fro
 import {Dstring, Hstring, Lstring} from "./LetterData";
 import App from "./App"
 import {pages, pagesetter} from "./App"
+import { Button } from './button';
 
 const tau = 2*Math.PI
 
@@ -38,7 +39,7 @@ function bump(x: number): number{
     return 100*sech(x/100)*(1-sech(8*x/100))
 }
 
-function distortandcenter(point: point, center: point, mouse: point, fac: number): point{
+export function distortandcenter(point: point, center: point, mouse: point, fac: number): point{
     const relmouse = {x: mouse.x-center.x, y: mouse.y-center.y}
     const fullfac = fac*bump(mag(point,relmouse))/mag(point,relmouse)
     const offset = {x: fullfac*(point.x-relmouse.x), y: fullfac*(point.y-relmouse.y)}
@@ -130,49 +131,7 @@ export default function Homepage(Timer: number, setPage: pagesetter, mousePositi
                     const recdims = {x: widd,y: 0.3*widd}
                     const reccenter = {x: center.x + (framedims.x-recdims.x/2+frameweight/2)*(num-(N-1)/2)*(2/(N-1)),y: center.y + framedims.y + 75}
                     const centerdist = 2*boxdist(mouse,reccenter,recdims)
-                    return <g>
-                        <rect
-                        key = {"Button " + num.toString()}
-                        x = {reccenter.x-recdims.x/2}
-                        y = {reccenter.y-recdims.y/2}
-                        width = {recdims.x}
-                        height = {recdims.y}
-                        fill = "hsl(0 0% 100%)"
-                        stroke = "hsl(0 0% 100%)"
-                        onClick={()=>{setPage(num+1)}}
-                        strokeWidth= "1"
-                        />
-                        {Array.from(Array(buttonlayers).keys()).map((layernum)=>{
-                            const rectmargin = 10*clamplr(buttonlayers*2*centerdist,0,layernum+1)
-                            return <rect
-                            key = {"Button outline" + num.toString() + "-" + layernum.toString()}
-                            x = {reccenter.x-recdims.x/2-rectmargin/2}
-                            y = {reccenter.y-recdims.y/2}
-                            width = {recdims.x + rectmargin}
-                            height = {recdims.y + rectmargin}
-                            fill = "none"
-                            stroke = "hsl(0 0% 100%)"
-                            // onClick={()=>{redirect()}}
-                            strokeWidth= "1"
-                            />
-                        })}
-                        <text
-                        key = {"nav label" + num.toString()}
-                        x = {reccenter.x}
-                        y = {reccenter.y}
-                        text-anchor="middle"
-                        dominant-baseline = "central"
-                        fontSize={0.1*widd}
-                        letterSpacing={5*widd/200}
-                        // textLength={0.75*widd}
-                        fill = "hsl(0 0% 0%)"
-                        fontFamily='Helvetica'
-                        fontWeight= "bold"
-                        onClick={()=>{setPage(num+1)}}
-                        >
-                            {pages[num].name}
-                        </text>
-                    </g>
+                    return Button(reccenter, recdims, pages[num].name,()=>{setPage(num+1)}, mouse)
                     }
                 )}
                 {/* <circle
@@ -204,12 +163,33 @@ export default function Homepage(Timer: number, setPage: pagesetter, mousePositi
                 stroke = "hsl(0 0% 100%)"
                 strokeWidth= {frameweight}
                 />
+                <text
+                        key = {"contactinfo"}
+                        x = {center.x}
+                        y = {center.y + framedims.y + 145}
+                        text-anchor="middle"
+                        dominant-baseline = "central"
+                        fontSize={15}
+                        fill = "hsl(0 100% 100%)"
+                        fontFamily='Helvetica'
+                        // fontWeight= "bold"
+                        >
+                            Contact: dhl31415926@gmail.com
+                        </text>
+                        <text
+                        key = {"contactinfo"}
+                        x = {center.x}
+                        y = {center.y + framedims.y + 165}
+                        text-anchor="middle"
+                        dominant-baseline = "central"
+                        fontSize={15}
+                        fill = "hsl(0 100% 100%)"
+                        fontFamily='Helvetica'
+                        // fontWeight= "bold"
+                        >
+                            Built for Google Chrome
+                        </text>
             </svg>
-            <p>
-                Your cursor position:
-                <br />
-                {JSON.stringify(mousePosition)}
-            </p>
         </div>
     // Otherwise, display our main app window
 }

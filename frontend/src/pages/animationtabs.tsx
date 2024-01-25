@@ -40,7 +40,7 @@ imdms: {x: 560, y:315}, description:
 "conic sections. I rendered a majority of the film using mathematical equations in Desmos Graphing Calculator",
 "and composed an original song in 5/4 for the score."]},
 
-{title: "UPDRAFTS", imageurl: "https://play-lh.googleusercontent.com/1-hPxafOxdYpYZEOKzNIkSP43HXCNftVJVttoo4ucl7rsMASXW3Xr6GlXURCubE1tA=w3840-h2160-rw", 
+{title: "UPDRAFTS", imageurl: "https://www.youtube.com/embed/YMU8VBZGe20?si=kn6zNC-rD_Qv-qSk", 
 imdms: {x: 560, y:315}, description:
 ["Programs used: Maya, Blender","",
 "A 6-8 minute long short film I am currently working on with a team of 12.",

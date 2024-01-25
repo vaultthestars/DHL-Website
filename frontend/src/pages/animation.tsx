@@ -4,17 +4,17 @@ import {pages, pagesetter, reactvar} from "../App"
 import {getcolorstring} from  "../Homepage"
 import './subpages.css'
 import  {tabs} from "./animationtabs"
+import { Button } from '../button';
 
 //TODO: Add titles(side title and top title)
 //TODO: Add a link entry
+//TODO: Drive the opacity based on the current tab
 
 const tau = 2*Math.PI
 
 type point = {x: number, y: number};
 type hsv = {h: number, s: number, v: number};
 type hsl = {h: number, s: number, l: number};
-
-const teststring = "hello here is a &lt;br /> test of some string formatting"
 
 // How do we want this to look? 
 // Maybe create some sort of simple image gallery with buttons and film grain. 
@@ -47,7 +47,7 @@ function italistyle(x: number): string{
        return "italic"
 }
 
-export default function Animationpage(Timer: number, setPage: pagesetter, extravars: reactvar[]) {
+export default function Animationpage(Timer: number, setPage: pagesetter, mouse: point, extravars: reactvar[]) {
     const currtab = extravars[0].var
     const setcurrtab = extravars[0].setter
     const t0 = extravars[1].var
@@ -58,9 +58,43 @@ export default function Animationpage(Timer: number, setPage: pagesetter, extrav
 
     return <div key = "pagewrapper" className = "pagewrapper">
             <svg className="animsvg" fill = "true"
-                 width="100%" height={4*window.innerHeight} aria-label="loading screen">
+                 width="100%" height={window.innerHeight} aria-label="loading screen">
+              <rect
+              key = {"Header"}
+              x = {0}
+              y = {0}
+              width = {wdims.x}
+              height = {marginwidth}
+              fill = {getcolorstring({h: 360*3/N, s: 0.6, v: 1})}
+              stroke = "hsl(0 0% 0%)"
+              strokeWidth= {1}
+              />
+              <text
+              key = {"Animtitle"}
+              textAnchor="middle"
+              dominant-baseline = "central"
+              fill = "hsl(0 0% 0%)"
+              fontFamily='Helvetica'
+              fontWeight= "bold"
+              fontSize={40}
+              letterSpacing={20}
+              x = {wdims.x/2}
+              y = {marginwidth/2}
+              >
+                     ANIMATION
+              </text>
+              <a href = "">
+              <image 
+              x = "14"
+              y = "14"
+              width = "100"
+              height = "50"
+              href = "https://i.ibb.co/9nchptY/Screenshot-2024-01-14-at-3-00-09-PM.png"
+              onClick={()=>setPage(0)}
+              />
+              </a>
                 {Array.from(Array(N).keys()).map((i)=>{
-              const origin = {x: i*marginwidth + (tabdims.x-marginwidth)*ease((i)-t0), y: 0}
+              const origin = {x: i*marginwidth + (tabdims.x-marginwidth)*ease((i)-t0), y: marginwidth}
 
               const imageorigin = {x: origin.x + marginwidth, y: origin.y + tabdims.y*1/8}
 
@@ -79,8 +113,7 @@ return <g>
               fill = {getcolorstring({h: 360*i/N, s: 0.6, v: 1})}
               stroke = "hsl(0 0% 0%)"
               strokeWidth= {1}
-              onClick={()=>{console.log(i);
-                     setcurrtab(i)}}
+              onClick={()=>{setcurrtab(i)}}
               />
               <text
               key = {"tabnumber" + i.toString()}
@@ -144,19 +177,9 @@ return <g>
                      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" 
                      allowFullScreen></iframe>
               </foreignObject>
-              
-              {/* What next? Add rectangles to represent the actual placement of text boxes */}
-
-              {/* <a href="https://www.youtube.com/watch?v=MO7Qn6GVxOk&t=1s&ab_channel=DylanLee">
-                <circle cx="50" cy="40" r="35" fill = "hsl(0 100% 100%)"/>
-              </a>
-              <g transform="rotate(-10 50 100)
-               translate(100 45.5)">
-              <image href="https://play-lh.googleusercontent.com/1-hPxafOxdYpYZEOKzNIkSP43HXCNftVJVttoo4ucl7rsMASXW3Xr6GlXURCubE1tA=w3840-h2160-rw" 
-              width="200" />
-              </g> */}
 </g>
                 })}
+              {/* {Button({x: wdims.x/2,y: wdims.y + marginwidth}, {x: 1.25*500/3,y: 1.25*marginwidth/2}, "HOME", ()=>{setPage(0)},mouse)} */}
             </svg>
         </div>
     // Otherwise, display our main app window
