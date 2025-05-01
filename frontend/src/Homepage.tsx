@@ -123,7 +123,7 @@ export default function Homepage(Timer: number, setPage: pagesetter, mousePositi
                         fontFamily='Helvetica'
                         fontWeight= "bold"
                         >
-                            DYLAN HWANG LEE
+                            DYLAN HWANG LEE IS TRYING TO PUSH TO MAIN
                         </text>
                 {Array.from(Array(pages.length).keys()).map((num) => {
                     const N = pages.length
