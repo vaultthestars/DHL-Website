@@ -22,7 +22,7 @@ imdms: {x: 560, y:315}, description:
 "We started with a simple narrative, then pushed the visual style as far into abstraction as we could.",
 "We scored the film over the course of three days, splicing together audio from late night jam sessions."]},
 
-{title: "THE COLOR OF MORNING", imageurl: "https://www.youtube.com/embed/MO7Qn6GVxOk?si=AtlpWwSw9IGACIwr", 
+{title: "THE COLOR OF MORNING", imageurl: "https://www.youtube.com/embed/CbLNqFFxN1I?si=J_SyjhdqMD5a_TX7", 
 imdms: {x: 560, y:315}, description:
 ["Programs used: Ibispaint, Procreate","",
 "A dance film I created with my friend Daniel Carroll for my Dance Theater Workshop piece / Senior Initiative.",

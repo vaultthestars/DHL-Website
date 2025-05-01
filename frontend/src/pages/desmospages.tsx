@@ -1,6 +1,21 @@
 type graph = {code: string, title: string}
 
-export const graphs: graph[] = [{code: "nvjuiqtb07", title: "Megalovania"}
+export const graphs: graph[] = [{code: "kwif45g3sq", title: "Spiral of Theodorus"}
+,{code: "a7squ4dxrc", title: "Text sphere"}
+,{code: "vfknnsiudi", title: "Azul board game recreation draft"}
+,{code: "em4xahtgaq", title: "Point collision sound experiment"}
+,{code: "czb4jykuu2", title: "Masyu generator draft"}
+,{code: "rheyyeghu6", title: "Slant puzzle generator"}
+,{code: "sn94gm2yxv", title: "Procedural dungeon generator"}
+,{code: "qvgpo1gw7e", title: "Irregularity of distributions"}
+,{code: "6oxlb9prio", title: "Spacetime dilation clock"}
+,{code: "vn5riqegho", title: "Recursive random walks"}
+,{code: "qhoudjybpm", title: "The chaos game"}
+,{code: "ypoxpfcln7", title: "Hiding my homework submission in a procedurally generated horror game"}
+,{code: "cl0rsll2on", title: "Art assignment part 2"}
+,{code: "damvdle4p3", title: "Art assignment part 1"}
+,{code: "m2yp0im1hd", title: "4D 2048"}
+,{code: "nvjuiqtb07", title: "Megalovania"}
 ,{code: "4ym25oxa4o", title: "Desmos Guitar Guy!"}
 ,{code: "hosudytoxw", title: "another beat"}
 ,{code: "oehzfbzql2", title: "other beat"}
