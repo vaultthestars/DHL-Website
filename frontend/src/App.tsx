@@ -1,4 +1,4 @@
-import React, { useState, Dispatch, SetStateAction, useEffect, useCallback } from 'react';
+import React, { useState, Dispatch, SetStateAction, useEffect, useCallback, JSX } from 'react';
 import Homepage from './Homepage'
 import './styles/App.css';
 import Animationpage from './pages/animation';
