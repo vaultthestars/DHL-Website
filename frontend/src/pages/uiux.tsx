@@ -119,7 +119,7 @@ function accesscomponents(){
                        {/* Idk why I had to put this svg window here but it got rid of some of the annoying white space at the top of the page */}
            </svg>
      
-           <iframe style={{border: "none"}} width="800" height="500" src="https://rive.app/s/Ad65nUpLXkSd33WXGoFQzQ/embed?runtime=rive-renderer" allow="autoplay"></iframe>
+           {/* <iframe style={{border: "none"}} width="800" height="500" src="https://rive.app/s/Ad65nUpLXkSd33WXGoFQzQ/embed?runtime=rive-renderer" allow="autoplay"></iframe> */}
      
                <p style = {{fontSize:"32px", color:"hsl(0 100% 100%)", fontFamily:"EB Garamond", fontWeight:"bold"}}>
                  <br/>
@@ -295,7 +295,7 @@ return <div className="App" style={{backgroundColor: "black"}}>
                      {/* Idk why I had to put this svg window here but it got rid of some of the annoying white space at the top of the page */}
        </svg>
 
-       <iframe style={{border: "none"}} width="800" height="500" src="https://rive.app/s/Ad65nUpLXkSd33WXGoFQzQ/embed?runtime=rive-renderer" allow="autoplay"></iframe>
+       {/* <iframe style={{border: "none"}} width="800" height="500" src="https://rive.app/s/Ad65nUpLXkSd33WXGoFQzQ/embed?runtime=rive-renderer" allow="autoplay"></iframe> */}
 
               <p style = {{fontSize:"32px", color:"hsl(0 100% 100%)", fontFamily:"EB Garamond", fontWeight:"bold"}}>
               <br/>
@@ -516,7 +516,7 @@ return <div className="App" style={{backgroundColor: "black"}}>
 
        {/* REDESIGNED PAGE LINK: https://vaultthestars-github-io.vercel.app/ */}
 
-       <iframe style={{border: "none"}} width="800" height="500" src="https://rive.app/s/Ad65nUpLXkSd33WXGoFQzQ/embed?runtime=rive-renderer" allow="autoplay"></iframe>
+       {/* <iframe style={{border: "none"}} width="800" height="500" src="https://rive.app/s/Ad65nUpLXkSd33WXGoFQzQ/embed?runtime=rive-renderer" allow="autoplay"></iframe> */}
 
               <p style = {{fontSize:"32px", color:"hsl(0 100% 100%)", fontFamily:"EB Garamond", fontWeight:"bold"}}>
               <br/>
@@ -717,7 +717,7 @@ return <div className="App" style={{backgroundColor: "black"}}>
                      width="100%" height={0} aria-label="loading screen">
        </svg>
 
-       <iframe style={{border: "none"}} width="800" height="500" src="https://rive.app/s/Ad65nUpLXkSd33WXGoFQzQ/embed?runtime=rive-renderer" allow="autoplay"></iframe>
+       {/* <iframe style={{border: "none"}} width="800" height="500" src="https://rive.app/s/Ad65nUpLXkSd33WXGoFQzQ/embed?runtime=rive-renderer" allow="autoplay"></iframe> */}
 
               <p style = {{fontSize:"32px", color:"hsl(0 100% 100%)", fontFamily:"EB Garamond", fontWeight:"bold"}}>
               <br/>
