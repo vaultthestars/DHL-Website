@@ -127,7 +127,7 @@ export default function Homepage(Timer: number, setPage: pagesetter, mousePositi
                         </text>
                 {Array.from(Array(pages.length).keys()).map((num) => {
                     const N = pages.length
-                    const widd = 500/N
+                    const widd = 700/N
                     const recdims = {x: widd,y: 0.3*widd}
                     const reccenter = {x: center.x + (framedims.x-recdims.x/2+frameweight/2)*(num-(N-1)/2)*(2/(N-1)),y: center.y + framedims.y + 75}
                     const centerdist = 2*boxdist(mouse,reccenter,recdims)
@@ -171,7 +171,7 @@ export default function Homepage(Timer: number, setPage: pagesetter, mousePositi
                             Contact: dhl31415926@gmail.com
                         </text>
                         <text
-                        key = {"contactinfo"}
+                        key = {"contactinfo2"}
                         x = {center.x}
                         y = {center.y + framedims.y + 165}
                         text-anchor="middle"

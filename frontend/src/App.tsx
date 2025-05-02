@@ -5,6 +5,7 @@ import Animationpage from './pages/animation';
 import Desmospage from './pages/desmos';
 import musicpage from './pages/musicpage';
 import Uiuxpage from './pages/uiux';
+import Aboutpage from './pages/aboutpage';
 
 //THINGS YOU NEED TO RUN: npm install (usually only when cloning for the first time), npm run start
 //TODO: Reorganize code. Move calculations into App, do rendering in graphvis.
@@ -17,7 +18,8 @@ type pagebutton = {name: string, page: (timer: number, setter: pagesetter, mouse
 export const pages = [{name: "MUSIC", page: musicpage},
 {name: "ANIMATION", page: Animationpage},
 {name: "DESMOS", page: Desmospage},
-{name: "UI / UX", page: Uiuxpage}]
+{name: "UI / UX", page: Uiuxpage},
+{name: "ABOUT", page: Aboutpage}]
 
 function returnpage(currpage: number, timer: number, setter: pagesetter, mouse: point, extravars: reactvar[]): JSX.Element{
   if(currpage == 0){
@@ -54,6 +56,60 @@ function clamp0(x: number){
   return x
 }
 
+function clamplr(x: number, l: number, r: number){
+  if(x < l){
+    return l;
+  }
+  else if(x > r){
+    return r;
+  }
+  return x;
+}
+
+export const arrsize = 100;
+
+function conway(cellvals: Array<number>){
+  let cellsum = 0;
+  return Array.from(Array(arrsize*arrsize).keys()).map((i) => {
+    cellsum = 0;
+    const xpos = i%arrsize;
+    const ypos = Math.floor(i/arrsize);
+
+    //For the below to be effective, it needs to move around a bit. Or only do the stamp thing every few counts.
+    if((Math.abs(xpos - arrsize/2) < 5) && (Math.abs(ypos - arrsize/2) < 5)){
+            return Math.floor(Math.random()*1.5);
+    }
+    else{
+      for(let x = -1; x < 2; x++){
+        for(let y = -1; y < 2; y++){
+          if(!((x == 0) && (y == 0))){
+            cellsum = cellsum + cellvals[clamplr(i + x + arrsize*y , 0, cellvals.length-1)]
+          }
+        }
+      }
+
+
+      const currcell = cellvals[i];
+
+      if((cellsum < 2)||(cellsum > 3)){
+        return 0;
+      }
+      else{
+        if(cellsum == 2){
+          return currcell;
+        }
+        else if(currcell == 0){
+          return 1;
+        }
+        else{
+          return 0;
+        }
+      }
+    }
+    // return Math.floor(Math.random()*2)
+  })
+}
+
 function App() {
   // A global timer variable that loops from 0 to 1. Used for onscreen animations.
   const [Timer, setTimer] = useState<number>(0)
@@ -62,7 +118,9 @@ function App() {
   const [currtab,setcurrtab] = React.useState<number>(0);
   const [t0,sett0] = React.useState<number>(0);
   const [musictab, setmusictab] = useState<number>(0) 
-  const othervars: reactvar[] = [{var: currtab, setter: setcurrtab},{var: t0, setter: sett0}, {var: musictab, setter: setmusictab}]
+  const [cellvals, setcellvals] = React.useState<Array<number>>(Array.from(Array(arrsize*arrsize).keys()).map((num) => {return Math.floor(Math.random()*2)}));
+  
+  const othervars: reactvar[] = [{var: currtab, setter: setcurrtab},{var: t0, setter: sett0}, {var: musictab, setter: setmusictab}, {var: cellvals, setter: setcellvals}]
   // If the page is 0, we go to the home page.
 
   // A number denoting the speed at which circles move on screen.
@@ -80,6 +138,10 @@ function App() {
       setTimer((Timer + 0.001) % 1)
       sett0(t0b(t0,currtab)) 
       // console.log("opacival: "+document.documentElement.style.getPropertyValue('--opacival'));
+      if(Currpage == 5){
+        setcellvals(conway(cellvals));
+      }
+
     }
     , 10);
      return () => {clearInterval(interval);
