@@ -4,6 +4,7 @@ import './styles/App.css';
 import Animationpage from './pages/animation';
 import Desmospage from './pages/desmos';
 import musicpage from './pages/musicpage';
+import Uiuxpage from './pages/uiux';
 
 //THINGS YOU NEED TO RUN: npm install (usually only when cloning for the first time), npm run start
 //TODO: Reorganize code. Move calculations into App, do rendering in graphvis.
@@ -15,7 +16,8 @@ type pagebutton = {name: string, page: (timer: number, setter: pagesetter, mouse
 
 export const pages = [{name: "MUSIC", page: musicpage},
 {name: "ANIMATION", page: Animationpage},
-{name: "DESMOS", page: Desmospage}]
+{name: "DESMOS", page: Desmospage},
+{name: "UI / UX", page: Uiuxpage}]
 
 function returnpage(currpage: number, timer: number, setter: pagesetter, mouse: point, extravars: reactvar[]): JSX.Element{
   if(currpage == 0){
@@ -23,6 +25,7 @@ function returnpage(currpage: number, timer: number, setter: pagesetter, mouse: 
   } 
   else{
     return pages[currpage-1].page(timer, setter, mouse, extravars)
+    //HERE: Only return pages 1 through 4!
   }
 }
 

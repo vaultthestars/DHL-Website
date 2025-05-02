@@ -134,12 +134,6 @@ export default function Homepage(Timer: number, setPage: pagesetter, mousePositi
                     return Button(reccenter, recdims, pages[num].name,()=>{setPage(num+1)}, mouse)
                     }
                 )}
-                {/* <circle
-                r = "10"
-                cx = {mouse.x}
-                cy = {mouse.y}
-                fill = "hsl(0 100% 100%)"
-                /> */}
                 {Array.from(Array(numlayers*3).keys()).map((num) => {
                         const l0 =  Math.floor(num/3)/(numlayers-1)
                         return <polygon 

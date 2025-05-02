@@ -43,7 +43,15 @@ imdms: {x: 560, y:315}, description:
 {title: "UPDRAFTS", imageurl: "https://www.youtube.com/embed/YMU8VBZGe20?si=kn6zNC-rD_Qv-qSk", 
 imdms: {x: 560, y:315}, description:
 ["Programs used: Maya, Blender","",
-"A 6-8 minute long short film I am currently working on with a team of 12.",
+"A 6 minute long short film I am currently working on with a team of 12.",
 "The story centers around a father struggling to understand his daughter through her art.",
 "I worked on the story and character design during the preproduction phase, and am currently",
-"shooting live action for / animating the film's scenes in Maya."]}]
+"shooting live action for / animating the film's scenes in Maya."]},
+
+{title: "REEL", imageurl: "https://www.youtube.com/embed/du700_k7zZo?si=ApV-4skyg0pRh4rK", 
+    imdms: {x: 560, y:315}, description:
+    ["Programs used: Rive","",
+    "A 6.5 minute long piece I created with Rive, an animation software primarily used for making interactive",
+    "website UI elements. I thought it could be a fun challenge to make a short film with this software, ",
+    "especially since it had never been done before."]}
+]
