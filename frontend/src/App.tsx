@@ -68,6 +68,8 @@ function clamplr(x: number, l: number, r: number){
 
 export const arrsize = 100;
 
+//1 = alive 0 = dead 2 = dying 3 = dying
+
 function conway(cellvals: Array<number>){
   let cellsum = 0;
   return Array.from(Array(arrsize*arrsize).keys()).map((i) => {
@@ -76,33 +78,42 @@ function conway(cellvals: Array<number>){
     const ypos = Math.floor(i/arrsize);
 
     //For the below to be effective, it needs to move around a bit. Or only do the stamp thing every few counts.
-    if((Math.abs(xpos - arrsize/2) < 5) && (Math.abs(ypos - arrsize/2) < 5)){
-            return Math.floor(Math.random()*1.5);
+    const currcell = cellvals[i];
+    if(currcell == 2){
+      return 3; //Are you dying?
+    }
+    else if(currcell == 3){
+      return 0; //Are you dying?
     }
     else{
+       //You are either living or dead.
+        
       for(let x = -1; x < 2; x++){
         for(let y = -1; y < 2; y++){
           if(!((x == 0) && (y == 0))){
-            cellsum = cellsum + cellvals[clamplr(i + x + arrsize*y , 0, cellvals.length-1)]
+            const thiscell = cellvals[clamplr(i + x + arrsize*y , 0, cellvals.length-1)]
+            if(thiscell == 1){
+              cellsum = cellsum + 1;
+            }
           }
         }
       }
-
-
-      const currcell = cellvals[i];
-
-      if((cellsum < 2)||(cellsum > 3)){
-        return 0;
-      }
-      else{
+      //Are you dead?
+      if(currcell == 0){
         if(cellsum == 2){
-          return currcell;
-        }
-        else if(currcell == 0){
           return 1;
         }
         else{
           return 0;
+        }
+      }
+      else{
+        //You must be alive
+        if((cellsum < 3)||(cellsum > 5)){
+          return 2;
+        }
+        else{
+          return 1;
         }
       }
     }
