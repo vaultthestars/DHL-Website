@@ -66,7 +66,7 @@ function clamplr(x: number, l: number, r: number){
   return x;
 }
 
-export const arrsize = 100;
+export const arrsize = 200;
 
 //1 = alive 0 = dead 2 = dying 3 = dying
 
@@ -158,6 +158,7 @@ function App() {
      return () => {clearInterval(interval);
       if(Currpage == 0 || Currpage == 1 || Currpage == 3){
         window.removeEventListener('mousemove', updateMousePosition);
+        
       }}
 })
   const mouse = {x: stringtonum(mousePosition.x), y: stringtonum(mousePosition.y)+window.scrollY}

@@ -33,31 +33,20 @@ type hsl = {h: number, s: number, l: number};
 const marginwidth = 75
 const N = tabs.length
 
-function divwrap(n: number){
+function divwrap(n: number, p: point){
        let flexdir: string;
        if(n == 0){
               return <div></div>
        }
        else{
-              if(n % 2 == 1){
-                     return <div style={{fill: "true",
-                            backgroundColor: getcolorstring({h: 360*n/10, s: 0.6, v: 1}),
-                            display: 'flex', padding: '0px', flexDirection: 'column'}}>
-                                   <p>This is a div</p>
-                                   {divwrap(n-1)}
-                                   {divwrap(n-1)}
-                            </div>
-              }
-              else{
-                     return <div style={{fill: "true",
-                            backgroundColor: getcolorstring({h: 360*n/10, s: 0.6, v: 1}),
-                            display: 'flex', padding: '0px', flexDirection: 'row'}}>
-                                   <p>This is a div</p>
-                                   {divwrap(n-1)}
-                                   {divwrap(n-1)}
-                            </div>
-              }
+              return <div style={{fill: "true",
+                     backgroundColor: getcolorstring({h: 360*n/10, s: 0.6, v: 1}), position: "relative", left: 0, top: p.y/20, 
+                     display: 'flex', padding: (p.y/50)+'px', flexDirection: 'row', rotate: (p.x/100).toString() + "deg"}}>
+                            {divwrap(n-1,p)}
+                            {divwrap(n-1,{x: -p.x, y: -p.y})}
+                     </div>
        }
+
 }
 
 
@@ -68,10 +57,9 @@ export default function Aboutpage(Timer: number, setPage: pagesetter, mouse: poi
     const linespace = 20
     const cellvals = extravars[3].var
     const setcurcells = extravars[3].setter
-    let x = 1;
-    
 
     return <div key = "pagewrapper" className = "pagewrapper">
+
             <svg className="animsvg" fill = "true"
                  width="100%" height={window.innerHeight} aria-label="loading screen">
               <rect
@@ -145,7 +133,7 @@ export default function Aboutpage(Timer: number, setPage: pagesetter, mouse: poi
 
               </p>
 
-              {divwrap(10)}
+              {/* {divwrap(11,mouse)} */}
 
         </div>
     // Otherwise, display our main app window
