@@ -67,7 +67,7 @@ function clamplr(x: number, l: number, r: number){
   return x;
 }
 
-export const arrsize = 150;
+export const arrsize = 200;
 
 //1 = alive 0 = dead 2 = dying 3 = dying
 

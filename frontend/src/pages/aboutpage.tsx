@@ -61,7 +61,7 @@ export default function Aboutpage(Timer: number, setPage: pagesetter, mouse: poi
     return <div key = "pagewrapper" className = "pagewrapper">
 
             <svg className="animsvg" fill = "true"
-                 width="100%" height={window.innerHeight} aria-label="loading screen">
+                 width="100%" height={2*window.innerHeight} aria-label="loading screen">
               <rect
               key = {"Header"}
               x = {0}
@@ -98,7 +98,8 @@ export default function Aboutpage(Timer: number, setPage: pagesetter, mouse: poi
               </a>
 
               {Array.from(Array(arrsize*arrsize).keys()).map((i) => {
-                     const cellsize = 5;
+                     const cellsize = 3;
+                     if(cellvals[i]>0){
                      return <rect
                             key = {"cell" + i.toString()}
                             x = {cellsize*(i%arrsize) + wdims.x - arrsize*cellsize-marginwidth}
@@ -106,35 +107,66 @@ export default function Aboutpage(Timer: number, setPage: pagesetter, mouse: poi
                             width = {cellsize}
                             height = {cellsize}
                             fill = {getcolorstring({h: 360*i/(arrsize*arrsize), s: 0.6, v: 0.5*cellvals[i]})}
-                            stroke = "hsl(0 0% 0%)"
-                            strokeWidth= {1}
                             onClick={()=>setcurcells(Array.from(Array(arrsize*arrsize).keys()).map((num) => {return Math.floor(Math.random()*1.5)}))}
                             />
+                     }
 
               })}
                
             </svg>
-              <p className='bodyText' style={{position: "absolute", left: -50, top: 2*marginwidth}}>
+              <p className='bodyText' style={{width: "750px", position: "absolute", left: -50, top: 2*marginwidth}}>
               Hi! My name is Dylan Lee.
 
               <br/>
               <br/>
+              
+              I work in a variety of mediums, although primarily through visual art, writing, music, and code. 
+              I enjoy skateboarding, exploring, climbing trees, and dancing. I would like to read more- last summer I finally read a book again for the first time- it was the Three Body Problem by Liu Cixin.
 
-              I currently work as a 2D animator at Duolingo, in Pittsburgh PA!
               <br/>
-              A lot of my work centers around creating new things by using programs
               <br/>
-              for unintended purposes.
-              {/* What is my core philosophy? Using things for unintended purposes */}
-              <br/>
-              {/* What do I like to do? */}
 
-              {/* Misc things I've done */}
+              My favorite book, or at least my go-to recommendation for most people would be Ray Bradbury's Dandelion Wine.
+              Although Bradbury is primarily a science fiction writer, Dandelion Wine is entirely just regular fiction- it is a collection
+              of short stories set in a small town in the summer of 1928, mostly seen through the eyes of a young boy named Douglas Spaulding.
+              He is 12 years old, and in the first chapter of the book he, while picking berries in the woods with his father and younger brother Tom,
+              discovers that he, as a human being, is alive- it's a truly beautiful chapter that still hits me in the gut whenever I go back and read it.
 
+              <br/>
+              <br/>
+
+              The worst injury I've ever had is a broken wrist. 
+              The furthest distance I have ever walked is currently 17 miles- I started in Shadyside, Pittsburgh, and walked all the way to Boston, PA.
+              I listen to a wide range of music but have most recently been listening to Mei Semones, No Buses, Tricot, Title Fight, and Femtanyl.
+
+              <br/>
+              <br/>
+
+              My favorite movies are listed in no particular order as follows:
+
+              <ul>
+                     <li>Moonrise Kingdom</li>
+                     <li>Dead Poet's Society</li>
+                     <li>The Way Way Back</li>
+                     <li>Before Sunrise</li>
+                     <li>Lost in Translation</li>
+                     <li>Sing Street</li>
+                     <li>About Time</li>
+                     <li>Past Lives</li>
+                     <li>La La Land</li>
+                     <li>Inception</li>
+                     <li>Either Spirited Away or The Boy and the Heron or Ponyo</li>
+                     <li>Logan Lucky</li>
+                     <li>Green Book</li>
+                     <li>Everything Everywhere All At Once</li>
+                     <li>Spy, with Melissa McCarthy</li>
+              </ul>
+
+              I graduated from Brown University in 2025 with a Bachelor's of Science degree in Computer Science, and currently work as a 2D animator at Duolingo in Pittsburgh. 
+              <br/>
+              <br/>
+              <a href="https://drive.google.com/file/d/1R2M4pI9WCkJQdacKYyuET7LLO34xe1ca/view?usp=sharing" className = "bodyText">Resume Link</a>
               </p>
-
-              {/* {divwrap(11,mouse)} */}
-
         </div>
     // Otherwise, display our main app window
 }
