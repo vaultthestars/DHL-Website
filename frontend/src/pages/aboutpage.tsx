@@ -3,7 +3,7 @@ import React, { useState, Dispatch, SetStateAction, useEffect, useCallback } fro
 import {pages, pagesetter, reactvar} from "../App"
 import {getcolorstring} from  "../Homepage"
 import './subpages.css'
-import  {tabs} from "./uiux tabs"
+import  {tabs} from "./writing_tabs"
 import { Button } from '../button';
 import { access } from 'fs';
 

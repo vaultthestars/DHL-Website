@@ -4,7 +4,7 @@ import './styles/App.css';
 import Animationpage from './pages/animation';
 import Desmospage from './pages/desmos';
 import musicpage from './pages/musicpage';
-import Uiuxpage from './pages/uiux';
+import Writing from './pages/writing';
 import Aboutpage from './pages/aboutpage';
 import { Analytics } from "@vercel/analytics/react"
 
@@ -19,7 +19,7 @@ type pagebutton = {name: string, page: (timer: number, setter: pagesetter, mouse
 export const pages = [{name: "MUSIC", page: musicpage},
 {name: "ANIMATION", page: Animationpage},
 {name: "DESMOS", page: Desmospage},
-{name: "UI / UX", page: Uiuxpage},
+{name: "WRITING", page: Writing},
 {name: "ABOUT", page: Aboutpage}]
 
 function returnpage(currpage: number, timer: number, setter: pagesetter, mouse: point, extravars: reactvar[]): JSX.Element{
@@ -123,6 +123,7 @@ function conway(cellvals: Array<number>){
 }
 
 function App() {
+
   // A global timer variable that loops from 0 to 1. Used for onscreen animations.
   const [Timer, setTimer] = useState<number>(0)
   const [Currpage, setCurrpage] = useState<number>(0)
@@ -163,7 +164,7 @@ function App() {
       }}
 })
   const mouse = {x: stringtonum(mousePosition.x), y: stringtonum(mousePosition.y)+window.scrollY}
-  return (
+  return (      
     <div className="App">
       {returnpage(Currpage, Timer, setCurrpage, mouse, othervars)}
     </div>
