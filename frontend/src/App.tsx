@@ -8,6 +8,24 @@ import Writing from './pages/writing';
 import Aboutpage from './pages/aboutpage';
 import { Analytics } from "@vercel/analytics/react"
 
+export function RootLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  return (
+    <html lang="en">
+      <head>
+        <title>Next.js</title>
+      </head>
+      <body>
+        {children}
+        <Analytics />
+      </body>
+    </html>
+  );
+}
+
 //THINGS YOU NEED TO RUN: npm install (usually only when cloning for the first time), npm run start
 //TODO: Reorganize code. Move calculations into App, do rendering in graphvis.
 

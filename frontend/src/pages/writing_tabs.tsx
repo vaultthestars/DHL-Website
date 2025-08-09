@@ -7,16 +7,24 @@ import shortform from "../writing/Writing Sample_ short works.pdf"
 
 type entry = {title: string, imageurl: string, imdms: {x: number, y: number}, description: string[]}
 
-export const tabs: entry[] = [
-{title: "SHORT FORM", imageurl: shortform, 
+export const tabs: entry[] = [{title: "BLOG", imageurl: "", 
+imdms: {x: 1200, y:500}, description:
+["",
+"A completely unorganized running document of thoughts"]},
+
+
+
+
+
+{title: "SHORT FORM WORKS", imageurl: shortform, 
 imdms: {x: 800, y:375}, description:
 ["",
 "A collection of works I created during a poetry class I took junior year of college, as well as a short piece",
 "I wrote in high school during a unit on The Great Gatsby"]},
-{title: "LONG FORM", imageurl: longform, 
+{title: "LONG FORM WORKS", imageurl: longform, 
 imdms: {x: 800, y:375}, description:
 ["",
-"A long form, slightly more stream of consciousness piece I wrote for my junior year fiction class"]},
+"A long form, slightly more stream of consciousness piece I wrote for my junior year fiction class"]}
 
 
 
@@ -27,8 +35,4 @@ imdms: {x: 800, y:375}, description:
 
 
 
-{title: "BLOG", imageurl: "", 
-imdms: {x: 800, y:500}, description:
-["",
-"A completely unorganized running document of thoughts"]}
 ]

@@ -96,7 +96,7 @@ export default function Writing(Timer: number, setPage: pagesetter, mouse: point
               x = {wdims.x/2}
               y = {marginwidth/2}
               >
-                     INTERACTION DESIGN
+                     WRITING
               </text>
               <a href = "">
               <image 
@@ -187,7 +187,7 @@ return <g>
               </text>
 
               <foreignObject width={imdms.x*imageheight/imdms.y} height={imageheight} x = {imageorigin.x} y = {imageorigin.y}>
-                     {pdfswap(i,tabs.length-1,
+                     {pdfswap(i,0,
                      <embed src={tabs[i].imageurl} width={imdms.x*imageheight/imdms.y} height={imageheight}
                      type="application/pdf"></embed>, 
                      blogtext)}
