@@ -1,4 +1,11 @@
-import { ClusterCenterOverrides, LayoutMode, LibraryStats, NormalizedPoint, Song } from "./types";
+import { ClusterCenterOverrides, LayoutConfig, LibraryStats, NormalizedPoint, Song } from "./types";
+import {
+  AXIS_METRIC_LABELS,
+  getMetricRange,
+  getMetricValue,
+  isClusterView,
+  normalizeMetricValue,
+} from "./layoutMetrics";
 import {
   getPlaylistOverlapLayoutContext,
   layoutPlaylistOverlapSong,
@@ -224,24 +231,42 @@ export const EMPTY_CLUSTER_OVERRIDES: ClusterCenterOverrides = {
   playlist: {},
 };
 
+const axisMetricPosition = (
+  song: Song,
+  layoutConfig: LayoutConfig,
+  stats: LibraryStats,
+  dimensions: GraphDimensions,
+  songs: Song[]
+): { x: number; y: number } => {
+  const usableWidth = dimensions.width - GRAPH_PADDING * 2;
+  const usableHeight = dimensions.height - GRAPH_PADDING * 2;
+  const xRange = getMetricRange(songs, layoutConfig.axisX, stats);
+  const yRange = getMetricRange(songs, layoutConfig.axisY, stats);
+  const rawX = getMetricValue(song, layoutConfig.axisX);
+  const rawY = getMetricValue(song, layoutConfig.axisY);
+  const normalizedX = rawX === null ? 0.5 : normalizeMetricValue(rawX, layoutConfig.axisX, xRange);
+  const normalizedY = rawY === null ? 0.5 : normalizeMetricValue(rawY, layoutConfig.axisY, yRange);
+  const jitterScale = layoutConfig.axisX === layoutConfig.axisY ? 0.04 : 0;
+  return {
+    x: GRAPH_PADDING + normalizedX * usableWidth + jitter(song.id, usableWidth * jitterScale),
+    y: GRAPH_PADDING + (1 - normalizedY) * usableHeight + jitter(`${song.id}-y`, usableHeight * jitterScale),
+  };
+};
+
 export const layoutSongPosition = (
   song: Song,
   dimensions: GraphDimensions,
-  layoutMode: LayoutMode,
+  layoutConfig: LayoutConfig,
   stats: LibraryStats,
   customPositions: Record<string, NormalizedPoint>,
   clusterOverrides: ClusterCenterOverrides = EMPTY_CLUSTER_OVERRIDES,
   songs: Song[] = []
 ): { x: number; y: number } => {
-  if (layoutMode === "year") {
-    return yearTimelinePosition(song, stats, dimensions);
+  if (!isClusterView(layoutConfig)) {
+    return axisMetricPosition(song, layoutConfig, stats, dimensions, songs);
   }
 
-  if (layoutMode === "plays") {
-    return playsTimelinePosition(song, stats, dimensions);
-  }
-
-  if (layoutMode === "playlist") {
+  if (layoutConfig.clusterMode === "playlist") {
     return playlistClusterPosition(song, stats, dimensions, clusterOverrides, songs);
   }
 
@@ -255,21 +280,28 @@ export const buildInitialCustomPositions = (
 ): Record<string, NormalizedPoint> => {
   const positions: Record<string, NormalizedPoint> = {};
   songs.forEach((song) => {
-    const point = layoutSongPosition(song, dimensions, "genre", stats, {}, EMPTY_CLUSTER_OVERRIDES);
+    const point = layoutSongPosition(
+      song,
+      dimensions,
+      { viewMode: "cluster", clusterMode: "genre", axisX: "year", axisY: "plays" },
+      stats,
+      {},
+      EMPTY_CLUSTER_OVERRIDES
+    );
     positions[song.id] = toNormalizedPosition(point, dimensions);
   });
   return positions;
 };
 
-export const getLayoutAxisLabels = (layoutMode: LayoutMode): { x: string; y: string } => {
-  if (layoutMode === "year") {
-    return { x: "year / date added →", y: "" };
+export const getLayoutAxisLabels = (layoutConfig: LayoutConfig): { x: string; y: string } => {
+  if (isClusterView(layoutConfig)) {
+    return {
+      x: layoutConfig.clusterMode === "playlist" ? "playlist overlap clusters" : "",
+      y: "",
+    };
   }
-  if (layoutMode === "plays") {
-    return { x: "play count →", y: "" };
-  }
-  if (layoutMode === "playlist") {
-    return { x: "playlist overlap clusters", y: "" };
-  }
-  return { x: "", y: "" };
+  return {
+    x: `${AXIS_METRIC_LABELS[layoutConfig.axisX]} →`,
+    y: `${AXIS_METRIC_LABELS[layoutConfig.axisY]} →`,
+  };
 };

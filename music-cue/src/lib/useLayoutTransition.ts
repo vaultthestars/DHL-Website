@@ -1,26 +1,25 @@
 import { useEffect, useRef, useState } from "react";
 import { GraphDimensions } from "./graphLayout";
-import { GraphPoint, LayoutMode, Song } from "./types";
+import { isClusterView, layoutConfigKey } from "./layoutMetrics";
+import { GraphPoint, LayoutConfig, Song } from "./types";
 
 export const LAYOUT_TRANSITION_SPEED_PX_PER_SEC = 360;
-
-const isClusterLayout = (mode: LayoutMode): boolean => mode === "genre" || mode === "playlist";
 
 const easeInOut = (value: number): number =>
   value < 0.5 ? 2 * value * value : 1 - (-2 * value + 2) ** 2 / 2;
 
 export type LayoutTransitionState = {
   progress: number;
-  fromLayout: LayoutMode;
-  toLayout: LayoutMode;
+  fromLayout: LayoutConfig;
+  toLayout: LayoutConfig;
   isAnimating: boolean;
 };
 
 export const useLayoutTransition = (
-  layoutMode: LayoutMode,
+  layoutConfig: LayoutConfig,
   visibleSongs: Song[],
   dimensions: GraphDimensions,
-  computePosition: (song: Song, mode: LayoutMode) => GraphPoint
+  computePosition: (song: Song, config: LayoutConfig) => GraphPoint
 ): {
   getDisplayPosition: (song: Song) => GraphPoint;
   transition: LayoutTransitionState;
@@ -28,8 +27,8 @@ export const useLayoutTransition = (
   const [animatedPositions, setAnimatedPositions] = useState<Map<string, GraphPoint>>(() => new Map());
   const [transition, setTransition] = useState<LayoutTransitionState>({
     progress: 1,
-    fromLayout: layoutMode,
-    toLayout: layoutMode,
+    fromLayout: layoutConfig,
+    toLayout: layoutConfig,
     isAnimating: false,
   });
 
@@ -37,21 +36,22 @@ export const useLayoutTransition = (
     frameId: number;
     from: Map<string, GraphPoint>;
     to: Map<string, GraphPoint>;
-    fromLayout: LayoutMode;
-    toLayout: LayoutMode;
+    fromLayout: LayoutConfig;
+    toLayout: LayoutConfig;
     startTime: number;
     durationMs: number;
     layoutChanged: boolean;
   } | null>(null);
 
-  const prevLayoutRef = useRef(layoutMode);
+  const prevLayoutRef = useRef(layoutConfig);
   const computePositionRef = useRef(computePosition);
   computePositionRef.current = computePosition;
 
   useEffect(() => {
     const previousLayout = prevLayoutRef.current;
-    const toLayout = layoutMode;
-    const layoutChanged = previousLayout !== toLayout;
+    const toLayout = layoutConfig;
+    const toKey = layoutConfigKey(toLayout);
+    const layoutChanged = layoutConfigKey(previousLayout) !== toKey;
     prevLayoutRef.current = toLayout;
 
     const to = new Map<string, GraphPoint>();
@@ -166,17 +166,18 @@ export const useLayoutTransition = (
         animationRef.current = null;
       }
     };
-  }, [dimensions.height, dimensions.width, layoutMode, visibleSongs]);
+  }, [dimensions.height, dimensions.width, layoutConfig, visibleSongs]);
 
   const getDisplayPosition = (song: Song): GraphPoint => {
-    const isLayoutTransitioning = transition.isAnimating || layoutMode !== transition.toLayout;
+    const isLayoutTransitioning =
+      transition.isAnimating || layoutConfigKey(layoutConfig) !== layoutConfigKey(transition.toLayout);
     if (isLayoutTransitioning) {
       const animated = animatedPositions.get(song.id);
       if (animated) {
         return animated;
       }
     }
-    return computePosition(song, layoutMode);
+    return computePosition(song, layoutConfig);
   };
 
   return {
@@ -184,3 +185,5 @@ export const useLayoutTransition = (
     transition,
   };
 };
+
+export const isClusterLayoutConfig = (config: LayoutConfig): boolean => isClusterView(config);

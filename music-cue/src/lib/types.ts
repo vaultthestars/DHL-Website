@@ -1,3 +1,13 @@
+export type AudioFeatures = {
+  acousticness: number;
+  danceability: number;
+  energy: number;
+  instrumentalness: number;
+  liveness: number;
+  tempo: number;
+  valence: number;
+};
+
 export type Song = {
   id: string;
   title: string;
@@ -13,6 +23,7 @@ export type Song = {
   trackType: string;
   durationMs: number;
   playlists: string[];
+  audioFeatures?: AudioFeatures;
 };
 
 export type GraphPoint = { x: number; y: number };
@@ -21,7 +32,30 @@ export type ClusterCenterOverrides = {
   genre: Record<string, NormalizedPoint>;
   playlist: Record<string, NormalizedPoint>;
 };
+
+export type ViewMode = "cluster" | "axis";
+export type ClusterMode = "genre" | "playlist";
+export type AxisMetric =
+  | "year"
+  | "plays"
+  | "acousticness"
+  | "danceability"
+  | "energy"
+  | "instrumentalness"
+  | "liveness"
+  | "tempo"
+  | "valence";
+
+/** @deprecated Use LayoutConfig instead. Kept for stored cue compatibility. */
 export type LayoutMode = "genre" | "year" | "plays" | "playlist";
+
+export type LayoutConfig = {
+  viewMode: ViewMode;
+  clusterMode: ClusterMode;
+  axisX: AxisMetric;
+  axisY: AxisMetric;
+};
+
 export type CueBuildMode = "path" | "manual";
 export type PositionResolver = (song: Song) => GraphPoint;
 
@@ -29,7 +63,9 @@ export type GeneratedCue = {
   seed: number;
   songs: Song[];
   stroke: GraphPoint[];
-  layoutMode: LayoutMode;
+  layoutConfig: LayoutConfig;
+  /** @deprecated Use layoutConfig. Kept for in-session cue compatibility. */
+  layoutMode?: LayoutMode;
   pathThreshold?: number;
   buildMode?: CueBuildMode;
 };

@@ -1,4 +1,5 @@
-import { LayoutMode, LibraryStats, Song } from "./types";
+import { getMetricRange, getMetricValue, isClusterView } from "./layoutMetrics";
+import { LayoutConfig, LibraryStats, Song } from "./types";
 
 const NODE_SATURATION = 72;
 const NODE_LIGHTNESS = 48;
@@ -52,26 +53,32 @@ const getPlaylistHue = (song: Song, stats: LibraryStats): number => {
   return averageHue(hues);
 };
 
-const getYearHue = (song: Song, stats: LibraryStats): number =>
-  valueToRainbowHue(song.year, stats.minYear, stats.maxYear);
-
-const getPlayCountHue = (song: Song, stats: LibraryStats): number => {
-  const min = 0;
-  const max = Math.log10(stats.maxPlayCount + 1);
-  const value = Math.log10(song.playCount + 1);
-  return valueToRainbowHue(value, min, max);
+const getAxisMetricHue = (
+  song: Song,
+  metric: LayoutConfig["axisX"],
+  stats: LibraryStats,
+  songs: Song[]
+): number => {
+  const range = getMetricRange(songs, metric, stats);
+  const value = getMetricValue(song, metric);
+  if (value === null) {
+    return 220;
+  }
+  return valueToRainbowHue(value, range.min, range.max);
 };
 
-export const getSongNodeFill = (song: Song, layoutMode: LayoutMode, stats: LibraryStats): string => {
+export const getSongNodeFill = (
+  song: Song,
+  layoutConfig: LayoutConfig,
+  stats: LibraryStats,
+  songs: Song[] = []
+): string => {
   let hue = 220;
-  if (layoutMode === "year") {
-    hue = getYearHue(song, stats);
-  } else if (layoutMode === "plays") {
-    hue = getPlayCountHue(song, stats);
-  } else if (layoutMode === "playlist") {
-    hue = getPlaylistHue(song, stats);
+  if (isClusterView(layoutConfig)) {
+    hue =
+      layoutConfig.clusterMode === "playlist" ? getPlaylistHue(song, stats) : getGenreHue(song, stats);
   } else {
-    hue = getGenreHue(song, stats);
+    hue = getAxisMetricHue(song, layoutConfig.axisX, stats, songs);
   }
   return hueToFill(hue);
 };

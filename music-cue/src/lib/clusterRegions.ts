@@ -1,4 +1,4 @@
-import { ClusterCenterOverrides, GraphPoint, LibraryStats, NormalizedPoint, Song } from "./types";
+import { ClusterCenterOverrides, ClusterMode, GraphPoint, LibraryStats, NormalizedPoint, Song } from "./types";
 import {
   getPlaylistOverlapClusterCenter,
   getPlaylistOverlapLabelCenter,
@@ -138,13 +138,13 @@ const getPlaylistClusterCenter = (
 
 const getClusterMembers = (
   clusterId: string,
-  layoutMode: LayoutMode,
+  clusterMode: ClusterMode,
   visibleSongs: Song[]
 ): Song[] => {
-  if (layoutMode === "genre") {
+  if (clusterMode === "genre") {
     return visibleSongs.filter((song) => song.genre === clusterId);
   }
-  if (layoutMode === "playlist") {
+  if (clusterMode === "playlist") {
     if (clusterId === UNASSIGNED_PLAYLIST_CLUSTER_ID) {
       return visibleSongs.filter((song) => (song.playlists ?? []).length === 0);
     }
@@ -154,19 +154,19 @@ const getClusterMembers = (
 };
 
 export const buildClusterRegions = (
-  layoutMode: LayoutMode,
+  clusterMode: ClusterMode,
   visibleSongs: Song[],
   getPosition: (song: Song) => GraphPoint,
   stats: LibraryStats,
   dimensions: GraphDimensions,
   clusterOverrides: ClusterCenterOverrides
 ): ClusterRegion[] => {
-  if (layoutMode !== "genre" && layoutMode !== "playlist") {
+  if (clusterMode !== "genre" && clusterMode !== "playlist") {
     return [];
   }
 
   const clusterEntries =
-    layoutMode === "genre"
+    clusterMode === "genre"
       ? stats.genres.map((genre, index) => ({
           id: genre,
           label: genre,
@@ -200,7 +200,7 @@ export const buildClusterRegions = (
 
   return clusterEntries
     .map((cluster) => {
-      const members = getClusterMembers(cluster.id, layoutMode, visibleSongs);
+      const members = getClusterMembers(cluster.id, clusterMode, visibleSongs);
       if (members.length === 0) {
         return null;
       }
@@ -222,18 +222,18 @@ export const buildClusterRegions = (
 
 export const findNearestCluster = (
   point: GraphPoint,
-  layoutMode: LayoutMode,
+  clusterMode: ClusterMode,
   stats: LibraryStats,
   dimensions: GraphDimensions,
   clusterOverrides: ClusterCenterOverrides,
   maxDistance = 80
 ): string | null => {
-  if (layoutMode !== "genre" && layoutMode !== "playlist") {
+  if (clusterMode !== "genre" && clusterMode !== "playlist") {
     return null;
   }
 
   const clusters =
-    layoutMode === "genre"
+    clusterMode === "genre"
       ? stats.genres.map((genre) => ({
           id: genre,
           center: getGenreClusterCenter(genre, stats, dimensions, clusterOverrides),

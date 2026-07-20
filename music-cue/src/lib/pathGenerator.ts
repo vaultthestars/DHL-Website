@@ -1,4 +1,4 @@
-import { GeneratedCue, GraphPoint, LayoutMode, PositionResolver, Song } from "./types";
+import { GeneratedCue, GraphPoint, LayoutConfig, PositionResolver, Song } from "./types";
 
 const distancePointToSegment = (
   point: GraphPoint,
@@ -103,7 +103,7 @@ export const generateCueFromStroke = (
   stroke: GraphPoint[],
   getPosition: PositionResolver,
   proximityThreshold: number,
-  layoutMode: LayoutMode
+  layoutConfig: LayoutConfig
 ): GeneratedCue | null => {
   if (stroke.length < 2) {
     return null;
@@ -136,7 +136,7 @@ export const generateCueFromStroke = (
     seed,
     songs: selected.map((entry) => entry.song),
     stroke,
-    layoutMode,
+    layoutConfig,
     pathThreshold: proximityThreshold,
   };
 };

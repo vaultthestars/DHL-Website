@@ -23,20 +23,40 @@ import {
 import {
   loadBuildMode,
   loadClusterCenterOverrides,
-  loadLayoutMode,
+  loadLayoutConfig,
   loadLibrary,
   loadMusicService,
   loadPathThreshold,
   saveBuildMode,
   saveGenreClusterCenterOverrides,
-  saveLayoutMode,
+  saveLayoutConfig,
   saveLibrary,
   saveMusicService,
   savePathThreshold,
   savePlaylistClusterCenterOverrides,
 } from "../lib/storage";
-import { ClusterCenterOverrides, CueBuildMode, GeneratedCue, GraphPoint, LayoutMode, LibraryStats, NormalizedPoint, Song } from "../lib/types";
-import { useLayoutTransition } from "../lib/useLayoutTransition";
+import {
+  AXIS_METRIC_LABELS,
+  getAxisMetricsForService,
+  getClusterModesForService,
+  isClusterView,
+  layoutConfigKey,
+  migrateLegacyLayoutMode,
+} from "../lib/layoutMetrics";
+import {
+  AxisMetric,
+  ClusterCenterOverrides,
+  ClusterMode,
+  CueBuildMode,
+  GeneratedCue,
+  GraphPoint,
+  LayoutConfig,
+  LibraryStats,
+  NormalizedPoint,
+  Song,
+  ViewMode,
+} from "../lib/types";
+import { isClusterLayoutConfig, useLayoutTransition } from "../lib/useLayoutTransition";
 
 const getGraphDimensions = (panel: HTMLDivElement | null): GraphDimensions => ({
   width: Math.max(320, panel?.clientWidth ?? 800),
@@ -64,7 +84,15 @@ const defaultExportPlaylistName = (): string => {
   return `MusicCue ${dateLabel}`;
 };
 
-const isClusterLayoutMode = (mode: LayoutMode): boolean => mode === "genre" || mode === "playlist";
+const resolveCueLayoutConfig = (cue: GeneratedCue, serviceId: MusicServiceId): LayoutConfig => {
+  if (cue.layoutConfig) {
+    return cue.layoutConfig;
+  }
+  if (cue.layoutMode) {
+    return migrateLegacyLayoutMode(cue.layoutMode, serviceId);
+  }
+  return loadLayoutConfig(serviceId);
+};
 
 type BoxSelectRect = {
   x1: number;
@@ -195,11 +223,11 @@ export const MusicCueTool = () => {
   const [canUndo, setCanUndo] = useState(false);
   const [songs, setSongs] = useState<Song[]>(() => initialSongs);
   const [stats, setStats] = useState<LibraryStats>(() => normalizeStats(initialLibrary.stats, initialSongs));
-  const [layoutMode, setLayoutMode] = useState<LayoutMode>(() => loadLayoutMode());
+  const [layoutConfig, setLayoutConfig] = useState<LayoutConfig>(() => loadLayoutConfig(initialMusicService));
   const [clusterOverrides, setClusterOverrides] = useState<ClusterCenterOverrides>(() => loadClusterCenterOverrides());
   const [pathThreshold, setPathThreshold] = useState(() => loadPathThreshold());
   const [stroke, setStroke] = useState<GraphPoint[]>([]);
-  const [strokeLayoutMode, setStrokeLayoutMode] = useState<LayoutMode | null>(null);
+  const [strokeLayoutConfig, setStrokeLayoutConfig] = useState<LayoutConfig | null>(null);
   const [isDrawingNewPath, setIsDrawingNewPath] = useState(false);
   const [cue, setCue] = useState<GeneratedCue | null>(null);
   const [hoveredSongId, setHoveredSongId] = useState<string | null>(null);
@@ -212,7 +240,7 @@ export const MusicCueTool = () => {
     opacity: number;
   } | null>(null);
   const [clusterRevealOpacity, setClusterRevealOpacity] = useState(1);
-  const prevLayoutForClustersRef = useRef(layoutMode);
+  const prevLayoutForClustersRef = useRef(layoutConfigKey(layoutConfig));
   const wasLayoutTransitioningRef = useRef(false);
   const clusterFadeInFrameRef = useRef(0);
   const clusterFadeOutIdRef = useRef(0);
@@ -397,10 +425,10 @@ export const MusicCueTool = () => {
     const query = searchFilter.trim().toLowerCase();
     const minPlays = Number(minPlayCount) || 0;
     return songs.filter((song) => {
-      if (genreFilter && song.genre !== genreFilter) {
+      if (musicService === "apple-music" && genreFilter && song.genre !== genreFilter) {
         return false;
       }
-      if (song.playCount < minPlays) {
+      if (musicService === "apple-music" && song.playCount < minPlays) {
         return false;
       }
       if (!query) {
@@ -409,12 +437,12 @@ export const MusicCueTool = () => {
       const haystack = `${song.title} ${song.artist} ${song.album} ${song.genre}`.toLowerCase();
       return haystack.includes(query);
     });
-  }, [genreFilter, minPlayCount, searchFilter, songs]);
+  }, [genreFilter, minPlayCount, musicService, searchFilter, songs]);
 
   const computeLayoutPosition = useCallback(
-    (song: Song, mode: LayoutMode): GraphPoint =>
-      layoutSongPosition(song, dimensions, mode, stats, {}, clusterOverrides, songs),
-    [clusterOverrides, dimensions, songs, stats]
+    (song: Song, config: LayoutConfig): GraphPoint =>
+      layoutSongPosition(song, dimensions, config, stats, {}, clusterOverrides, visibleSongs),
+    [clusterOverrides, dimensions, stats, visibleSongs]
   );
 
   const clusterSnapshotInputsRef = useRef({
@@ -433,20 +461,21 @@ export const MusicCueTool = () => {
   };
 
   const getPosition = useCallback(
-    (song: Song): GraphPoint => computeLayoutPosition(song, layoutMode),
-    [computeLayoutPosition, layoutMode]
+    (song: Song): GraphPoint => computeLayoutPosition(song, layoutConfig),
+    [computeLayoutPosition, layoutConfig]
   );
 
   const { getDisplayPosition, transition } = useLayoutTransition(
-    layoutMode,
+    layoutConfig,
     visibleSongs,
     dimensions,
     computeLayoutPosition
   );
 
-  const isLayoutTransitioning = transition.isAnimating || layoutMode !== transition.toLayout;
+  const isLayoutTransitioning =
+    transition.isAnimating || layoutConfigKey(layoutConfig) !== layoutConfigKey(transition.toLayout);
   const effectiveClusterRevealOpacity =
-    isLayoutTransitioning && isClusterLayoutMode(layoutMode) ? 0 : clusterRevealOpacity;
+    isLayoutTransitioning && isClusterView(layoutConfig) ? 0 : clusterRevealOpacity;
 
   const positionedSongs = useMemo(
     () => visibleSongs.map((song) => ({ song, position: getDisplayPosition(song) })),
@@ -456,17 +485,24 @@ export const MusicCueTool = () => {
   const songNodeFills = useMemo(() => {
     const fills = new Map<string, string>();
     visibleSongs.forEach((song) => {
-      fills.set(song.id, getSongNodeFill(song, layoutMode, stats));
+      fills.set(song.id, getSongNodeFill(song, layoutConfig, stats, visibleSongs));
     });
     return fills;
-  }, [layoutMode, stats, visibleSongs]);
+  }, [layoutConfig, stats, visibleSongs]);
 
   const clusterRegions = useMemo(() => {
-    if (!isClusterLayoutMode(layoutMode) || isLayoutTransitioning) {
+    if (!isClusterView(layoutConfig) || isLayoutTransitioning) {
       return [];
     }
-    return buildClusterRegions(layoutMode, visibleSongs, getDisplayPosition, stats, dimensions, clusterOverrides);
-  }, [clusterOverrides, dimensions, getDisplayPosition, isLayoutTransitioning, layoutMode, stats, visibleSongs]);
+    return buildClusterRegions(
+      layoutConfig.clusterMode,
+      visibleSongs,
+      getDisplayPosition,
+      stats,
+      dimensions,
+      clusterOverrides
+    );
+  }, [clusterOverrides, dimensions, getDisplayPosition, isLayoutTransitioning, layoutConfig, stats, visibleSongs]);
 
   useEffect(() => {
     const wasTransitioning = wasLayoutTransitioningRef.current;
@@ -479,13 +515,13 @@ export const MusicCueTool = () => {
     }
 
     if (isTransitioning) {
-      if (isClusterLayoutMode(layoutMode) || isClusterLayoutMode(transition.fromLayout)) {
+      if (isClusterView(layoutConfig) || isClusterView(transition.fromLayout)) {
         setClusterRevealOpacity(0);
       }
       return undefined;
     }
 
-    if (!isClusterLayoutMode(layoutMode)) {
+    if (!isClusterView(layoutConfig)) {
       setClusterRevealOpacity(1);
       return undefined;
     }
@@ -512,11 +548,12 @@ export const MusicCueTool = () => {
         clusterFadeInFrameRef.current = 0;
       }
     };
-  }, [isLayoutTransitioning, layoutMode, transition.fromLayout]);
+  }, [isLayoutTransitioning, layoutConfig, transition.fromLayout]);
 
   useLayoutEffect(() => {
-    const previousLayout = prevLayoutForClustersRef.current;
-    if (previousLayout === layoutMode) {
+    const previousKey = prevLayoutForClustersRef.current;
+    const currentKey = layoutConfigKey(layoutConfig);
+    if (previousKey === currentKey) {
       return;
     }
 
@@ -525,14 +562,15 @@ export const MusicCueTool = () => {
       clusterFadeInFrameRef.current = 0;
     }
 
-    if (isClusterLayoutMode(previousLayout)) {
+    const previousLayout = transition.fromLayout;
+    if (isClusterView(previousLayout)) {
       const { visibleSongs: songs, stats: libraryStats, dimensions: graphDimensions, clusterOverrides: overrides, computeLayoutPosition } =
         clusterSnapshotInputsRef.current;
       clusterFadeOutIdRef.current += 1;
       setFadingClusterSnapshot({
         id: clusterFadeOutIdRef.current,
         regions: buildClusterRegions(
-          previousLayout,
+          previousLayout.clusterMode,
           songs,
           (song) => computeLayoutPosition(song, previousLayout),
           libraryStats,
@@ -545,8 +583,8 @@ export const MusicCueTool = () => {
       setFadingClusterSnapshot(null);
     }
 
-    prevLayoutForClustersRef.current = layoutMode;
-  }, [layoutMode]);
+    prevLayoutForClustersRef.current = currentKey;
+  }, [layoutConfig, transition.fromLayout]);
 
   useEffect(() => {
     if (!fadingClusterSnapshot || fadingClusterSnapshot.opacity <= 0) {
@@ -574,11 +612,14 @@ export const MusicCueTool = () => {
     return () => cancelAnimationFrame(frameId);
   }, [fadingClusterSnapshot?.id]);
 
-  const isClusterLayout = layoutMode === "genre" || layoutMode === "playlist";
-  const activePathLayoutMode = cue?.layoutMode ?? strokeLayoutMode;
-  const showPathOverlays = activePathLayoutMode !== null && layoutMode === activePathLayoutMode;
+  const isClusterLayout = isClusterLayoutConfig(layoutConfig);
+  const activePathLayoutConfig =
+    (cue ? resolveCueLayoutConfig(cue, musicService) : null) ?? strokeLayoutConfig;
+  const showPathOverlays =
+    activePathLayoutConfig !== null &&
+    layoutConfigKey(layoutConfig) === layoutConfigKey(activePathLayoutConfig);
 
-  const axisLabels = getLayoutAxisLabels(layoutMode);
+  const axisLabels = getLayoutAxisLabels(layoutConfig);
   const showLabels = visibleSongs.length <= LABEL_THRESHOLD;
 
   const cueEdgePath = useMemo(() => {
@@ -598,9 +639,9 @@ export const MusicCueTool = () => {
       if (currentStroke.length < 2) {
         return null;
       }
-      return generateCueFromStroke(visibleSongs, currentStroke, getPosition, threshold, layoutMode);
+      return generateCueFromStroke(visibleSongs, currentStroke, getPosition, threshold, layoutConfig);
     },
-    [getPosition, layoutMode, visibleSongs]
+    [getPosition, layoutConfig, visibleSongs]
   );
 
   const selectedSong = useMemo(
@@ -613,11 +654,11 @@ export const MusicCueTool = () => {
       seed: initialSongs[0]?.id.charCodeAt(0) ?? 0,
       songs: initialSongs,
       stroke: strokeRef.current,
-      layoutMode,
+      layoutConfig,
       pathThreshold,
       buildMode,
     }),
-    [buildMode, layoutMode, pathThreshold]
+    [buildMode, layoutConfig, pathThreshold]
   );
 
   const snapshotCue = (value: GeneratedCue | null): GeneratedCue | null =>
@@ -713,7 +754,7 @@ export const MusicCueTool = () => {
 
       if (mode === "manual") {
         setStroke([]);
-        setStrokeLayoutMode(null);
+        setStrokeLayoutConfig(null);
         strokeRef.current = [];
         savedStrokeRef.current = [];
         setIsDrawingNewPath(false);
@@ -800,7 +841,7 @@ export const MusicCueTool = () => {
   const beginNewStroke = (point: GraphPoint) => {
     isDrawingRef.current = true;
     setIsDrawingNewPath(true);
-    setStrokeLayoutMode(layoutMode);
+    setStrokeLayoutConfig(layoutConfig);
     savedStrokeRef.current = stroke;
     strokeRef.current = [point];
     setStroke([point]);
@@ -841,7 +882,7 @@ export const MusicCueTool = () => {
     }
 
     setCue({ ...generated, buildMode: "path" });
-    setStrokeLayoutMode(generated.layoutMode);
+    setStrokeLayoutConfig(generated.layoutConfig);
     clearUndo();
     setStatusMessage(`Generated ${generated.songs.length} songs along the path. Press Play to start.`);
   };
@@ -855,7 +896,10 @@ export const MusicCueTool = () => {
       return;
     }
     event.stopPropagation();
-    const overrideMap = layoutMode === "genre" ? clusterOverrides.genre : clusterOverrides.playlist;
+    const overrideMap =
+      layoutConfig.viewMode === "cluster" && layoutConfig.clusterMode === "genre"
+        ? clusterOverrides.genre
+        : clusterOverrides.playlist;
     const clustersToMove =
       selectedClusterIds.size > 0 && selectedClusterIds.has(clusterId)
         ? [...selectedClusterIds]
@@ -974,12 +1018,12 @@ export const MusicCueTool = () => {
           const start = session.startPositions[id];
           updates[id] = { x: start.x + delta.x, y: start.y + delta.y };
         });
-        if (layoutMode === "genre") {
+        if (layoutConfig.viewMode === "cluster" && layoutConfig.clusterMode === "genre") {
           const next = { ...current, genre: { ...current.genre, ...updates } };
           saveGenreClusterCenterOverrides(next.genre);
           return next;
         }
-        if (layoutMode === "playlist") {
+        if (layoutConfig.viewMode === "cluster" && layoutConfig.clusterMode === "playlist") {
           const next = {
             ...current,
             playlist: { ...current.playlist, ...updates },
@@ -1117,7 +1161,7 @@ export const MusicCueTool = () => {
     saveLibrary(musicService, loadedSongs, loadedStats);
     setCue(null);
     setStroke([]);
-    setStrokeLayoutMode(null);
+    setStrokeLayoutConfig(null);
     setActivePlaylistName(null);
     setActivePersistentId(null);
     setSelectedSongId(null);
@@ -1132,13 +1176,15 @@ export const MusicCueTool = () => {
     }
     setMusicService(serviceId);
     saveMusicService(serviceId);
+    setLayoutConfig(loadLayoutConfig(serviceId));
+    setGenreFilter("");
     const library = loadLibrary(serviceId);
     const nextSongs = normalizeSongs(library.songs, library.stats);
     setSongs(nextSongs);
     setStats(normalizeStats(library.stats, nextSongs));
     setCue(null);
     setStroke([]);
-    setStrokeLayoutMode(null);
+    setStrokeLayoutConfig(null);
     setActivePlaylistName(null);
     setActivePersistentId(null);
     setSelectedSongId(null);
@@ -1201,20 +1247,51 @@ export const MusicCueTool = () => {
     }
   };
 
-  const handleLayoutModeChange = (mode: LayoutMode) => {
-    if (mode === "year") {
-      setStatusMessage("Year timeline layout.");
-    } else if (mode === "plays") {
-      setStatusMessage("Play count layout.");
-    } else if (mode === "playlist") {
-      setStatusMessage(
-        `Playlist overlap layout (${stats.playlistIds.length} playlists). Similar playlists stack together with shared-core arms.`
-      );
-    } else if (mode === "genre") {
-      setStatusMessage("Genre cluster layout — drag labels to move groups.");
+  const updateLayoutConfig = (nextConfig: LayoutConfig, message?: string) => {
+    setLayoutConfig(nextConfig);
+    saveLayoutConfig(nextConfig);
+    if (message) {
+      setStatusMessage(message);
     }
-    setLayoutMode(mode);
-    saveLayoutMode(mode);
+  };
+
+  const handleViewModeChange = (viewMode: ViewMode) => {
+    const nextConfig = { ...layoutConfig, viewMode };
+    if (viewMode === "cluster") {
+      const clusterModes = getClusterModesForService(musicService);
+      if (!clusterModes.includes(nextConfig.clusterMode)) {
+        nextConfig.clusterMode = clusterModes[0];
+      }
+      updateLayoutConfig(
+        nextConfig,
+        nextConfig.clusterMode === "playlist"
+          ? `Playlist overlap layout (${stats.playlistIds.length} playlists).`
+          : "Genre cluster layout — drag labels to move groups."
+      );
+      return;
+    }
+    updateLayoutConfig(nextConfig, "Axis layout — pick X and Y metrics below.");
+  };
+
+  const handleClusterModeChange = (clusterMode: ClusterMode) => {
+    updateLayoutConfig(
+      { ...layoutConfig, viewMode: "cluster", clusterMode },
+      clusterMode === "playlist"
+        ? `Playlist overlap layout (${stats.playlistIds.length} playlists).`
+        : "Genre cluster layout — drag labels to move groups."
+    );
+  };
+
+  const handleAxisMetricChange = (axis: "axisX" | "axisY", metric: AxisMetric) => {
+    const allowedMetrics = getAxisMetricsForService(musicService);
+    if (!allowedMetrics.includes(metric)) {
+      return;
+    }
+    const nextConfig = { ...layoutConfig, viewMode: "axis" as const, [axis]: metric };
+    updateLayoutConfig(
+      nextConfig,
+      `Axis layout: ${AXIS_METRIC_LABELS[nextConfig.axisX]} × ${AXIS_METRIC_LABELS[nextConfig.axisY]}.`
+    );
   };
 
   const handleOpenExportDialog = () => {
@@ -1304,7 +1381,7 @@ export const MusicCueTool = () => {
     strokeRef.current = [];
     savedStrokeRef.current = [];
     setStroke([]);
-    setStrokeLayoutMode(null);
+    setStrokeLayoutConfig(null);
     setCue(null);
     setSelectedSongId(null);
     clearUndo();
@@ -1444,36 +1521,66 @@ export const MusicCueTool = () => {
             </div>
           )}
 
-          <div className="music-cue-layout-toggle" role="group" aria-label="Graph layout mode">
+          <div className="music-cue-layout-toggle" role="group" aria-label="View mode">
             <button
               type="button"
-              className={layoutMode === "genre" ? "music-cue-layout-active" : ""}
-              onClick={() => handleLayoutModeChange("genre")}
+              className={layoutConfig.viewMode === "cluster" ? "music-cue-layout-active" : ""}
+              onClick={() => handleViewModeChange("cluster")}
             >
-              Genre clusters
+              Cluster
             </button>
             <button
               type="button"
-              className={layoutMode === "year" ? "music-cue-layout-active" : ""}
-              onClick={() => handleLayoutModeChange("year")}
+              className={layoutConfig.viewMode === "axis" ? "music-cue-layout-active" : ""}
+              onClick={() => handleViewModeChange("axis")}
             >
-              Year
-            </button>
-            <button
-              type="button"
-              className={layoutMode === "plays" ? "music-cue-layout-active" : ""}
-              onClick={() => handleLayoutModeChange("plays")}
-            >
-              Plays
-            </button>
-            <button
-              type="button"
-              className={layoutMode === "playlist" ? "music-cue-layout-active" : ""}
-              onClick={() => handleLayoutModeChange("playlist")}
-            >
-              Playlists
+              Axis
             </button>
           </div>
+
+          {layoutConfig.viewMode === "cluster" ? (
+            <div className="music-cue-layout-toggle" role="group" aria-label="Cluster grouping">
+              {getClusterModesForService(musicService).map((clusterMode) => (
+                <button
+                  key={clusterMode}
+                  type="button"
+                  className={layoutConfig.clusterMode === clusterMode ? "music-cue-layout-active" : ""}
+                  onClick={() => handleClusterModeChange(clusterMode)}
+                >
+                  {clusterMode === "genre" ? "Genre" : "Playlists"}
+                </button>
+              ))}
+            </div>
+          ) : (
+            <div className="music-cue-filters music-cue-axis-selectors">
+              <label>
+                X axis
+                <select
+                  value={layoutConfig.axisX}
+                  onChange={(event) => handleAxisMetricChange("axisX", event.target.value as AxisMetric)}
+                >
+                  {getAxisMetricsForService(musicService).map((metric) => (
+                    <option key={metric} value={metric}>
+                      {AXIS_METRIC_LABELS[metric]}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                Y axis
+                <select
+                  value={layoutConfig.axisY}
+                  onChange={(event) => handleAxisMetricChange("axisY", event.target.value as AxisMetric)}
+                >
+                  {getAxisMetricsForService(musicService).map((metric) => (
+                    <option key={metric} value={metric}>
+                      {AXIS_METRIC_LABELS[metric]}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+          )}
         </div>
 
         <div className="music-cue-toolbar-row music-cue-toolbar-row-filters">
@@ -1482,26 +1589,30 @@ export const MusicCueTool = () => {
               Search
               <input value={searchFilter} onChange={(event) => setSearchFilter(event.target.value)} placeholder="title, artist, album" />
             </label>
-            <label>
-              Genre
-              <select value={genreFilter} onChange={(event) => setGenreFilter(event.target.value)}>
-                <option value="">All genres</option>
-                {stats.genres.map((genre) => (
-                  <option key={genre} value={genre}>
-                    {genre}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label>
-              Min plays
-              <input
-                type="number"
-                min="0"
-                value={minPlayCount}
-                onChange={(event) => setMinPlayCount(event.target.value)}
-              />
-            </label>
+            {musicService === "apple-music" && (
+              <label>
+                Genre
+                <select value={genreFilter} onChange={(event) => setGenreFilter(event.target.value)}>
+                  <option value="">All genres</option>
+                  {stats.genres.map((genre) => (
+                    <option key={genre} value={genre}>
+                      {genre}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
+            {musicService === "apple-music" && (
+              <label>
+                Min plays
+                <input
+                  type="number"
+                  min="0"
+                  value={minPlayCount}
+                  onChange={(event) => setMinPlayCount(event.target.value)}
+                />
+              </label>
+            )}
           </div>
         </div>
       </div>

@@ -322,6 +322,29 @@ var createSpotifyClient = (store) => {
       }
     } catch {
     }
+    const audioFeaturesByTrack = /* @__PURE__ */ new Map();
+    const trackIds = [...trackById.keys()];
+    try {
+      for (let index = 0; index < trackIds.length; index += 100) {
+        const chunk = trackIds.slice(index, index + 100);
+        const payload = await spotifyFetch(`/audio-features?ids=${chunk.join(",")}`);
+        payload.audio_features.forEach((features) => {
+          if (!features?.id) {
+            return;
+          }
+          audioFeaturesByTrack.set(features.id, {
+            acousticness: features.acousticness,
+            danceability: features.danceability,
+            energy: features.energy,
+            instrumentalness: features.instrumentalness,
+            liveness: features.liveness,
+            tempo: features.tempo,
+            valence: features.valence
+          });
+        });
+      }
+    } catch {
+    }
     const songs = [...trackById.entries()].map(([trackId, track]) => {
       const primaryArtist = track.artists[0];
       const genres = primaryArtist ? genresByArtist.get(primaryArtist.id) ?? [] : [];
@@ -339,7 +362,8 @@ var createSpotifyClient = (store) => {
         dateAdded: savedItem?.added_at ?? "",
         trackType: "File",
         durationMs: track.duration_ms,
-        playlists: [...trackPlaylists.get(trackId) ?? []]
+        playlists: [...trackPlaylists.get(trackId) ?? []],
+        audioFeatures: audioFeaturesByTrack.get(trackId)
       };
     });
     const genreCounts = {};

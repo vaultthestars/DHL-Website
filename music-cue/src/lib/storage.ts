@@ -1,5 +1,13 @@
 import { MusicServiceId } from "./musicProvider";
-import { ClusterCenterOverrides, CueBuildMode, LayoutMode, LibraryStats, NormalizedPoint, Song } from "./types";
+import {
+  ClusterCenterOverrides,
+  CueBuildMode,
+  LayoutConfig,
+  LibraryStats,
+  NormalizedPoint,
+  Song,
+} from "./types";
+import { defaultLayoutConfig, migrateLegacyLayoutMode } from "./layoutMetrics";
 
 const MUSIC_SERVICE_KEY = "music-cue-music-service";
 const libraryKey = (serviceId: MusicServiceId): string => `music-cue-library-${serviceId}`;
@@ -7,6 +15,7 @@ const statsKey = (serviceId: MusicServiceId): string => `music-cue-library-stats
 const CUSTOM_LAYOUT_KEY = "music-cue-custom-layout";
 const GENRE_CLUSTER_LAYOUT_KEY = "music-cue-genre-cluster-layout";
 const PLAYLIST_CLUSTER_LAYOUT_KEY = "music-cue-playlist-cluster-layout";
+const LAYOUT_CONFIG_KEY = "music-cue-layout-config";
 const LAYOUT_MODE_KEY = "music-cue-layout-mode";
 const PATH_THRESHOLD_KEY = "music-cue-path-threshold";
 const BUILD_MODE_KEY = "music-cue-build-mode";
@@ -24,25 +33,16 @@ export const saveMusicService = (serviceId: MusicServiceId): void => {
   localStorage.setItem(MUSIC_SERVICE_KEY, serviceId);
 };
 
-export const loadLayoutMode = (): LayoutMode => {
-  const stored = localStorage.getItem(LAYOUT_MODE_KEY);
-  if (stored === "genre-year") {
-    return "genre";
+export const loadLayoutConfig = (serviceId: MusicServiceId = loadMusicService()): LayoutConfig => {
+  const storedConfig = localStorage.getItem(LAYOUT_CONFIG_KEY);
+  if (storedConfig) {
+    return migrateLegacyLayoutMode(storedConfig, serviceId);
   }
-  if (stored === "year-playcount") {
-    return "plays";
-  }
-  if (stored === "year" || stored === "plays" || stored === "playlist" || stored === "genre") {
-    return stored;
-  }
-  if (stored === "custom") {
-    return "genre";
-  }
-  return "genre";
+  return migrateLegacyLayoutMode(localStorage.getItem(LAYOUT_MODE_KEY), serviceId);
 };
 
-export const saveLayoutMode = (mode: LayoutMode): void => {
-  localStorage.setItem(LAYOUT_MODE_KEY, mode);
+export const saveLayoutConfig = (config: LayoutConfig): void => {
+  localStorage.setItem(LAYOUT_CONFIG_KEY, JSON.stringify(config));
 };
 
 export const loadPathThreshold = (): number => {
@@ -134,3 +134,5 @@ export const loadLibrary = (
 
 export const exportCustomLayoutJson = (positions: Record<string, NormalizedPoint>): string =>
   JSON.stringify(positions, null, 2);
+
+export { defaultLayoutConfig };
