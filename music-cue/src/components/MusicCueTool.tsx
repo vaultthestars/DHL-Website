@@ -10,6 +10,7 @@ import { invalidatePlaylistOverlapLayoutCache } from "../lib/playlistOverlapLayo
 import { UNASSIGNED_PLAYLIST_CLUSTER_ID, EXCLUDED_PLAYLIST_NAMES } from "../lib/playlistConstants";
 import { applyPlaybackAdvance } from "../lib/cuePlaybackTracking";
 import { formatDuration, sumDuration } from "../lib/formatDuration";
+import { getSongNodeFill } from "../lib/graphColors";
 import { MusicServiceId } from "../lib/musicProvider";
 import { getMusicProvider } from "../lib/providers";
 import {
