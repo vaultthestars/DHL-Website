@@ -511,8 +511,15 @@ var handleSpotifyRoute = async (route, req, res) => {
 };
 
 // scripts/spotify-handler.ts
-async function handler(req, res) {
+var getSpotifyRoute = (req) => {
   const pathParts = req.query.path;
-  const route = Array.isArray(pathParts) ? pathParts.join("/") : pathParts ?? "";
-  await handleSpotifyRoute(route, req, res);
+  if (pathParts) {
+    return Array.isArray(pathParts) ? pathParts.join("/") : pathParts;
+  }
+  const requestUrl = req.url ?? "";
+  const match = requestUrl.match(/\/api\/spotify\/?([^?]*)/);
+  return match?.[1] ?? "";
+};
+async function handler(req, res) {
+  await handleSpotifyRoute(getSpotifyRoute(req), req, res);
 }
