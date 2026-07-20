@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
-import { handleSpotifyRoute } from "../lib/spotify/spotifyHandlers";
+import { handleSpotifyRoute } from "../api/lib/spotify/spotifyHandlers";
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const pathParts = req.query.path;
