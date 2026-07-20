@@ -1,7 +1,6 @@
 import React from "react";
 import { pagesetter, reactvar } from "../App";
 import { getcolorstring } from "../Homepage";
-import { MusicCueTool } from "./music/MusicCueTool";
 import "./subpages.css";
 
 const marginwidth = 75;
@@ -53,7 +52,16 @@ export default function musicpage(
           onClick={() => setPage(0)}
         />
       </svg>
-      <MusicCueTool />
+      <iframe
+        src="/music-cue/"
+        title="Music Cue"
+        style={{
+          width: "100%",
+          height: `${wdims.y - marginwidth}px`,
+          border: "none",
+          display: "block",
+        }}
+      />
     </div>
   );
 }

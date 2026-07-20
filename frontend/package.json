@@ -22,7 +22,9 @@
   },
   "scripts": {
     "start": "react-scripts start",
-    "build": "react-scripts build",
+    "sync:spotify-api": "mkdir -p api/lib/spotify && cp ../music-cue/server/spotifySession.ts ../music-cue/server/spotifyClient.ts ../music-cue/server/spotifyHandlers.ts api/lib/spotify/",
+    "build:music-cue": "cd ../music-cue && npm install && VITE_BASE_PATH=/music-cue/ VITE_APP_MODE=web npm run build && rm -rf ../frontend/public/music-cue && mkdir -p ../frontend/public/music-cue && cp -r dist/* ../frontend/public/music-cue/",
+    "build": "npm run sync:spotify-api && npm run build:music-cue && react-scripts build",
     "test": "react-scripts test",
     "eject": "react-scripts eject"
   },
@@ -47,6 +49,7 @@
   "devDependencies": {
     "@types/d3": "^7.4.0",
     "@types/react": "^19.1.2",
-    "@types/react-slider": "^1.3.1"
+    "@types/react-slider": "^1.3.1",
+    "@vercel/node": "^5.1.14"
   }
 }

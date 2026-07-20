@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { buildClusterRegions, ClusterRegion } from "../lib/clusterRegions";
 import {
   getLayoutAxisLabels,
@@ -8,14 +8,10 @@ import {
 } from "../lib/graphLayout";
 import { invalidatePlaylistOverlapLayoutCache } from "../lib/playlistOverlapLayout";
 import { UNASSIGNED_PLAYLIST_CLUSTER_ID, EXCLUDED_PLAYLIST_NAMES } from "../lib/playlistConstants";
-import {
-  getPlaybackState,
-  playCueInMusicApp,
-  saveCuePlaylistInMusicApp,
-  validateTracksInMusicApp,
-} from "../lib/musicApi";
 import { applyPlaybackAdvance } from "../lib/cuePlaybackTracking";
 import { formatDuration, sumDuration } from "../lib/formatDuration";
+import { MusicServiceId } from "../lib/musicProvider";
+import { getMusicProvider } from "../lib/providers";
 import {
   DEFAULT_VIEW_TRANSFORM,
   screenToGraphPoint,
@@ -23,19 +19,18 @@ import {
   ViewTransform,
   zoomAtPoint,
 } from "../lib/graphView";
-import { parseLibraryXml } from "../lib/parseLibraryXml";
-import { generateCueFromStroke } from "../lib/pathGenerator";
-import { getSongNodeFill } from "../lib/graphColors";
 import {
   loadBuildMode,
   loadClusterCenterOverrides,
   loadLayoutMode,
   loadLibrary,
+  loadMusicService,
   loadPathThreshold,
   saveBuildMode,
   saveGenreClusterCenterOverrides,
   saveLayoutMode,
   saveLibrary,
+  saveMusicService,
   savePathThreshold,
   savePlaylistClusterCenterOverrides,
 } from "../lib/storage";
@@ -185,8 +180,14 @@ export const MusicCueTool = () => {
   const viewTransformRef = useRef<ViewTransform>(DEFAULT_VIEW_TRANSFORM);
   const undoStackRef = useRef<(GeneratedCue | null)[]>([]);
 
-  const initialLibrary = loadLibrary();
+  const initialMusicService = loadMusicService();
+  const initialLibrary = loadLibrary(initialMusicService);
   const initialSongs = normalizeSongs(initialLibrary.songs, initialLibrary.stats);
+  const [musicService, setMusicService] = useState<MusicServiceId>(initialMusicService);
+  const musicProvider = useMemo(() => getMusicProvider(musicService), [musicService]);
+  const [spotifyStatus, setSpotifyStatus] = useState<{ connected: boolean; configured: boolean; message?: string } | null>(
+    null
+  );
   const [dimensions, setDimensions] = useState<GraphDimensions>(() => getGraphDimensions(null));
   const [viewTransform, setViewTransform] = useState<ViewTransform>(DEFAULT_VIEW_TRANSFORM);
   const [buildMode, setBuildMode] = useState<CueBuildMode>(() => loadBuildMode());
@@ -205,14 +206,23 @@ export const MusicCueTool = () => {
   const [activePersistentId, setActivePersistentId] = useState<string | null>(null);
   const [playbackTrackingEnabled, setPlaybackTrackingEnabled] = useState(false);
   const [fadingClusterSnapshot, setFadingClusterSnapshot] = useState<{
+    id: number;
     regions: ClusterRegion[];
     opacity: number;
   } | null>(null);
+  const [clusterRevealOpacity, setClusterRevealOpacity] = useState(1);
   const prevLayoutForClustersRef = useRef(layoutMode);
+  const wasLayoutTransitioningRef = useRef(false);
+  const clusterFadeInFrameRef = useRef(0);
+  const clusterFadeOutIdRef = useRef(0);
   const [selectedSongId, setSelectedSongId] = useState<string | null>(null);
   const [unavailableSongIds, setUnavailableSongIds] = useState<Set<string>>(() => new Set());
   const [isValidatingLibrary, setIsValidatingLibrary] = useState(false);
-  const [statusMessage, setStatusMessage] = useState("Load your Apple Music Library.xml to begin.");
+  const [statusMessage, setStatusMessage] = useState(() =>
+    initialMusicService === "spotify"
+      ? "Connect to Spotify and load your saved tracks to begin."
+      : "Load your Apple Music Library.xml to begin."
+  );
   const [genreFilter, setGenreFilter] = useState("");
   const [searchFilter, setSearchFilter] = useState("");
   const [minPlayCount, setMinPlayCount] = useState("0");
@@ -228,6 +238,24 @@ export const MusicCueTool = () => {
   useEffect(() => {
     cueRef.current = cue;
   }, [cue]);
+
+  useEffect(() => {
+    if (musicService !== "spotify") {
+      setSpotifyStatus(null);
+      return;
+    }
+
+    void musicProvider.getConnectionStatus().then(setSpotifyStatus);
+  }, [musicProvider, musicService]);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("spotify") === "connected" && musicService === "spotify") {
+      setStatusMessage("Spotify connected. Load your library to begin.");
+      window.history.replaceState({}, "", window.location.pathname);
+      void musicProvider.getConnectionStatus().then(setSpotifyStatus);
+    }
+  }, [musicProvider, musicService]);
 
   useEffect(() => {
     songsRef.current = songs;
@@ -335,7 +363,7 @@ export const MusicCueTool = () => {
 
         const chunk = songs.slice(index, index + LIBRARY_VALIDATE_CHUNK);
         try {
-          const availability = await validateTracksInMusicApp(chunk);
+          const availability = await musicProvider.validateTracks(chunk);
           chunk.forEach((song) => {
             if (availability[song.id] === false) {
               unavailable.add(song.id);
@@ -350,7 +378,9 @@ export const MusicCueTool = () => {
       if (!cancelled) {
         setIsValidatingLibrary(false);
         if (unavailable.size > 0) {
-          setStatusMessage(`${unavailable.size} tracks in Library.xml are not in Music.app (shown in red).`);
+          setStatusMessage(
+            `${unavailable.size} tracks are unavailable in ${musicProvider.displayName} (shown in red).`
+          );
         }
       }
     };
@@ -360,7 +390,7 @@ export const MusicCueTool = () => {
     return () => {
       cancelled = true;
     };
-  }, [songs]);
+  }, [musicProvider, songs]);
 
   const visibleSongs = useMemo(() => {
     const query = searchFilter.trim().toLowerCase();
@@ -386,6 +416,21 @@ export const MusicCueTool = () => {
     [clusterOverrides, dimensions, songs, stats]
   );
 
+  const clusterSnapshotInputsRef = useRef({
+    visibleSongs,
+    stats,
+    dimensions,
+    clusterOverrides,
+    computeLayoutPosition,
+  });
+  clusterSnapshotInputsRef.current = {
+    visibleSongs,
+    stats,
+    dimensions,
+    clusterOverrides,
+    computeLayoutPosition,
+  };
+
   const getPosition = useCallback(
     (song: Song): GraphPoint => computeLayoutPosition(song, layoutMode),
     [computeLayoutPosition, layoutMode]
@@ -394,8 +439,13 @@ export const MusicCueTool = () => {
   const { getDisplayPosition, transition } = useLayoutTransition(
     layoutMode,
     visibleSongs,
+    dimensions,
     computeLayoutPosition
   );
+
+  const isLayoutTransitioning = transition.isAnimating || layoutMode !== transition.toLayout;
+  const effectiveClusterRevealOpacity =
+    isLayoutTransitioning && isClusterLayoutMode(layoutMode) ? 0 : clusterRevealOpacity;
 
   const positionedSongs = useMemo(
     () => visibleSongs.map((song) => ({ song, position: getDisplayPosition(song) })),
@@ -411,58 +461,117 @@ export const MusicCueTool = () => {
   }, [layoutMode, stats, visibleSongs]);
 
   const clusterRegions = useMemo(() => {
-    if (transition.isAnimating || !isClusterLayoutMode(layoutMode)) {
+    if (!isClusterLayoutMode(layoutMode) || isLayoutTransitioning) {
       return [];
     }
-    return buildClusterRegions(layoutMode, visibleSongs, getPosition, stats, dimensions, clusterOverrides);
-  }, [clusterOverrides, dimensions, getPosition, layoutMode, stats, transition.isAnimating, visibleSongs]);
+    return buildClusterRegions(layoutMode, visibleSongs, getDisplayPosition, stats, dimensions, clusterOverrides);
+  }, [clusterOverrides, dimensions, getDisplayPosition, isLayoutTransitioning, layoutMode, stats, visibleSongs]);
 
   useEffect(() => {
+    const wasTransitioning = wasLayoutTransitioningRef.current;
+    const isTransitioning = isLayoutTransitioning;
+    wasLayoutTransitioningRef.current = isTransitioning;
+
+    if (clusterFadeInFrameRef.current) {
+      cancelAnimationFrame(clusterFadeInFrameRef.current);
+      clusterFadeInFrameRef.current = 0;
+    }
+
+    if (isTransitioning) {
+      if (isClusterLayoutMode(layoutMode) || isClusterLayoutMode(transition.fromLayout)) {
+        setClusterRevealOpacity(0);
+      }
+      return undefined;
+    }
+
+    if (!isClusterLayoutMode(layoutMode)) {
+      setClusterRevealOpacity(1);
+      return undefined;
+    }
+
+    if (!wasTransitioning) {
+      return undefined;
+    }
+
+    const startTime = performance.now();
+    const tick = (now: number) => {
+      const progress = Math.min(1, (now - startTime) / CLUSTER_FADE_MS);
+      setClusterRevealOpacity(progress);
+      if (progress < 1) {
+        clusterFadeInFrameRef.current = requestAnimationFrame(tick);
+      } else {
+        clusterFadeInFrameRef.current = 0;
+      }
+    };
+
+    clusterFadeInFrameRef.current = requestAnimationFrame(tick);
+    return () => {
+      if (clusterFadeInFrameRef.current) {
+        cancelAnimationFrame(clusterFadeInFrameRef.current);
+        clusterFadeInFrameRef.current = 0;
+      }
+    };
+  }, [isLayoutTransitioning, layoutMode, transition.fromLayout]);
+
+  useLayoutEffect(() => {
     const previousLayout = prevLayoutForClustersRef.current;
     if (previousLayout === layoutMode) {
       return;
     }
 
+    if (clusterFadeInFrameRef.current) {
+      cancelAnimationFrame(clusterFadeInFrameRef.current);
+      clusterFadeInFrameRef.current = 0;
+    }
+
     if (isClusterLayoutMode(previousLayout)) {
+      const { visibleSongs: songs, stats: libraryStats, dimensions: graphDimensions, clusterOverrides: overrides, computeLayoutPosition } =
+        clusterSnapshotInputsRef.current;
+      clusterFadeOutIdRef.current += 1;
       setFadingClusterSnapshot({
+        id: clusterFadeOutIdRef.current,
         regions: buildClusterRegions(
           previousLayout,
-          visibleSongs,
+          songs,
           (song) => computeLayoutPosition(song, previousLayout),
-          stats,
-          dimensions,
-          clusterOverrides
+          libraryStats,
+          graphDimensions,
+          overrides
         ),
         opacity: 1,
       });
+    } else {
+      setFadingClusterSnapshot(null);
     }
 
     prevLayoutForClustersRef.current = layoutMode;
-  }, [clusterOverrides, computeLayoutPosition, dimensions, layoutMode, stats, visibleSongs]);
+  }, [layoutMode]);
 
   useEffect(() => {
     if (!fadingClusterSnapshot || fadingClusterSnapshot.opacity <= 0) {
       return undefined;
     }
 
-    const startOpacity = fadingClusterSnapshot.opacity;
+    const fadeId = fadingClusterSnapshot.id;
     const startTime = performance.now();
     let frameId = 0;
 
     const tick = (now: number) => {
       const progress = Math.min(1, (now - startTime) / CLUSTER_FADE_MS);
-      const opacity = startOpacity * (1 - progress);
+      const opacity = 1 - progress;
       if (progress < 1) {
-        setFadingClusterSnapshot((current) => (current ? { ...current, opacity } : null));
+        setFadingClusterSnapshot((current) =>
+          current && current.id === fadeId ? { ...current, opacity } : current
+        );
         frameId = requestAnimationFrame(tick);
       } else {
-        setFadingClusterSnapshot(null);
+        setFadingClusterSnapshot((current) => (current && current.id === fadeId ? null : current));
       }
     };
 
     frameId = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(frameId);
-  }, [fadingClusterSnapshot?.regions]);
+  }, [fadingClusterSnapshot?.id]);
 
   const isClusterLayout = layoutMode === "genre" || layoutMode === "playlist";
   const activePathLayoutMode = cue?.layoutMode ?? strokeLayoutMode;
@@ -632,12 +741,12 @@ export const MusicCueTool = () => {
   }, [cue, unavailableSongIds]);
 
   useEffect(() => {
-    if (!playbackTrackingEnabled || !cue?.songs.length) {
+    if (!musicProvider.supportsPlaybackTracking || !playbackTrackingEnabled || !cue?.songs.length) {
       return undefined;
     }
 
     const pollPlayback = async () => {
-      const state = await getPlaybackState();
+      const state = await musicProvider.getPlaybackState();
       if (!state?.persistentId) {
         return;
       }
@@ -680,7 +789,7 @@ export const MusicCueTool = () => {
     }, 2000);
 
     return () => window.clearInterval(intervalId);
-  }, [cue, playbackTrackingEnabled]);
+  }, [cue, musicProvider, playbackTrackingEnabled]);
 
   const resetPanSession = () => {
     panSessionRef.current = null;
@@ -733,7 +842,7 @@ export const MusicCueTool = () => {
     setCue({ ...generated, buildMode: "path" });
     setStrokeLayoutMode(generated.layoutMode);
     clearUndo();
-    setStatusMessage(`Generated ${generated.songs.length} songs along the path. Press Play cue in Music.app.`);
+    setStatusMessage(`Generated ${generated.songs.length} songs along the path. Press Play to start.`);
   };
 
   const handleClusterLabelPointerDown = (
@@ -999,22 +1108,88 @@ export const MusicCueTool = () => {
     }
   };
 
-  const handleImportFile = async (file: File) => {
+  const applyLoadedLibrary = (loadedSongs: Song[], loadedStats: LibraryStats, message: string) => {
+    invalidatePlaylistOverlapLayoutCache();
+    const normalized = normalizeSongs(loadedSongs, loadedStats);
+    setSongs(normalized);
+    setStats(normalizeStats(loadedStats, normalized));
+    saveLibrary(musicService, loadedSongs, loadedStats);
+    setCue(null);
+    setStroke([]);
+    setStrokeLayoutMode(null);
+    setActivePlaylistName(null);
+    setActivePersistentId(null);
+    setSelectedSongId(null);
+    setPlaybackTrackingEnabled(false);
+    playbackTrackingRef.current = { persistentId: null, cueIndex: -1 };
+    setStatusMessage(message);
+  };
+
+  const handleMusicServiceChange = (serviceId: MusicServiceId) => {
+    if (serviceId === musicService) {
+      return;
+    }
+    setMusicService(serviceId);
+    saveMusicService(serviceId);
+    const library = loadLibrary(serviceId);
+    const nextSongs = normalizeSongs(library.songs, library.stats);
+    setSongs(nextSongs);
+    setStats(normalizeStats(library.stats, nextSongs));
+    setCue(null);
+    setStroke([]);
+    setStrokeLayoutMode(null);
+    setActivePlaylistName(null);
+    setActivePersistentId(null);
+    setSelectedSongId(null);
+    setPlaybackTrackingEnabled(false);
+    playbackTrackingRef.current = { persistentId: null, cueIndex: -1 };
+    setStatusMessage(
+      serviceId === "spotify"
+        ? "Spotify selected. Connect and load your saved tracks."
+        : "Apple Music selected. Load your Library.xml to begin."
+    );
+  };
+
+  const handleConnectSpotify = async () => {
+    if (!musicProvider.connect) {
+      return;
+    }
+    try {
+      await musicProvider.connect();
+    } catch (error) {
+      setStatusMessage(error instanceof Error ? error.message : "Could not connect to Spotify.");
+    }
+  };
+
+  const handleLoadSpotifyLibrary = async () => {
+    if (!musicProvider.loadLibrary) {
+      return;
+    }
     setIsImporting(true);
     try {
-      const xml = await file.text();
-      const parsed = parseLibraryXml(xml);
-      invalidatePlaylistOverlapLayoutCache();
-      setSongs(normalizeSongs(parsed.songs, parsed.stats));
-      setStats(parsed.stats);
-      saveLibrary(parsed.songs, parsed.stats);
-      setCue(null);
-      setStroke([]);
-      setStrokeLayoutMode(null);
-      setActivePlaylistName(null);
-      setActivePersistentId(null);
-      setSelectedSongId(null);
-      setStatusMessage(
+      const loaded = await musicProvider.loadLibrary();
+      applyLoadedLibrary(
+        loaded.songs,
+        loaded.stats,
+        `Loaded ${loaded.songs.length} saved tracks and ${loaded.stats.playlistIds.length} playlists from Spotify.`
+      );
+    } catch (error) {
+      setStatusMessage(error instanceof Error ? error.message : "Could not load Spotify library.");
+    } finally {
+      setIsImporting(false);
+    }
+  };
+
+  const handleImportFile = async (file: File) => {
+    if (!musicProvider.loadLibraryFromFile) {
+      return;
+    }
+    setIsImporting(true);
+    try {
+      const parsed = await musicProvider.loadLibraryFromFile(file);
+      applyLoadedLibrary(
+        parsed.songs,
+        parsed.stats,
         `Loaded ${parsed.songs.length} tracks and ${parsed.stats.playlistIds.length} playlists from ${file.name}.`
       );
     } catch (error) {
@@ -1068,9 +1243,9 @@ export const MusicCueTool = () => {
 
     setIsExportingPlaylist(true);
     try {
-      const result = await saveCuePlaylistInMusicApp(cue.songs, playlistName);
+      const result = await musicProvider.savePlaylist(cue.songs, playlistName);
       const missing = new Set(
-        cue.songs.filter((song) => !result.matchedPersistentIds.includes(song.id)).map((song) => song.id)
+        cue.songs.filter((song) => !result.matchedTrackIds.includes(song.id)).map((song) => song.id)
       );
       setUnavailableSongIds((current) => new Set([...current, ...missing]));
       const missingCount = result.requestedCount - result.matchedCount;
@@ -1094,27 +1269,29 @@ export const MusicCueTool = () => {
       return;
     }
     try {
-      const result = await playCueInMusicApp(cue.songs);
+      const result = await musicProvider.playCue(cue.songs);
       setActivePlaylistName(result.playlistName);
-      const firstTrackId = result.matchedPersistentIds[0] ?? null;
+      const firstTrackId = result.matchedTrackIds[0] ?? null;
       setActivePersistentId(firstTrackId);
-      setPlaybackTrackingEnabled(true);
+      setPlaybackTrackingEnabled(musicProvider.supportsPlaybackTracking);
       playbackTrackingRef.current = {
         persistentId: firstTrackId,
         cueIndex: firstTrackId ? cue.songs.findIndex((song) => song.id === firstTrackId) : -1,
       };
       const missing = new Set(
-        cue.songs.filter((song) => !result.matchedPersistentIds.includes(song.id)).map((song) => song.id)
+        cue.songs.filter((song) => !result.matchedTrackIds.includes(song.id)).map((song) => song.id)
       );
       setUnavailableSongIds((current) => new Set([...current, ...missing]));
       const missingCount = result.requestedCount - result.matchedCount;
       if (missingCount > 0) {
         setStatusMessage(
-          `Playing ${result.matchedCount} of ${result.requestedCount} tracks in Music.app (${missingCount} not in library).`
+          `Playing ${result.matchedCount} of ${result.requestedCount} tracks in ${musicProvider.displayName} (${missingCount} unavailable).`
         );
       } else {
         setStatusMessage(
-          `Playing ${result.matchedCount} tracks in Music.app. Edit the queue in Music; export when done.`
+          musicService === "spotify"
+            ? `Playing ${result.matchedCount} tracks in Spotify. Queue editing is limited — export when done.`
+            : `Playing ${result.matchedCount} tracks in Music.app. Edit the queue in Music; export when done.`
         );
       }
     } catch (error) {
@@ -1196,7 +1373,18 @@ export const MusicCueTool = () => {
             <p className="music-cue-status">{statusMessage}</p>
             <p className="music-cue-meta">
               Showing {visibleSongs.length} of {songs.length} tracks
-              {isValidatingLibrary ? " · checking Music.app library…" : unavailableSongIds.size > 0 ? ` · ${unavailableSongIds.size} not in library (red)` : ""}
+              {isValidatingLibrary
+                ? ` · checking ${musicProvider.displayName} library…`
+                : unavailableSongIds.size > 0
+                  ? ` · ${unavailableSongIds.size} unavailable (red)`
+                  : ""}
+              {musicService === "spotify" && spotifyStatus
+                ? spotifyStatus.connected
+                  ? " · Spotify connected"
+                  : spotifyStatus.configured
+                    ? " · Spotify not connected"
+                    : " · Spotify not configured on server"
+                : ""}
               {visibleSongs.length > LABEL_THRESHOLD ? " · hover nodes for titles" : ""}
               {" · drag to pan · scroll to zoom"}
               {isClusterLayout ? " · drag labels to move clusters · ⌘⇧ drag to box-select" : ""}
@@ -1204,20 +1392,56 @@ export const MusicCueTool = () => {
             </p>
           </div>
 
-          <label className="music-cue-file-button">
-            {isImporting ? "Importing…" : "Load Library.xml"}
-            <input
-              type="file"
-              accept=".xml,text/xml"
-              onChange={(event) => {
-                const file = event.target.files?.[0];
-                if (file) {
-                  void handleImportFile(file);
-                }
-                event.currentTarget.value = "";
-              }}
-            />
-          </label>
+          <div className="music-cue-service-toggle" role="group" aria-label="Music service">
+            <button
+              type="button"
+              className={musicService === "apple-music" ? "music-cue-layout-active" : ""}
+              onClick={() => handleMusicServiceChange("apple-music")}
+            >
+              Apple Music
+            </button>
+            <button
+              type="button"
+              className={musicService === "spotify" ? "music-cue-layout-active" : ""}
+              onClick={() => handleMusicServiceChange("spotify")}
+            >
+              Spotify
+            </button>
+          </div>
+
+          {musicService === "apple-music" ? (
+            <label className="music-cue-file-button">
+              {isImporting ? "Importing…" : "Load Library.xml"}
+              <input
+                type="file"
+                accept=".xml,text/xml"
+                onChange={(event) => {
+                  const file = event.target.files?.[0];
+                  if (file) {
+                    void handleImportFile(file);
+                  }
+                  event.currentTarget.value = "";
+                }}
+              />
+            </label>
+          ) : (
+            <div className="music-cue-spotify-actions">
+              <button
+                type="button"
+                onClick={() => void handleConnectSpotify()}
+                disabled={spotifyStatus?.configured === false}
+              >
+                {spotifyStatus?.connected ? "Reconnect Spotify" : "Connect Spotify"}
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleLoadSpotifyLibrary()}
+                disabled={isImporting || !spotifyStatus?.connected}
+              >
+                {isImporting ? "Loading…" : "Load library"}
+              </button>
+            </div>
+          )}
 
           <div className="music-cue-layout-toggle" role="group" aria-label="Graph layout mode">
             <button
@@ -1346,6 +1570,7 @@ export const MusicCueTool = () => {
                   className="music-cue-cluster-region"
                   fill={region.fill}
                   stroke={region.stroke}
+                  opacity={effectiveClusterRevealOpacity}
                   pointerEvents="none"
                 />
               ))}
@@ -1414,9 +1639,11 @@ export const MusicCueTool = () => {
                   key={`label-${region.id}`}
                   x={region.center.x}
                   y={region.center.y}
-                  className={`music-cue-cluster-label music-cue-cluster-label-draggable ${
-                    selectedClusterIds.has(region.id) ? "music-cue-cluster-label-selected" : ""
-                  }`}
+                  className={`music-cue-cluster-label ${
+                    effectiveClusterRevealOpacity >= 1 ? "music-cue-cluster-label-draggable" : ""
+                  } ${selectedClusterIds.has(region.id) ? "music-cue-cluster-label-selected" : ""}`}
+                  opacity={effectiveClusterRevealOpacity}
+                  pointerEvents={effectiveClusterRevealOpacity >= 1 ? undefined : "none"}
                   onPointerDown={(event) => handleClusterLabelPointerDown(event, region.id, region.label)}
                   onPointerUp={(event) => {
                     if (!draggingClusterIdRef.current) {
@@ -1520,18 +1747,20 @@ export const MusicCueTool = () => {
 
           {playbackTrackingEnabled && (
             <p className="music-cue-cue-meta music-cue-cue-tracking-hint">
-              Tracking playback from Music.app — edit the queue there; export when finished.
+              {musicService === "spotify"
+                ? "Tracking playback from Spotify — export when finished."
+                : "Tracking playback from Music.app — edit the queue there; export when finished."}
             </p>
           )}
 
           {cueSummary ? (
             <p className="music-cue-cue-meta">
               {cueSummary.trackCount} tracks · {formatDuration(cueSummary.totalMs)}
-              {cueSummary.totalMs === 0 ? " · re-import Library.xml for durations" : ""}
+              {cueSummary.totalMs === 0 ? ` · reload library for durations` : ""}
               {isValidatingLibrary
-                ? " · checking Music.app…"
+                ? ` · checking ${musicProvider.displayName}…`
                 : cueSummary.missingCount > 0
-                  ? ` · ${cueSummary.missingCount} not in Music.app · ${formatDuration(cueSummary.playableMs)} playable`
+                  ? ` · ${cueSummary.missingCount} unavailable · ${formatDuration(cueSummary.playableMs)} playable`
                   : ""}
             </p>
           ) : (

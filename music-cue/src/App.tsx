@@ -1,9 +1,28 @@
 import { MusicCueTool } from "./components/MusicCueTool";
+import { SpotifyCallback } from "./components/SpotifyCallback";
 import { Win95Taskbar } from "./components/Win95Taskbar";
 
 const WINDOW_TITLE = "Music Cue";
 
-export const App = () => (
+export const App = () => {
+  if (window.location.pathname.endsWith("/spotify/callback")) {
+    return (
+      <div className="win95-app">
+        <div className="win95-workspace">
+          <div className="win95-shell">
+            <div className="win95-titlebar">
+              <span className="win95-titlebar-text">{WINDOW_TITLE}</span>
+            </div>
+            <div className="win95-client">
+              <SpotifyCallback />
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
   <div className="win95-app">
     <div className="win95-workspace">
       <div className="win95-shell">
@@ -28,4 +47,5 @@ export const App = () => (
     </div>
     <Win95Taskbar windowTitle={WINDOW_TITLE} />
   </div>
-);
+  );
+};

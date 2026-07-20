@@ -1,0 +1,427 @@
+import {
+  SpotifyTokens,
+  buildSpotifySessionSetCookie,
+  getSpotifySessionCookie,
+} from "./spotifySession.js";
+
+const SPOTIFY_ACCOUNTS_URL = "https://accounts.spotify.com";
+const SPOTIFY_API_URL = "https://api.spotify.com/v1";
+export const SPOTIFY_NOW_PLAYING_PLAYLIST_NAME = "MusicCue — Now Playing";
+
+const SPOTIFY_SCOPES = [
+  "user-library-read",
+  "playlist-read-private",
+  "playlist-modify-private",
+  "user-read-playback-state",
+  "user-modify-playback-state",
+].join(" ");
+
+type SpotifySavedTrackItem = {
+  added_at: string;
+  track: SpotifyTrack | null;
+};
+
+type SpotifyTrack = {
+  id: string;
+  name: string;
+  duration_ms: number;
+  popularity: number;
+  artists: { id: string; name: string }[];
+  album: { name: string; release_date: string };
+};
+
+type SpotifyPlaylistTrackItem = {
+  track: SpotifyTrack | null;
+};
+
+export type SpotifyLibrarySong = {
+  id: string;
+  title: string;
+  artist: string;
+  album: string;
+  genre: string;
+  year: number;
+  playCount: number;
+  rating: number;
+  loved: boolean;
+  dateAdded: string;
+  trackType: string;
+  durationMs: number;
+  playlists: string[];
+};
+
+export type SpotifyLibraryStats = {
+  minYear: number;
+  maxYear: number;
+  genres: string[];
+  genreCounts: Record<string, number>;
+  maxPlayCount: number;
+  playlistIds: string[];
+  playlistNames: Record<string, string>;
+  playlistCounts: Record<string, number>;
+};
+
+export type SpotifyLibraryPayload = {
+  songs: SpotifyLibrarySong[];
+  stats: SpotifyLibraryStats;
+};
+
+export type SpotifySessionStore = {
+  getTokens: () => SpotifyTokens | null;
+  setTokens: (tokens: SpotifyTokens | null) => void;
+};
+
+export const getSpotifyRedirectUri = (): string => {
+  if (process.env.SPOTIFY_REDIRECT_URI) {
+    return process.env.SPOTIFY_REDIRECT_URI;
+  }
+  if (process.env.SITE_URL) {
+    return `${process.env.SITE_URL.replace(/\/$/, "")}/music-cue/spotify/callback`;
+  }
+  return "http://127.0.0.1:5174/spotify/callback";
+};
+
+export const isSpotifyConfigured = (): boolean =>
+  Boolean(process.env.SPOTIFY_CLIENT_ID && process.env.SPOTIFY_CLIENT_SECRET);
+
+export const createCookieSessionStore = (
+  cookieHeader: string | undefined,
+  setCookie: (value: string) => void
+): SpotifySessionStore => {
+  let tokens = getSpotifySessionCookie(cookieHeader);
+  return {
+    getTokens: () => tokens,
+    setTokens: (nextTokens) => {
+      tokens = nextTokens;
+      setCookie(buildSpotifySessionSetCookie(nextTokens));
+    },
+  };
+};
+
+export const createSpotifyClient = (store: SpotifySessionStore) => {
+  const getConnectionStatus = () => {
+    if (!isSpotifyConfigured()) {
+      return {
+        connected: false,
+        configured: false,
+        message: "Spotify credentials are not configured on the server.",
+      };
+    }
+    const tokens = store.getTokens();
+    return {
+      connected: Boolean(tokens?.refreshToken),
+      configured: true,
+      message: tokens?.refreshToken ? "Connected to Spotify." : "Not connected to Spotify.",
+    };
+  };
+
+  const buildAuthorizeUrl = (codeChallenge: string, state: string): string => {
+    const clientId = process.env.SPOTIFY_CLIENT_ID;
+    if (!clientId) {
+      throw new Error("SPOTIFY_CLIENT_ID is not configured.");
+    }
+    const params = new URLSearchParams({
+      client_id: clientId,
+      response_type: "code",
+      redirect_uri: getSpotifyRedirectUri(),
+      scope: SPOTIFY_SCOPES,
+      code_challenge_method: "S256",
+      code_challenge: codeChallenge,
+      state,
+    });
+    return `${SPOTIFY_ACCOUNTS_URL}/authorize?${params.toString()}`;
+  };
+
+  const refreshAccessToken = async (refreshToken: string): Promise<SpotifyTokens> => {
+    const clientId = process.env.SPOTIFY_CLIENT_ID;
+    const clientSecret = process.env.SPOTIFY_CLIENT_SECRET;
+    if (!clientId || !clientSecret) {
+      throw new Error("Spotify credentials are not configured.");
+    }
+    const body = new URLSearchParams({
+      grant_type: "refresh_token",
+      refresh_token: refreshToken,
+      client_id: clientId,
+      client_secret: clientSecret,
+    });
+    const response = await fetch(`${SPOTIFY_ACCOUNTS_URL}/api/token`, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body,
+    });
+    if (!response.ok) {
+      store.setTokens(null);
+      throw new Error("Spotify session expired. Connect again.");
+    }
+    const payload = (await response.json()) as {
+      access_token: string;
+      refresh_token?: string;
+      expires_in: number;
+      scope?: string;
+    };
+    const nextTokens: SpotifyTokens = {
+      accessToken: payload.access_token,
+      refreshToken: payload.refresh_token ?? refreshToken,
+      expiresAt: Date.now() + payload.expires_in * 1000 - 60_000,
+      scope: payload.scope ?? store.getTokens()?.scope ?? SPOTIFY_SCOPES,
+    };
+    store.setTokens(nextTokens);
+    return nextTokens;
+  };
+
+  const getAccessToken = async (): Promise<string> => {
+    const tokens = store.getTokens();
+    if (!tokens?.refreshToken) {
+      throw new Error("Not connected to Spotify.");
+    }
+    if (tokens.expiresAt > Date.now()) {
+      return tokens.accessToken;
+    }
+    const refreshed = await refreshAccessToken(tokens.refreshToken);
+    return refreshed.accessToken;
+  };
+
+  const spotifyFetch = async <T>(path: string, init?: RequestInit): Promise<T> => {
+    const accessToken = await getAccessToken();
+    const response = await fetch(`${SPOTIFY_API_URL}${path}`, {
+      ...init,
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+        ...(init?.headers ?? {}),
+      },
+    });
+    if (response.status === 204) {
+      return {} as T;
+    }
+    if (!response.ok) {
+      const payload = (await response.json().catch(() => ({}))) as { error?: { message?: string } };
+      throw new Error(payload.error?.message ?? `Spotify API error (${response.status}).`);
+    }
+    return (await response.json()) as T;
+  };
+
+  const fetchAllPages = async <T>(
+    firstPath: string,
+    collect: (payload: T) => unknown[],
+    nextPath: (payload: T) => string | null
+  ): Promise<unknown[]> => {
+    const items: unknown[] = [];
+    let path = firstPath;
+    while (path) {
+      const payload = await spotifyFetch<T>(path);
+      items.push(...collect(payload));
+      path = nextPath(payload) ?? "";
+    }
+    return items;
+  };
+
+  const exchangeAuthCode = async (code: string, codeVerifier: string): Promise<void> => {
+    const clientId = process.env.SPOTIFY_CLIENT_ID;
+    const clientSecret = process.env.SPOTIFY_CLIENT_SECRET;
+    if (!clientId || !clientSecret) {
+      throw new Error("Spotify credentials are not configured.");
+    }
+    const body = new URLSearchParams({
+      grant_type: "authorization_code",
+      code,
+      redirect_uri: getSpotifyRedirectUri(),
+      client_id: clientId,
+      client_secret: clientSecret,
+      code_verifier: codeVerifier,
+    });
+    const response = await fetch(`${SPOTIFY_ACCOUNTS_URL}/api/token`, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body,
+    });
+    if (!response.ok) {
+      const payload = (await response.json().catch(() => ({}))) as { error_description?: string; error?: string };
+      throw new Error(payload.error_description ?? payload.error ?? "Spotify token exchange failed.");
+    }
+    const payload = (await response.json()) as {
+      access_token: string;
+      refresh_token?: string;
+      expires_in: number;
+      scope: string;
+    };
+    const existing = store.getTokens();
+    store.setTokens({
+      accessToken: payload.access_token,
+      refreshToken: payload.refresh_token ?? existing?.refreshToken ?? "",
+      expiresAt: Date.now() + payload.expires_in * 1000 - 60_000,
+      scope: payload.scope,
+    });
+  };
+
+  const fetchLibrary = async (): Promise<SpotifyLibraryPayload> => {
+    const savedItems = (await fetchAllPages<{ items: SpotifySavedTrackItem[]; next: string | null }>(
+      "/me/tracks?limit=50",
+      (payload) => payload.items,
+      (payload) => (payload.next ? payload.next.replace(SPOTIFY_API_URL, "") : null)
+    )) as SpotifySavedTrackItem[];
+
+    const playlists = (await fetchAllPages<{ items: { id: string; name: string }[]; next: string | null }>(
+      "/me/playlists?limit=50",
+      (payload) => payload.items,
+      (payload) => (payload.next ? payload.next.replace(SPOTIFY_API_URL, "") : null)
+    )) as { id: string; name: string }[];
+
+    const playlistNames: Record<string, string> = {};
+    const playlistCounts: Record<string, number> = {};
+    const trackPlaylists = new Map<string, Set<string>>();
+
+    for (const playlist of playlists) {
+      playlistNames[playlist.id] = playlist.name;
+      playlistCounts[playlist.id] = 0;
+      const playlistTracks = (await fetchAllPages<{ items: SpotifyPlaylistTrackItem[]; next: string | null }>(
+        `/playlists/${playlist.id}/tracks?limit=100&fields=items(track(id)),next`,
+        (payload) => payload.items,
+        (payload) => (payload.next ? payload.next.replace(SPOTIFY_API_URL, "") : null)
+      )) as SpotifyPlaylistTrackItem[];
+      playlistTracks.forEach((item) => {
+        const trackId = item.track?.id;
+        if (!trackId) {
+          return;
+        }
+        playlistCounts[playlist.id] = (playlistCounts[playlist.id] ?? 0) + 1;
+        const memberships = trackPlaylists.get(trackId) ?? new Set<string>();
+        memberships.add(playlist.id);
+        trackPlaylists.set(trackId, memberships);
+      });
+    }
+
+    const trackById = new Map<string, SpotifyTrack>();
+    savedItems.forEach((item) => {
+      if (item.track?.id) {
+        trackById.set(item.track.id, item.track);
+      }
+    });
+
+    const artistIds = [...trackById.values()].flatMap((track) => track.artists.map((artist) => artist.id));
+    const genresByArtist = new Map<string, string[]>();
+    const uniqueArtistIds = [...new Set(artistIds)];
+    for (let index = 0; index < uniqueArtistIds.length; index += 50) {
+      const chunk = uniqueArtistIds.slice(index, index + 50);
+      const payload = await spotifyFetch<{ artists: { id: string; genres: string[] }[] }>(
+        `/artists?ids=${chunk.join(",")}`
+      );
+      payload.artists.forEach((artist) => genresByArtist.set(artist.id, artist.genres ?? []));
+    }
+
+    const songs: SpotifyLibrarySong[] = [...trackById.entries()].map(([trackId, track]) => {
+      const primaryArtist = track.artists[0];
+      const genres = primaryArtist ? genresByArtist.get(primaryArtist.id) ?? [] : [];
+      const savedItem = savedItems.find((item) => item.track?.id === trackId);
+      return {
+        id: trackId,
+        title: track.name,
+        artist: track.artists.map((artist) => artist.name).join(", "),
+        album: track.album.name,
+        genre: genres[0] ?? "Unknown",
+        year: Number.parseInt(track.album.release_date.slice(0, 4), 10) || new Date().getFullYear(),
+        playCount: track.popularity,
+        rating: 0,
+        loved: true,
+        dateAdded: savedItem?.added_at ?? "",
+        trackType: "File",
+        durationMs: track.duration_ms,
+        playlists: [...(trackPlaylists.get(trackId) ?? [])],
+      };
+    });
+
+    const genreCounts: Record<string, number> = {};
+    songs.forEach((song) => {
+      genreCounts[song.genre] = (genreCounts[song.genre] ?? 0) + 1;
+    });
+    const years = songs.map((song) => song.year);
+    return {
+      songs,
+      stats: {
+        minYear: years.length ? Math.min(...years) : 1970,
+        maxYear: years.length ? Math.max(...years) : new Date().getFullYear(),
+        genres: Object.keys(genreCounts).sort((left, right) => left.localeCompare(right)),
+        genreCounts,
+        maxPlayCount: songs.reduce((max, song) => Math.max(max, song.playCount), 1),
+        playlistIds: playlists.map((playlist) => playlist.id),
+        playlistNames,
+        playlistCounts,
+      },
+    };
+  };
+
+  const createPlaylist = async (name: string, trackIds: string[]) => {
+    const profile = await spotifyFetch<{ id: string }>("/me");
+    const created = await spotifyFetch<{ id: string; name: string }>(`/users/${profile.id}/playlists`, {
+      method: "POST",
+      body: JSON.stringify({ name, public: false, description: "Created by Music Cue" }),
+    });
+    const uris = trackIds.map((id) => `spotify:track:${id}`);
+    for (let index = 0; index < uris.length; index += 100) {
+      await spotifyFetch(`/playlists/${created.id}/tracks`, {
+        method: "POST",
+        body: JSON.stringify({ uris: uris.slice(index, index + 100) }),
+      });
+    }
+    return {
+      playlistId: created.id,
+      playlistName: created.name,
+      matchedCount: trackIds.length,
+      matchedTrackIds: trackIds,
+    };
+  };
+
+  const playCue = async (trackIds: string[]) => {
+    if (trackIds.length === 0) {
+      throw new Error("No tracks to play.");
+    }
+    const playlist = await createPlaylist(SPOTIFY_NOW_PLAYING_PLAYLIST_NAME, trackIds);
+    await spotifyFetch("/me/player/play", {
+      method: "PUT",
+      body: JSON.stringify({
+        context_uri: `spotify:playlist:${playlist.playlistId}`,
+        offset: { position: 0 },
+      }),
+    });
+    return {
+      playlistName: playlist.playlistName,
+      matchedCount: playlist.matchedCount,
+      requestedCount: trackIds.length,
+      matchedTrackIds: playlist.matchedTrackIds,
+    };
+  };
+
+  const getPlaybackState = async () => {
+    try {
+      const payload = await spotifyFetch<{
+        item: { id: string; name: string; artists: { name: string }[] } | null;
+        progress_ms: number;
+        context: { uri: string } | null;
+      }>("/me/player/currently-playing");
+      if (!payload.item) {
+        return null;
+      }
+      return {
+        artist: payload.item.artists.map((artist) => artist.name).join(", "),
+        title: payload.item.name,
+        trackIndex: 0,
+        playlistName: payload.context?.uri?.includes("playlist") ? SPOTIFY_NOW_PLAYING_PLAYLIST_NAME : "",
+        persistentId: payload.item.id,
+        playerPosition: payload.progress_ms ?? 0,
+      };
+    } catch {
+      return null;
+    }
+  };
+
+  return {
+    getConnectionStatus,
+    buildAuthorizeUrl,
+    exchangeAuthCode,
+    fetchLibrary,
+    createPlaylist,
+    playCue,
+    getPlaybackState,
+    disconnect: () => store.setTokens(null),
+  };
+};

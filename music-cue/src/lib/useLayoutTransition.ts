@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { GraphDimensions } from "./graphLayout";
 import { GraphPoint, LayoutMode, Song } from "./types";
 
 export const LAYOUT_TRANSITION_SPEED_PX_PER_SEC = 360;
@@ -18,12 +19,11 @@ export type LayoutTransitionState = {
 export const useLayoutTransition = (
   layoutMode: LayoutMode,
   visibleSongs: Song[],
+  dimensions: GraphDimensions,
   computePosition: (song: Song, mode: LayoutMode) => GraphPoint
 ): {
   getDisplayPosition: (song: Song) => GraphPoint;
   transition: LayoutTransitionState;
-  fromClusterOpacity: number;
-  toClusterOpacity: number;
 } => {
   const [animatedPositions, setAnimatedPositions] = useState<Map<string, GraphPoint>>(() => new Map());
   const [transition, setTransition] = useState<LayoutTransitionState>({
@@ -58,6 +58,17 @@ export const useLayoutTransition = (
     visibleSongs.forEach((song) => {
       to.set(song.id, computePositionRef.current(song, toLayout));
     });
+
+    if (!layoutChanged) {
+      setAnimatedPositions(to);
+      setTransition({
+        progress: 1,
+        fromLayout: toLayout,
+        toLayout,
+        isAnimating: false,
+      });
+      return undefined;
+    }
 
     const startFrom =
       animatedPositions.size > 0
@@ -155,12 +166,15 @@ export const useLayoutTransition = (
         animationRef.current = null;
       }
     };
-  }, [layoutMode, visibleSongs]);
+  }, [dimensions.height, dimensions.width, layoutMode, visibleSongs]);
 
   const getDisplayPosition = (song: Song): GraphPoint => {
-    const animated = animatedPositions.get(song.id);
-    if (animated) {
-      return animated;
+    const isLayoutTransitioning = transition.isAnimating || layoutMode !== transition.toLayout;
+    if (isLayoutTransitioning) {
+      const animated = animatedPositions.get(song.id);
+      if (animated) {
+        return animated;
+      }
     }
     return computePosition(song, layoutMode);
   };

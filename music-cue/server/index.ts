@@ -1,6 +1,7 @@
 import cors from "cors";
 import express from "express";
 import { execFile } from "node:child_process";
+import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
@@ -24,7 +25,34 @@ import {
   parseValidateTracksResult,
 } from "./musicApp.js";
 
+import { spotifyRouter } from "./spotifyRoutes.js";
+
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+const loadEnvFile = (): void => {
+  const envPath = path.resolve(__dirname, "../.env");
+  if (!existsSync(envPath)) {
+    return;
+  }
+  const contents = readFileSync(envPath, "utf8");
+  contents.split("\n").forEach((line) => {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#")) {
+      return;
+    }
+    const separator = trimmed.indexOf("=");
+    if (separator === -1) {
+      return;
+    }
+    const key = trimmed.slice(0, separator).trim();
+    const value = trimmed.slice(separator + 1).trim();
+    if (key && process.env[key] === undefined) {
+      process.env[key] = value;
+    }
+  });
+};
+
+loadEnvFile();
 const PORT = Number(process.env.PORT ?? 3847);
 const isProduction = process.env.NODE_ENV === "production";
 
@@ -42,6 +70,8 @@ const runAppleScript = (source: string): Promise<string> =>
 const app = express();
 app.use(cors());
 app.use(express.json({ limit: "2mb" }));
+
+app.use("/api/spotify", spotifyRouter);
 
 app.get("/api/health", (_req, res) => {
   res.json({ ok: true, platform: process.platform });

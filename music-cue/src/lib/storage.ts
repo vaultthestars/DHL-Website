@@ -1,7 +1,9 @@
+import { MusicServiceId } from "./musicProvider";
 import { ClusterCenterOverrides, CueBuildMode, LayoutMode, LibraryStats, NormalizedPoint, Song } from "./types";
 
-const LIBRARY_KEY = "music-cue-library";
-const STATS_KEY = "music-cue-library-stats";
+const MUSIC_SERVICE_KEY = "music-cue-music-service";
+const libraryKey = (serviceId: MusicServiceId): string => `music-cue-library-${serviceId}`;
+const statsKey = (serviceId: MusicServiceId): string => `music-cue-library-stats-${serviceId}`;
 const CUSTOM_LAYOUT_KEY = "music-cue-custom-layout";
 const GENRE_CLUSTER_LAYOUT_KEY = "music-cue-genre-cluster-layout";
 const PLAYLIST_CLUSTER_LAYOUT_KEY = "music-cue-playlist-cluster-layout";
@@ -9,6 +11,18 @@ const LAYOUT_MODE_KEY = "music-cue-layout-mode";
 const PATH_THRESHOLD_KEY = "music-cue-path-threshold";
 const BUILD_MODE_KEY = "music-cue-build-mode";
 export const DEFAULT_PATH_THRESHOLD = 60;
+
+export const loadMusicService = (): MusicServiceId => {
+  const stored = localStorage.getItem(MUSIC_SERVICE_KEY);
+  if (stored === "spotify" || stored === "apple-music") {
+    return stored;
+  }
+  return import.meta.env.VITE_APP_MODE === "web" ? "spotify" : "apple-music";
+};
+
+export const saveMusicService = (serviceId: MusicServiceId): void => {
+  localStorage.setItem(MUSIC_SERVICE_KEY, serviceId);
+};
 
 export const loadLayoutMode = (): LayoutMode => {
   const stored = localStorage.getItem(LAYOUT_MODE_KEY);
@@ -87,15 +101,21 @@ export const savePlaylistClusterCenterOverrides = (positions: Record<string, Nor
   localStorage.setItem(PLAYLIST_CLUSTER_LAYOUT_KEY, JSON.stringify(positions));
 };
 
-export const saveLibrary = (songs: Song[], stats: LibraryStats): void => {
-  localStorage.setItem(LIBRARY_KEY, JSON.stringify(songs));
-  localStorage.setItem(STATS_KEY, JSON.stringify(stats));
+export const saveLibrary = (serviceId: MusicServiceId, songs: Song[], stats: LibraryStats): void => {
+  localStorage.setItem(libraryKey(serviceId), JSON.stringify(songs));
+  localStorage.setItem(statsKey(serviceId), JSON.stringify(stats));
 };
 
-export const loadLibrary = (): { songs: Song[]; stats: LibraryStats | null } => {
+export const loadLibrary = (
+  serviceId: MusicServiceId
+): { songs: Song[]; stats: LibraryStats | null } => {
   try {
-    const songsRaw = localStorage.getItem(LIBRARY_KEY);
-    const statsRaw = localStorage.getItem(STATS_KEY);
+    let songsRaw = localStorage.getItem(libraryKey(serviceId));
+    let statsRaw = localStorage.getItem(statsKey(serviceId));
+    if (!songsRaw && serviceId === "apple-music") {
+      songsRaw = localStorage.getItem("music-cue-library");
+      statsRaw = localStorage.getItem("music-cue-library-stats");
+    }
     if (!songsRaw) {
       return { songs: [], stats: null };
     }

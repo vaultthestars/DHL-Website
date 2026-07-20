@@ -1,0 +1,13 @@
+{
+  "rewrites": [
+    {
+      "source": "/music-cue/spotify/callback",
+      "destination": "/music-cue/index.html"
+    }
+  ],
+  "functions": {
+    "api/spotify/[...path].ts": {
+      "maxDuration": 60
+    }
+  }
+}
