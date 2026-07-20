@@ -95,6 +95,14 @@ var SPOTIFY_SCOPES = [
   "user-read-playback-state",
   "user-modify-playback-state"
 ].join(" ");
+var NO_DEVICES_MESSAGE = "No Spotify devices found. Open the Spotify app, play any song once, then try Play again.";
+var pickPlaybackDevice = (devices) => {
+  const available = devices.filter((device) => device.id && !device.is_restricted);
+  if (available.length === 0) {
+    return null;
+  }
+  return available.find((device) => device.is_active) ?? available.find((device) => device.type === "Computer") ?? available[0];
+};
 var getPlaylistItemTrack = (entry) => {
   const candidate = entry.item ?? entry.track;
   if (!candidate?.id) {
@@ -361,6 +369,27 @@ var createSpotifyClient = (store) => {
       }
     };
   };
+  const resolvePlaybackDeviceId = async () => {
+    const payload = await spotifyFetch("/me/player/devices");
+    const device = pickPlaybackDevice(payload.devices ?? []);
+    if (!device) {
+      throw new Error(NO_DEVICES_MESSAGE);
+    }
+    if (!device.is_active) {
+      await spotifyFetch("/me/player", {
+        method: "PUT",
+        body: JSON.stringify({ device_ids: [device.id], play: false })
+      });
+    }
+    return device.id;
+  };
+  const startPlayback = async (body) => {
+    const deviceId = await resolvePlaybackDeviceId();
+    await spotifyFetch(`/me/player/play?device_id=${encodeURIComponent(deviceId)}`, {
+      method: "PUT",
+      body: JSON.stringify(body)
+    });
+  };
   const createPlaylist = async (name, trackIds) => {
     const created = await spotifyFetch("/me/playlists", {
       method: "POST",
@@ -387,10 +416,7 @@ var createSpotifyClient = (store) => {
     const uris = trackIds.map((id) => `spotify:track:${id}`);
     if (trackIds.length <= 100) {
       try {
-        await spotifyFetch("/me/player/play", {
-          method: "PUT",
-          body: JSON.stringify({ uris })
-        });
+        await startPlayback({ uris });
         return {
           playlistName: SPOTIFY_NOW_PLAYING_PLAYLIST_NAME,
           matchedCount: trackIds.length,
@@ -405,12 +431,9 @@ var createSpotifyClient = (store) => {
       }
     }
     const playlist = await createPlaylist(SPOTIFY_NOW_PLAYING_PLAYLIST_NAME, trackIds);
-    await spotifyFetch("/me/player/play", {
-      method: "PUT",
-      body: JSON.stringify({
-        context_uri: `spotify:playlist:${playlist.playlistId}`,
-        offset: { position: 0 }
-      })
+    await startPlayback({
+      context_uri: `spotify:playlist:${playlist.playlistId}`,
+      offset: { position: 0 }
     });
     return {
       playlistName: playlist.playlistName,

@@ -1266,7 +1266,19 @@ export const MusicCueTool = () => {
     }
   };
 
+  const clearDrawnPath = () => {
+    strokeRef.current = [];
+    savedStrokeRef.current = [];
+    setStroke([]);
+    setStrokeLayoutConfig(null);
+    setIsDrawingNewPath(false);
+    isDrawingRef.current = false;
+  };
+
   const updateLayoutConfig = (nextConfig: LayoutConfig, message?: string) => {
+    if (layoutConfigKey(layoutConfig) !== layoutConfigKey(nextConfig)) {
+      clearDrawnPath();
+    }
     setLayoutConfig(nextConfig);
     saveLayoutConfig(nextConfig);
     if (message) {
@@ -1404,10 +1416,7 @@ export const MusicCueTool = () => {
   };
 
   const handleClear = () => {
-    strokeRef.current = [];
-    savedStrokeRef.current = [];
-    setStroke([]);
-    setStrokeLayoutConfig(null);
+    clearDrawnPath();
     setCue(null);
     setSelectedSongId(null);
     clearUndo();
@@ -1415,7 +1424,6 @@ export const MusicCueTool = () => {
     setActivePersistentId(null);
     setPlaybackTrackingEnabled(false);
     playbackTrackingRef.current = { persistentId: null, cueIndex: -1 };
-    setIsDrawingNewPath(false);
     setStatusMessage("Cleared graph path and cue.");
   };
 

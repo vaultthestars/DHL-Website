@@ -42,6 +42,30 @@ type SpotifyPlaylistSummary = {
   collaborative?: boolean;
 };
 
+type SpotifyDevice = {
+  id: string;
+  is_active: boolean;
+  is_restricted: boolean;
+  name: string;
+  type: string;
+  volume_percent: number | null;
+};
+
+const NO_DEVICES_MESSAGE =
+  "No Spotify devices found. Open the Spotify app, play any song once, then try Play again.";
+
+const pickPlaybackDevice = (devices: SpotifyDevice[]): SpotifyDevice | null => {
+  const available = devices.filter((device) => device.id && !device.is_restricted);
+  if (available.length === 0) {
+    return null;
+  }
+  return (
+    available.find((device) => device.is_active) ??
+    available.find((device) => device.type === "Computer") ??
+    available[0]
+  );
+};
+
 const getPlaylistItemTrack = (entry: SpotifyPlaylistItem): SpotifyTrack | null => {
   const candidate = (entry.item ?? entry.track) as (SpotifyTrack & { type?: string }) | null;
   if (!candidate?.id) {
@@ -395,6 +419,31 @@ export const createSpotifyClient = (store: SpotifySessionStore) => {
     };
   };
 
+  const resolvePlaybackDeviceId = async (): Promise<string> => {
+    const payload = await spotifyFetch<{ devices: SpotifyDevice[] }>("/me/player/devices");
+    const device = pickPlaybackDevice(payload.devices ?? []);
+    if (!device) {
+      throw new Error(NO_DEVICES_MESSAGE);
+    }
+
+    if (!device.is_active) {
+      await spotifyFetch("/me/player", {
+        method: "PUT",
+        body: JSON.stringify({ device_ids: [device.id], play: false }),
+      });
+    }
+
+    return device.id;
+  };
+
+  const startPlayback = async (body: Record<string, unknown>): Promise<void> => {
+    const deviceId = await resolvePlaybackDeviceId();
+    await spotifyFetch(`/me/player/play?device_id=${encodeURIComponent(deviceId)}`, {
+      method: "PUT",
+      body: JSON.stringify(body),
+    });
+  };
+
   const createPlaylist = async (name: string, trackIds: string[]) => {
     const created = await spotifyFetch<{ id: string; name: string }>("/me/playlists", {
       method: "POST",
@@ -424,10 +473,7 @@ export const createSpotifyClient = (store: SpotifySessionStore) => {
 
     if (trackIds.length <= 100) {
       try {
-        await spotifyFetch("/me/player/play", {
-          method: "PUT",
-          body: JSON.stringify({ uris }),
-        });
+        await startPlayback({ uris });
         return {
           playlistName: SPOTIFY_NOW_PLAYING_PLAYLIST_NAME,
           matchedCount: trackIds.length,
@@ -444,12 +490,9 @@ export const createSpotifyClient = (store: SpotifySessionStore) => {
     }
 
     const playlist = await createPlaylist(SPOTIFY_NOW_PLAYING_PLAYLIST_NAME, trackIds);
-    await spotifyFetch("/me/player/play", {
-      method: "PUT",
-      body: JSON.stringify({
-        context_uri: `spotify:playlist:${playlist.playlistId}`,
-        offset: { position: 0 },
-      }),
+    await startPlayback({
+      context_uri: `spotify:playlist:${playlist.playlistId}`,
+      offset: { position: 0 },
     });
     return {
       playlistName: playlist.playlistName,
