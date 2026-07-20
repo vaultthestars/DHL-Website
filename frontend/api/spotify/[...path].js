@@ -322,29 +322,6 @@ var createSpotifyClient = (store) => {
       }
     } catch {
     }
-    const audioFeaturesByTrack = /* @__PURE__ */ new Map();
-    const trackIds = [...trackById.keys()];
-    try {
-      for (let index = 0; index < trackIds.length; index += 100) {
-        const chunk = trackIds.slice(index, index + 100);
-        const payload = await spotifyFetch(`/audio-features?ids=${chunk.join(",")}`);
-        payload.audio_features.forEach((features) => {
-          if (!features?.id) {
-            return;
-          }
-          audioFeaturesByTrack.set(features.id, {
-            acousticness: features.acousticness,
-            danceability: features.danceability,
-            energy: features.energy,
-            instrumentalness: features.instrumentalness,
-            liveness: features.liveness,
-            tempo: features.tempo,
-            valence: features.valence
-          });
-        });
-      }
-    } catch {
-    }
     const songs = [...trackById.entries()].map(([trackId, track]) => {
       const primaryArtist = track.artists[0];
       const genres = primaryArtist ? genresByArtist.get(primaryArtist.id) ?? [] : [];
@@ -362,8 +339,7 @@ var createSpotifyClient = (store) => {
         dateAdded: savedItem?.added_at ?? "",
         trackType: "File",
         durationMs: track.duration_ms,
-        playlists: [...trackPlaylists.get(trackId) ?? []],
-        audioFeatures: audioFeaturesByTrack.get(trackId)
+        playlists: [...trackPlaylists.get(trackId) ?? []]
       };
     });
     const genreCounts = {};
@@ -386,8 +362,7 @@ var createSpotifyClient = (store) => {
     };
   };
   const createPlaylist = async (name, trackIds) => {
-    const profile = await spotifyFetch("/me");
-    const created = await spotifyFetch(`/users/${profile.id}/playlists`, {
+    const created = await spotifyFetch("/me/playlists", {
       method: "POST",
       body: JSON.stringify({ name, public: false, description: "Created by Music Cue" })
     });
@@ -408,6 +383,26 @@ var createSpotifyClient = (store) => {
   const playCue = async (trackIds) => {
     if (trackIds.length === 0) {
       throw new Error("No tracks to play.");
+    }
+    const uris = trackIds.map((id) => `spotify:track:${id}`);
+    if (trackIds.length <= 100) {
+      try {
+        await spotifyFetch("/me/player/play", {
+          method: "PUT",
+          body: JSON.stringify({ uris })
+        });
+        return {
+          playlistName: SPOTIFY_NOW_PLAYING_PLAYLIST_NAME,
+          matchedCount: trackIds.length,
+          requestedCount: trackIds.length,
+          matchedTrackIds: trackIds
+        };
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Could not start playback.";
+        if (!message.includes("403") && !message.includes("404")) {
+          throw error;
+        }
+      }
     }
     const playlist = await createPlaylist(SPOTIFY_NOW_PLAYING_PLAYLIST_NAME, trackIds);
     await spotifyFetch("/me/player/play", {

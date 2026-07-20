@@ -396,8 +396,7 @@ export const createSpotifyClient = (store: SpotifySessionStore) => {
   };
 
   const createPlaylist = async (name: string, trackIds: string[]) => {
-    const profile = await spotifyFetch<{ id: string }>("/me");
-    const created = await spotifyFetch<{ id: string; name: string }>(`/users/${profile.id}/playlists`, {
+    const created = await spotifyFetch<{ id: string; name: string }>("/me/playlists", {
       method: "POST",
       body: JSON.stringify({ name, public: false, description: "Created by Music Cue" }),
     });
@@ -420,6 +419,30 @@ export const createSpotifyClient = (store: SpotifySessionStore) => {
     if (trackIds.length === 0) {
       throw new Error("No tracks to play.");
     }
+
+    const uris = trackIds.map((id) => `spotify:track:${id}`);
+
+    if (trackIds.length <= 100) {
+      try {
+        await spotifyFetch("/me/player/play", {
+          method: "PUT",
+          body: JSON.stringify({ uris }),
+        });
+        return {
+          playlistName: SPOTIFY_NOW_PLAYING_PLAYLIST_NAME,
+          matchedCount: trackIds.length,
+          requestedCount: trackIds.length,
+          matchedTrackIds: trackIds,
+        };
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Could not start playback.";
+        if (!message.includes("403") && !message.includes("404")) {
+          throw error;
+        }
+        // Fall back to playlist context for devices that reject direct URIs.
+      }
+    }
+
     const playlist = await createPlaylist(SPOTIFY_NOW_PLAYING_PLAYLIST_NAME, trackIds);
     await spotifyFetch("/me/player/play", {
       method: "PUT",
