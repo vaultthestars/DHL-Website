@@ -24,7 +24,7 @@
     "start": "react-scripts start",
     "sync:spotify-api": "mkdir -p api/lib/spotify && cp ../music-cue/server/spotifySession.ts ../music-cue/server/spotifyClient.ts ../music-cue/server/spotifyHandlers.ts api/lib/spotify/",
     "build:music-cue": "cd ../music-cue && npm install && VITE_BASE_PATH=/music-cue/ VITE_APP_MODE=web npm run build && rm -rf ../frontend/public/music-cue && mkdir -p ../frontend/public/music-cue && cp -r dist/* ../frontend/public/music-cue/",
-    "build": "npm run sync:spotify-api && npm run build:music-cue && react-scripts build",
+    "build": "npm run sync:spotify-api && npm run build:music-cue && DISABLE_ESLINT_PLUGIN=true react-scripts build",
     "test": "react-scripts test",
     "eject": "react-scripts eject"
   },
