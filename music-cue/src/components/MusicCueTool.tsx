@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { buildClusterRegions, ClusterRegion } from "../lib/clusterRegions";
+import { syncClusterLayoutToServer } from "../lib/clusterLayoutSync";
 import {
   getLayoutAxisLabels,
   GraphDimensions,
@@ -49,6 +50,7 @@ import {
   isClusterView,
   layoutConfigKey,
   migrateLegacyLayoutMode,
+  normalizeLayoutConfigForService,
 } from "../lib/layoutMetrics";
 import {
   AxisMetric,
@@ -262,6 +264,7 @@ export const MusicCueTool = () => {
   const [stats, setStats] = useState<LibraryStats>(() => normalizeStats(initialLibrary.stats, initialSongs));
   const [layoutConfig, setLayoutConfig] = useState<LayoutConfig>(() => loadLayoutConfig(initialMusicService));
   const [clusterOverrides, setClusterOverrides] = useState<ClusterCenterOverrides>(() => loadClusterCenterOverrides());
+  const clusterOverridesRef = useRef(clusterOverrides);
   const [pathThreshold, setPathThreshold] = useState(() => loadPathThreshold());
   const [stroke, setStroke] = useState<GraphPoint[]>([]);
   const [strokeLayoutConfig, setStrokeLayoutConfig] = useState<LayoutConfig | null>(null);
@@ -306,6 +309,23 @@ export const MusicCueTool = () => {
   useEffect(() => {
     cueRef.current = cue;
   }, [cue]);
+
+  useEffect(() => {
+    clusterOverridesRef.current = clusterOverrides;
+  }, [clusterOverrides]);
+
+  useEffect(() => {
+    if (isWebDeployment) {
+      return;
+    }
+    const hasStoredLayout =
+      localStorage.getItem("music-cue-genre-cluster-layout") ||
+      localStorage.getItem("music-cue-playlist-cluster-layout");
+    if (!hasStoredLayout) {
+      return;
+    }
+    void syncClusterLayoutToServer(clusterOverridesRef.current);
+  }, []);
 
   useEffect(() => {
     if (musicService !== "spotify") {
@@ -1076,6 +1096,7 @@ export const MusicCueTool = () => {
         if (layoutConfig.viewMode === "cluster" && layoutConfig.clusterMode === "genre") {
           const next = { ...current, genre: { ...current.genre, ...updates } };
           saveGenreClusterCenterOverrides(next.genre);
+          clusterOverridesRef.current = next;
           return next;
         }
         if (layoutConfig.viewMode === "cluster" && layoutConfig.clusterMode === "playlist") {
@@ -1085,6 +1106,7 @@ export const MusicCueTool = () => {
           };
           savePlaylistClusterCenterOverrides(next.playlist);
           invalidatePlaylistOverlapLayoutCache();
+          clusterOverridesRef.current = next;
           return next;
         }
         return current;
@@ -1154,6 +1176,9 @@ export const MusicCueTool = () => {
       draggingClusterIdRef.current = null;
       clusterDragSessionRef.current = null;
       setStatusMessage("Cluster position saved.");
+      if (!isWebDeployment) {
+        void syncClusterLayoutToServer(clusterOverridesRef.current);
+      }
       return;
     }
 
@@ -1231,7 +1256,9 @@ export const MusicCueTool = () => {
     }
     setMusicService(serviceId);
     saveMusicService(serviceId);
-    setLayoutConfig(loadLayoutConfig(serviceId));
+    const nextLayoutConfig = normalizeLayoutConfigForService(loadLayoutConfig(serviceId), serviceId);
+    setLayoutConfig(nextLayoutConfig);
+    saveLayoutConfig(nextLayoutConfig);
     setGenreFilter("");
     const library = loadLibrary(serviceId);
     const nextSongs = normalizeSongs(library.songs, library.stats);

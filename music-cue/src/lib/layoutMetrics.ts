@@ -25,6 +25,24 @@ export const getAxisMetricsForService = (serviceId: MusicServiceId): AxisMetric[
 export const getClusterModesForService = (serviceId: MusicServiceId): ClusterMode[] =>
   serviceId === "spotify" ? ["playlist"] : ["genre", "playlist"];
 
+export const normalizeLayoutConfigForService = (
+  config: LayoutConfig,
+  serviceId: MusicServiceId
+): LayoutConfig => {
+  const defaults = defaultLayoutConfig(serviceId);
+  const allowedMetrics = getAxisMetricsForService(serviceId);
+  const allowedClusterModes = getClusterModesForService(serviceId);
+
+  return {
+    viewMode: config.viewMode === "axis" ? "axis" : "cluster",
+    clusterMode: allowedClusterModes.includes(config.clusterMode)
+      ? config.clusterMode
+      : allowedClusterModes[0],
+    axisX: allowedMetrics.includes(config.axisX) ? config.axisX : defaults.axisX,
+    axisY: allowedMetrics.includes(config.axisY) ? config.axisY : defaults.axisY,
+  };
+};
+
 export const defaultLayoutConfig = (serviceId: MusicServiceId): LayoutConfig =>
   serviceId === "spotify"
     ? { viewMode: "cluster", clusterMode: "playlist", axisX: "year", axisY: "year" }
@@ -86,48 +104,39 @@ export const migrateLegacyLayoutMode = (
   if (!stored) {
     return defaults;
   }
+
+  let config = defaults;
   if (stored.startsWith("{")) {
     try {
       const parsed = JSON.parse(stored) as Partial<LayoutConfig>;
-      const allowedMetrics = getAxisMetricsForService(serviceId);
-      return {
+      config = {
         viewMode: parsed.viewMode === "axis" ? "axis" : "cluster",
-        clusterMode:
-          parsed.clusterMode === "playlist" || (serviceId === "spotify" && parsed.clusterMode !== "genre")
-            ? "playlist"
-            : "genre",
-        axisX: allowedMetrics.includes(parsed.axisX as AxisMetric)
-          ? (parsed.axisX as AxisMetric)
-          : defaults.axisX,
-        axisY: allowedMetrics.includes(parsed.axisY as AxisMetric)
-          ? (parsed.axisY as AxisMetric)
-          : defaults.axisY,
+        clusterMode: parsed.clusterMode === "playlist" ? "playlist" : "genre",
+        axisX: (parsed.axisX as AxisMetric) ?? defaults.axisX,
+        axisY: (parsed.axisY as AxisMetric) ?? defaults.axisY,
       };
     } catch {
       return defaults;
     }
-  }
-  if (stored === "genre" || stored === "genre-year" || stored === "custom") {
-    return { ...defaults, viewMode: "cluster", clusterMode: "genre" };
-  }
-  if (stored === "playlist") {
-    return { ...defaults, viewMode: "cluster", clusterMode: "playlist" };
-  }
-  if (stored === "year" || stored === "year-playcount") {
-    return {
+  } else if (stored === "genre" || stored === "genre-year" || stored === "custom") {
+    config = { ...defaults, viewMode: "cluster", clusterMode: "genre" };
+  } else if (stored === "playlist") {
+    config = { ...defaults, viewMode: "cluster", clusterMode: "playlist" };
+  } else if (stored === "year" || stored === "year-playcount") {
+    config = {
       ...defaults,
       viewMode: "axis",
       axisX: "year",
       axisY: serviceId === "spotify" ? "year" : "plays",
     };
-  }
-  if (stored === "plays") {
-    return {
+  } else if (stored === "plays") {
+    config = {
       ...defaults,
       viewMode: "axis",
       axisX: serviceId === "spotify" ? "year" : "plays",
       axisY: serviceId === "spotify" ? "year" : "year",
     };
   }
-  return defaults;
+
+  return normalizeLayoutConfigForService(config, serviceId);
 };

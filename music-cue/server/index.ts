@@ -25,6 +25,7 @@ import {
   parseValidateTracksResult,
 } from "./musicApp.js";
 
+import { readClusterLayoutFile, writeClusterLayoutFile } from "./clusterLayout.js";
 import { spotifyRouter } from "./spotifyRoutes.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -75,6 +76,21 @@ app.use("/api/spotify", spotifyRouter);
 
 app.get("/api/health", (_req, res) => {
   res.json({ ok: true, platform: process.platform });
+});
+
+app.get("/api/cluster-layout", (_req, res) => {
+  res.json(readClusterLayoutFile());
+});
+
+app.put("/api/cluster-layout", (req, res) => {
+  const genre = req.body?.genre;
+  const playlist = req.body?.playlist;
+  if (!genre || typeof genre !== "object" || !playlist || typeof playlist !== "object") {
+    res.status(400).json({ error: "genre and playlist objects are required." });
+    return;
+  }
+  writeClusterLayoutFile({ genre, playlist });
+  res.json({ ok: true });
 });
 
 app.get("/api/music/ping", async (_req, res) => {

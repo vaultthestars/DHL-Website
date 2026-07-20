@@ -1,3 +1,4 @@
+import bundledClusterLayout from "../data/cluster-layout.json";
 import { MusicServiceId } from "./musicProvider";
 import {
   ClusterCenterOverrides,
@@ -8,6 +9,7 @@ import {
   Song,
 } from "./types";
 import { defaultLayoutConfig, migrateLegacyLayoutMode } from "./layoutMetrics";
+import { isWebDeployment } from "./runtime";
 
 const MUSIC_SERVICE_KEY = "music-cue-music-service";
 const libraryKey = (serviceId: MusicServiceId): string => `music-cue-library-${serviceId}`;
@@ -88,10 +90,33 @@ const loadClusterCenterMap = (key: string): Record<string, NormalizedPoint> => {
   }
 };
 
-export const loadClusterCenterOverrides = (): ClusterCenterOverrides => ({
-  genre: loadClusterCenterMap(GENRE_CLUSTER_LAYOUT_KEY),
-  playlist: loadClusterCenterMap(PLAYLIST_CLUSTER_LAYOUT_KEY),
+const mergeClusterCenterMaps = (
+  base: Record<string, NormalizedPoint>,
+  overrides: Record<string, NormalizedPoint>
+): Record<string, NormalizedPoint> => ({
+  ...base,
+  ...overrides,
 });
+
+const bundledClusterDefaults = (): ClusterCenterOverrides =>
+  isWebDeployment
+    ? {
+        genre: bundledClusterLayout.genre,
+        playlist: bundledClusterLayout.playlist,
+      }
+    : { genre: {}, playlist: {} };
+
+export const loadClusterCenterOverrides = (): ClusterCenterOverrides => {
+  const stored: ClusterCenterOverrides = {
+    genre: loadClusterCenterMap(GENRE_CLUSTER_LAYOUT_KEY),
+    playlist: loadClusterCenterMap(PLAYLIST_CLUSTER_LAYOUT_KEY),
+  };
+  const defaults = bundledClusterDefaults();
+  return {
+    genre: mergeClusterCenterMaps(defaults.genre, stored.genre),
+    playlist: mergeClusterCenterMaps(defaults.playlist, stored.playlist),
+  };
+};
 
 export const saveGenreClusterCenterOverrides = (positions: Record<string, NormalizedPoint>): void => {
   localStorage.setItem(GENRE_CLUSTER_LAYOUT_KEY, JSON.stringify(positions));
