@@ -238,6 +238,10 @@ const axisMetricPosition = (
   dimensions: GraphDimensions,
   songs: Song[]
 ): { x: number; y: number } => {
+  if (layoutConfig.axisX === "year" && layoutConfig.axisY === "year") {
+    return yearTimelinePosition(song, stats, dimensions);
+  }
+
   const usableWidth = dimensions.width - GRAPH_PADDING * 2;
   const usableHeight = dimensions.height - GRAPH_PADDING * 2;
   const xRange = getMetricRange(songs, layoutConfig.axisX, stats);
@@ -304,6 +308,9 @@ export const getLayoutAxisLabels = (
       x: layoutConfig.clusterMode === "playlist" ? "playlist overlap clusters" : "",
       y: "",
     };
+  }
+  if (layoutConfig.axisX === "year" && layoutConfig.axisY === "year") {
+    return { x: "Year →", y: "" };
   }
   return {
     x: `${getAxisMetricLabel(layoutConfig.axisX, serviceId)} →`,

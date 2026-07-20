@@ -11,6 +11,7 @@ import { UNASSIGNED_PLAYLIST_CLUSTER_ID, EXCLUDED_PLAYLIST_NAMES } from "../lib/
 import { applyPlaybackAdvance } from "../lib/cuePlaybackTracking";
 import { formatDuration, sumDuration } from "../lib/formatDuration";
 import { getSongNodeFill } from "../lib/graphColors";
+import { generateCueFromStroke } from "../lib/pathGenerator";
 import { MusicServiceId } from "../lib/musicProvider";
 import { getMusicProvider } from "../lib/providers";
 import {
@@ -36,12 +37,9 @@ import {
   savePlaylistClusterCenterOverrides,
 } from "../lib/storage";
 import {
-  countSongsWithAudioFeatures,
   getAxisMetricLabel,
   getAxisMetricsForService,
   getClusterModesForService,
-  getMetricCoverage,
-  isAudioFeatureMetric,
   isClusterView,
   layoutConfigKey,
   migrateLegacyLayoutMode,
@@ -206,6 +204,7 @@ export const MusicCueTool = () => {
     graphStart: GraphPoint;
     shiftHeld: boolean;
     metaShiftHeld: boolean;
+    spaceHeld: boolean;
     boxEnd?: GraphPoint;
     mode: "pending" | "pan" | "draw" | "box-select";
   } | null>(null);
@@ -264,6 +263,7 @@ export const MusicCueTool = () => {
   const [isImporting, setIsImporting] = useState(false);
   const [isPanning, setIsPanning] = useState(false);
   const [shiftHeld, setShiftHeld] = useState(false);
+  const [spaceHeld, setSpaceHeld] = useState(false);
   const [boxSelectRect, setBoxSelectRect] = useState<BoxSelectRect | null>(null);
   const [selectedClusterIds, setSelectedClusterIds] = useState<Set<string>>(() => new Set());
 
@@ -299,6 +299,18 @@ export const MusicCueTool = () => {
         setShiftHeld(true);
         return;
       }
+      if (event.key === " " || event.code === "Space") {
+        const target = event.target;
+        const isTyping =
+          target instanceof HTMLInputElement ||
+          target instanceof HTMLTextAreaElement ||
+          target instanceof HTMLSelectElement;
+        if (!isTyping) {
+          event.preventDefault();
+          setSpaceHeld(true);
+        }
+        return;
+      }
 
       const target = event.target;
       const isTyping =
@@ -331,6 +343,9 @@ export const MusicCueTool = () => {
     const handleKeyUp = (event: KeyboardEvent) => {
       if (event.key === "Shift") {
         setShiftHeld(false);
+      }
+      if (event.key === " " || event.code === "Space") {
+        setSpaceHeld(false);
       }
     };
 
@@ -622,30 +637,6 @@ export const MusicCueTool = () => {
     activePathLayoutConfig !== null &&
     layoutConfigKey(layoutConfig) === layoutConfigKey(activePathLayoutConfig);
 
-  const axisMetricWarning = useMemo(() => {
-    if (layoutConfig.viewMode !== "axis" || musicService !== "spotify") {
-      return null;
-    }
-    const metrics = [layoutConfig.axisX, layoutConfig.axisY].filter(isAudioFeatureMetric);
-    if (metrics.length === 0) {
-      return null;
-    }
-    const coverage = Math.min(...metrics.map((metric) => getMetricCoverage(songs, metric)));
-    if (coverage >= 0.9) {
-      return null;
-    }
-    if (coverage === 0) {
-      return "Spotify blocked audio features for this app (common in Development Mode). Use Year or Popularity axes, or reload after extended API access.";
-    }
-    return `Only ${Math.round(coverage * 100)}% of tracks have audio features loaded. Reload library or try Year / Popularity axes.`;
-  }, [layoutConfig, musicService, songs]);
-
-  useEffect(() => {
-    if (axisMetricWarning) {
-      setStatusMessage(axisMetricWarning);
-    }
-  }, [axisMetricWarning]);
-
   const axisLabels = getLayoutAxisLabels(layoutConfig, musicService);
   const showLabels = visibleSongs.length <= LABEL_THRESHOLD;
 
@@ -789,7 +780,7 @@ export const MusicCueTool = () => {
         return;
       }
 
-      setStatusMessage("Path mode: shift-drag to draw a path, then select nodes to insert.");
+      setStatusMessage("Path mode: drag on the graph to draw a path. Hold space while dragging to pan.");
     },
     [clearUndo]
   );
@@ -1012,6 +1003,7 @@ export const MusicCueTool = () => {
       graphStart: point,
       shiftHeld: event.shiftKey,
       metaShiftHeld: (event.metaKey || event.ctrlKey) && event.shiftKey,
+      spaceHeld: spaceHeld,
       mode: "pending",
     };
     svgRef.current.setPointerCapture(event.pointerId);
@@ -1085,7 +1077,7 @@ export const MusicCueTool = () => {
           x2: point.x,
           y2: point.y,
         });
-      } else if (session.shiftHeld && buildMode === "path" && visibleSongs.length > 0) {
+      } else if (buildMode === "path" && visibleSongs.length > 0 && !session.spaceHeld) {
         session.mode = "draw";
         beginNewStroke(session.graphStart);
         appendStrokePoint(getLocalPoint(event, svgRef.current, contentGroupRef.current));
@@ -1242,17 +1234,10 @@ export const MusicCueTool = () => {
     setIsImporting(true);
     try {
       const loaded = await musicProvider.loadLibrary();
-      const featureCount = loaded.audioFeaturesCount ?? countSongsWithAudioFeatures(loaded.songs);
-      const featureMessage =
-        featureCount > 0
-          ? ` Audio features loaded for ${featureCount} tracks.`
-          : loaded.audioFeaturesError
-            ? " Spotify blocked audio features — use Year or Popularity in axis mode."
-            : " No audio features returned — try Year or Popularity in axis mode.";
       applyLoadedLibrary(
         loaded.songs,
         loaded.stats,
-        `Loaded ${loaded.songs.length} saved tracks and ${loaded.stats.playlistIds.length} playlists from Spotify.${featureMessage}`
+        `Loaded ${loaded.songs.length} saved tracks and ${loaded.stats.playlistIds.length} playlists from Spotify.`
       );
     } catch (error) {
       setStatusMessage(error instanceof Error ? error.message : "Could not load Spotify library.");
@@ -1301,6 +1286,13 @@ export const MusicCueTool = () => {
         nextConfig.clusterMode === "playlist"
           ? `Playlist overlap layout (${stats.playlistIds.length} playlists).`
           : "Genre cluster layout — drag labels to move groups."
+      );
+      return;
+    }
+    if (musicService === "spotify") {
+      updateLayoutConfig(
+        { ...nextConfig, axisX: "year", axisY: "year" },
+        "Axis layout — year timeline."
       );
       return;
     }
@@ -1498,9 +1490,11 @@ export const MusicCueTool = () => {
                     : " · Spotify not configured on server"
                 : ""}
               {visibleSongs.length > LABEL_THRESHOLD ? " · hover nodes for titles" : ""}
-              {" · drag to pan · scroll to zoom"}
+              {buildMode === "path"
+                ? " · drag to draw path · space-drag to pan · scroll to zoom"
+                : " · drag to pan · scroll to zoom"}
               {isClusterLayout ? " · drag labels to move clusters · ⌘⇧ drag to box-select" : ""}
-              {buildMode === "path" ? " · shift-drag to draw" : " · click nodes to add"}
+              {buildMode === "manual" ? " · click nodes to add" : ""}
             </p>
           </div>
 
@@ -1585,6 +1579,8 @@ export const MusicCueTool = () => {
                 </button>
               ))}
             </div>
+          ) : musicService === "spotify" ? (
+            <p className="music-cue-axis-note">Year timeline — songs spread left to right by release year.</p>
           ) : (
             <div className="music-cue-filters music-cue-axis-selectors">
               <label>
@@ -1656,7 +1652,7 @@ export const MusicCueTool = () => {
           <svg
             ref={svgRef}
             className={`music-cue-graph ${isPanning ? "music-cue-graph-panning" : ""} ${
-              shiftHeld && buildMode === "path" ? "music-cue-graph-draw-ready" : ""
+              buildMode === "path" && !spaceHeld ? "music-cue-graph-draw-ready" : ""
             }`}
             width={dimensions.width}
             height={dimensions.height}
@@ -1721,7 +1717,7 @@ export const MusicCueTool = () => {
                 />
               ))}
 
-              {showPathOverlays && strokePath && (
+              {strokePath && (
                 <path
                   d={strokePath}
                   className={`music-cue-stroke ${isDrawingNewPath ? "music-cue-stroke-drafting" : ""}`}

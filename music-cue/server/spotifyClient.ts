@@ -92,8 +92,6 @@ export type SpotifyLibraryStats = {
 export type SpotifyLibraryPayload = {
   songs: SpotifyLibrarySong[];
   stats: SpotifyLibraryStats;
-  audioFeaturesCount: number;
-  audioFeaturesError?: string | null;
 };
 
 export type SpotifySessionStore = {
@@ -356,54 +354,6 @@ export const createSpotifyClient = (store: SpotifySessionStore) => {
       // Genre lookup is optional; some Spotify app modes block /artists.
     }
 
-    const audioFeaturesByTrack = new Map<
-      string,
-      {
-        acousticness: number;
-        danceability: number;
-        energy: number;
-        instrumentalness: number;
-        liveness: number;
-        tempo: number;
-        valence: number;
-      }
-    >();
-    const trackIds = [...trackById.keys()];
-    let audioFeaturesError: string | null = null;
-    try {
-      for (let index = 0; index < trackIds.length; index += 100) {
-        const chunk = trackIds.slice(index, index + 100);
-        const payload = await spotifyFetch<{
-          audio_features: ({
-            id: string;
-            acousticness: number;
-            danceability: number;
-            energy: number;
-            instrumentalness: number;
-            liveness: number;
-            tempo: number;
-            valence: number;
-          } | null)[];
-        }>(`/audio-features?ids=${chunk.join(",")}`);
-        payload.audio_features.forEach((features) => {
-          if (!features?.id) {
-            return;
-          }
-          audioFeaturesByTrack.set(features.id, {
-            acousticness: features.acousticness,
-            danceability: features.danceability,
-            energy: features.energy,
-            instrumentalness: features.instrumentalness,
-            liveness: features.liveness,
-            tempo: features.tempo,
-            valence: features.valence,
-          });
-        });
-      }
-    } catch (error) {
-      audioFeaturesError = error instanceof Error ? error.message : "Audio features unavailable.";
-    }
-
     const songs: SpotifyLibrarySong[] = [...trackById.entries()].map(([trackId, track]) => {
       const primaryArtist = track.artists[0];
       const genres = primaryArtist ? genresByArtist.get(primaryArtist.id) ?? [] : [];
@@ -422,7 +372,6 @@ export const createSpotifyClient = (store: SpotifySessionStore) => {
         trackType: "File",
         durationMs: track.duration_ms,
         playlists: [...(trackPlaylists.get(trackId) ?? [])],
-        audioFeatures: audioFeaturesByTrack.get(trackId),
       };
     });
 
@@ -443,8 +392,6 @@ export const createSpotifyClient = (store: SpotifySessionStore) => {
         playlistNames,
         playlistCounts,
       },
-      audioFeaturesCount: audioFeaturesByTrack.size,
-      audioFeaturesError,
     };
   };
 

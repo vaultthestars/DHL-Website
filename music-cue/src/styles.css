@@ -441,6 +441,13 @@ body {
   font-weight: 700;
 }
 
+.music-cue-axis-note {
+  margin: 0;
+  font-size: 11px;
+  color: #404040;
+  align-self: center;
+}
+
 .music-cue-stroke {
   fill: none;
   stroke: #008080;

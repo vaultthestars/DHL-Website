@@ -1,17 +1,8 @@
 import { MusicServiceId } from "./musicProvider";
-import { AxisMetric, AudioFeatures, ClusterMode, LayoutConfig, LibraryStats, Song, ViewMode } from "./types";
+import { AxisMetric, ClusterMode, LayoutConfig, LibraryStats, Song } from "./types";
 
 export const APPLE_AXIS_METRICS: AxisMetric[] = ["year", "plays"];
-export const SPOTIFY_AUDIO_FEATURE_METRICS: AxisMetric[] = [
-  "acousticness",
-  "danceability",
-  "energy",
-  "instrumentalness",
-  "liveness",
-  "tempo",
-  "valence",
-];
-export const SPOTIFY_AXIS_METRICS: AxisMetric[] = ["year", "plays", ...SPOTIFY_AUDIO_FEATURE_METRICS];
+export const SPOTIFY_AXIS_METRICS: AxisMetric[] = ["year"];
 
 export const AXIS_METRIC_LABELS: Record<AxisMetric, string> = {
   year: "Year",
@@ -25,26 +16,8 @@ export const AXIS_METRIC_LABELS: Record<AxisMetric, string> = {
   valence: "Valence",
 };
 
-export const getAxisMetricLabel = (metric: AxisMetric, serviceId: MusicServiceId): string => {
-  if (metric === "plays" && serviceId === "spotify") {
-    return "Popularity";
-  }
-  return AXIS_METRIC_LABELS[metric];
-};
-
-export const isAudioFeatureMetric = (metric: AxisMetric): boolean =>
-  SPOTIFY_AUDIO_FEATURE_METRICS.includes(metric);
-
-export const getMetricCoverage = (songs: Song[], metric: AxisMetric): number => {
-  if (songs.length === 0) {
-    return 0;
-  }
-  const withValue = songs.filter((song) => getMetricValue(song, metric) !== null).length;
-  return withValue / songs.length;
-};
-
-export const countSongsWithAudioFeatures = (songs: Song[]): number =>
-  songs.filter((song) => song.audioFeatures).length;
+export const getAxisMetricLabel = (metric: AxisMetric, serviceId: MusicServiceId): string =>
+  AXIS_METRIC_LABELS[metric];
 
 export const getAxisMetricsForService = (serviceId: MusicServiceId): AxisMetric[] =>
   serviceId === "spotify" ? SPOTIFY_AXIS_METRICS : APPLE_AXIS_METRICS;
@@ -54,7 +27,7 @@ export const getClusterModesForService = (serviceId: MusicServiceId): ClusterMod
 
 export const defaultLayoutConfig = (serviceId: MusicServiceId): LayoutConfig =>
   serviceId === "spotify"
-    ? { viewMode: "cluster", clusterMode: "playlist", axisX: "year", axisY: "plays" }
+    ? { viewMode: "cluster", clusterMode: "playlist", axisX: "year", axisY: "year" }
     : { viewMode: "cluster", clusterMode: "genre", axisX: "year", axisY: "plays" };
 
 export const layoutConfigKey = (config: LayoutConfig): string =>
@@ -116,16 +89,17 @@ export const migrateLegacyLayoutMode = (
   if (stored.startsWith("{")) {
     try {
       const parsed = JSON.parse(stored) as Partial<LayoutConfig>;
+      const allowedMetrics = getAxisMetricsForService(serviceId);
       return {
         viewMode: parsed.viewMode === "axis" ? "axis" : "cluster",
         clusterMode:
           parsed.clusterMode === "playlist" || (serviceId === "spotify" && parsed.clusterMode !== "genre")
             ? "playlist"
             : "genre",
-        axisX: getAxisMetricsForService(serviceId).includes(parsed.axisX as AxisMetric)
+        axisX: allowedMetrics.includes(parsed.axisX as AxisMetric)
           ? (parsed.axisX as AxisMetric)
           : defaults.axisX,
-        axisY: getAxisMetricsForService(serviceId).includes(parsed.axisY as AxisMetric)
+        axisY: allowedMetrics.includes(parsed.axisY as AxisMetric)
           ? (parsed.axisY as AxisMetric)
           : defaults.axisY,
       };
@@ -140,20 +114,20 @@ export const migrateLegacyLayoutMode = (
     return { ...defaults, viewMode: "cluster", clusterMode: "playlist" };
   }
   if (stored === "year" || stored === "year-playcount") {
-    return { ...defaults, viewMode: "axis", axisX: "year", axisY: serviceId === "spotify" ? "energy" : "plays" };
+    return {
+      ...defaults,
+      viewMode: "axis",
+      axisX: "year",
+      axisY: serviceId === "spotify" ? "year" : "plays",
+    };
   }
   if (stored === "plays") {
-    return { ...defaults, viewMode: "axis", axisX: "plays", axisY: serviceId === "spotify" ? "valence" : "year" };
+    return {
+      ...defaults,
+      viewMode: "axis",
+      axisX: serviceId === "spotify" ? "year" : "plays",
+      axisY: serviceId === "spotify" ? "year" : "year",
+    };
   }
   return defaults;
 };
-
-export const emptyAudioFeatures = (): AudioFeatures => ({
-  acousticness: 0,
-  danceability: 0,
-  energy: 0,
-  instrumentalness: 0,
-  liveness: 0,
-  tempo: 0,
-  valence: 0,
-});
