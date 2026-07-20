@@ -1,0 +1,35 @@
+[
+  
+  {
+    "id": "louie-zong-wizard-disco-tThOlp",
+    "title": "WIZARD DISCO",
+    "artist": "Louie Zong",
+    "youtubeVideoId": "tThOlpk0NlI",
+    "energy": 0.5,
+    "valence": 0.5
+  },
+  {
+    "id": "mitski-first-love-late-spring-WCphVz",
+    "title": "First Love/Late Spring",
+    "artist": "Mitski",
+    "youtubeVideoId": "WCphVz0ZGns",
+    "energy": 0.5,
+    "valence": 0.5
+  },
+  {
+    "id": "mitski-francis-forever-UMJm_9",
+    "title": "Francis Forever",
+    "artist": "Mitski",
+    "youtubeVideoId": "UMJm_97QXHA",
+    "energy": 0.5,
+    "valence": 0.5
+  },
+  {
+    "id": "chopping-spree-chopping-spree-koi-fish-official--QmuP53",
+    "title": "Chopping Spree! - Koi Fish (Official Music Video)",
+    "artist": "Chopping Spree!",
+    "youtubeVideoId": "QmuP53a5KgQ",
+    "energy": 0.5,
+    "valence": 0.5
+  }
+]
