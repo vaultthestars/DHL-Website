@@ -312,12 +312,15 @@ var createSpotifyClient = (store) => {
     const artistIds = [...trackById.values()].flatMap((track) => track.artists.map((artist) => artist.id));
     const genresByArtist = /* @__PURE__ */ new Map();
     const uniqueArtistIds = [...new Set(artistIds)];
-    for (let index = 0; index < uniqueArtistIds.length; index += 50) {
-      const chunk = uniqueArtistIds.slice(index, index + 50);
-      const payload = await spotifyFetch(
-        `/artists?ids=${chunk.join(",")}`
-      );
-      payload.artists.forEach((artist) => genresByArtist.set(artist.id, artist.genres ?? []));
+    try {
+      for (let index = 0; index < uniqueArtistIds.length; index += 50) {
+        const chunk = uniqueArtistIds.slice(index, index + 50);
+        const payload = await spotifyFetch(
+          `/artists?ids=${chunk.join(",")}`
+        );
+        payload.artists.forEach((artist) => genresByArtist.set(artist.id, artist.genres ?? []));
+      }
+    } catch {
     }
     const songs = [...trackById.entries()].map(([trackId, track]) => {
       const primaryArtist = track.artists[0];
