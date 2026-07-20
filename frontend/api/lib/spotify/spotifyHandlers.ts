@@ -1,4 +1,4 @@
-import { createCookieSessionStore, createSpotifyClient, isSpotifyConfigured } from "./spotifyClient.js";
+import { createCookieSessionStore, createSpotifyClient, isSpotifyConfigured } from "./spotifyClient";
 
 type HandlerRequest = {
   method?: string;

@@ -2,7 +2,7 @@ import {
   SpotifyTokens,
   buildSpotifySessionSetCookie,
   getSpotifySessionCookie,
-} from "./spotifySession.js";
+} from "./spotifySession";
 
 const SPOTIFY_ACCOUNTS_URL = "https://accounts.spotify.com";
 const SPOTIFY_API_URL = "https://api.spotify.com/v1";
