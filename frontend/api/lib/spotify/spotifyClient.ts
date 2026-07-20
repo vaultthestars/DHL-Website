@@ -30,8 +30,27 @@ type SpotifyTrack = {
   album: { name: string; release_date: string };
 };
 
-type SpotifyPlaylistTrackItem = {
-  track: SpotifyTrack | null;
+type SpotifyPlaylistItem = {
+  track?: SpotifyTrack | null;
+  item?: SpotifyTrack | null;
+};
+
+type SpotifyPlaylistSummary = {
+  id: string;
+  name: string;
+  owner: { id: string };
+  collaborative?: boolean;
+};
+
+const getPlaylistItemTrack = (entry: SpotifyPlaylistItem): SpotifyTrack | null => {
+  const candidate = (entry.item ?? entry.track) as (SpotifyTrack & { type?: string }) | null;
+  if (!candidate?.id) {
+    return null;
+  }
+  if (candidate.type && candidate.type !== "track") {
+    return null;
+  }
+  return candidate;
 };
 
 export type SpotifyLibrarySong = {
@@ -196,7 +215,8 @@ export const createSpotifyClient = (store: SpotifySessionStore) => {
     }
     if (!response.ok) {
       const payload = (await response.json().catch(() => ({}))) as { error?: { message?: string } };
-      throw new Error(payload.error?.message ?? `Spotify API error (${response.status}).`);
+      const message = payload.error?.message ?? `Spotify API error (${response.status}).`;
+      throw new Error(`${message} (${path})`);
     }
     return (await response.json()) as T;
   };
@@ -255,48 +275,60 @@ export const createSpotifyClient = (store: SpotifySessionStore) => {
   };
 
   const fetchLibrary = async (): Promise<SpotifyLibraryPayload> => {
+    const profile = await spotifyFetch<{ id: string }>("/me");
+
     const savedItems = (await fetchAllPages<{ items: SpotifySavedTrackItem[]; next: string | null }>(
       "/me/tracks?limit=50",
       (payload) => payload.items,
       (payload) => (payload.next ? payload.next.replace(SPOTIFY_API_URL, "") : null)
     )) as SpotifySavedTrackItem[];
 
-    const playlists = (await fetchAllPages<{ items: { id: string; name: string }[]; next: string | null }>(
+    const playlists = (await fetchAllPages<{ items: SpotifyPlaylistSummary[]; next: string | null }>(
       "/me/playlists?limit=50",
       (payload) => payload.items,
       (payload) => (payload.next ? payload.next.replace(SPOTIFY_API_URL, "") : null)
-    )) as { id: string; name: string }[];
+    )) as SpotifyPlaylistSummary[];
+
+    const readablePlaylists = playlists.filter(
+      (playlist) => playlist.owner.id === profile.id || playlist.collaborative
+    );
 
     const playlistNames: Record<string, string> = {};
     const playlistCounts: Record<string, number> = {};
     const trackPlaylists = new Map<string, Set<string>>();
-
-    for (const playlist of playlists) {
-      playlistNames[playlist.id] = playlist.name;
-      playlistCounts[playlist.id] = 0;
-      const playlistTracks = (await fetchAllPages<{ items: SpotifyPlaylistTrackItem[]; next: string | null }>(
-        `/playlists/${playlist.id}/tracks?limit=100&fields=items(track(id)),next`,
-        (payload) => payload.items,
-        (payload) => (payload.next ? payload.next.replace(SPOTIFY_API_URL, "") : null)
-      )) as SpotifyPlaylistTrackItem[];
-      playlistTracks.forEach((item) => {
-        const trackId = item.track?.id;
-        if (!trackId) {
-          return;
-        }
-        playlistCounts[playlist.id] = (playlistCounts[playlist.id] ?? 0) + 1;
-        const memberships = trackPlaylists.get(trackId) ?? new Set<string>();
-        memberships.add(playlist.id);
-        trackPlaylists.set(trackId, memberships);
-      });
-    }
-
     const trackById = new Map<string, SpotifyTrack>();
+
     savedItems.forEach((item) => {
       if (item.track?.id) {
         trackById.set(item.track.id, item.track);
       }
     });
+
+    for (const playlist of readablePlaylists) {
+      playlistNames[playlist.id] = playlist.name;
+      playlistCounts[playlist.id] = 0;
+      try {
+        const playlistItems = (await fetchAllPages<{ items: SpotifyPlaylistItem[]; next: string | null }>(
+          `/playlists/${playlist.id}/items?limit=50`,
+          (payload) => payload.items,
+          (payload) => (payload.next ? payload.next.replace(SPOTIFY_API_URL, "") : null)
+        )) as SpotifyPlaylistItem[];
+        playlistItems.forEach((entry) => {
+          const track = getPlaylistItemTrack(entry);
+          const trackId = track?.id;
+          if (!trackId) {
+            return;
+          }
+          trackById.set(trackId, track);
+          playlistCounts[playlist.id] = (playlistCounts[playlist.id] ?? 0) + 1;
+          const memberships = trackPlaylists.get(trackId) ?? new Set<string>();
+          memberships.add(playlist.id);
+          trackPlaylists.set(trackId, memberships);
+        });
+      } catch {
+        // Skip playlists we cannot read (followed playlists, revoked access, etc.).
+      }
+    }
 
     const artistIds = [...trackById.values()].flatMap((track) => track.artists.map((artist) => artist.id));
     const genresByArtist = new Map<string, string[]>();
@@ -343,7 +375,7 @@ export const createSpotifyClient = (store: SpotifySessionStore) => {
         genres: Object.keys(genreCounts).sort((left, right) => left.localeCompare(right)),
         genreCounts,
         maxPlayCount: songs.reduce((max, song) => Math.max(max, song.playCount), 1),
-        playlistIds: playlists.map((playlist) => playlist.id),
+        playlistIds: readablePlaylists.map((playlist) => playlist.id),
         playlistNames,
         playlistCounts,
       },
@@ -358,7 +390,7 @@ export const createSpotifyClient = (store: SpotifySessionStore) => {
     });
     const uris = trackIds.map((id) => `spotify:track:${id}`);
     for (let index = 0; index < uris.length; index += 100) {
-      await spotifyFetch(`/playlists/${created.id}/tracks`, {
+      await spotifyFetch(`/playlists/${created.id}/items`, {
         method: "POST",
         body: JSON.stringify({ uris: uris.slice(index, index + 100) }),
       });

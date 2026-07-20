@@ -95,6 +95,16 @@ var SPOTIFY_SCOPES = [
   "user-read-playback-state",
   "user-modify-playback-state"
 ].join(" ");
+var getPlaylistItemTrack = (entry) => {
+  const candidate = entry.item ?? entry.track;
+  if (!candidate?.id) {
+    return null;
+  }
+  if (candidate.type && candidate.type !== "track") {
+    return null;
+  }
+  return candidate;
+};
 var getSpotifyRedirectUri = () => {
   if (process.env.SPOTIFY_REDIRECT_URI) {
     return process.env.SPOTIFY_REDIRECT_URI;
@@ -204,7 +214,8 @@ var createSpotifyClient = (store) => {
     }
     if (!response.ok) {
       const payload = await response.json().catch(() => ({}));
-      throw new Error(payload.error?.message ?? `Spotify API error (${response.status}).`);
+      const message = payload.error?.message ?? `Spotify API error (${response.status}).`;
+      throw new Error(`${message} (${path})`);
     }
     return await response.json();
   };
@@ -251,6 +262,7 @@ var createSpotifyClient = (store) => {
     });
   };
   const fetchLibrary = async () => {
+    const profile = await spotifyFetch("/me");
     const savedItems = await fetchAllPages(
       "/me/tracks?limit=50",
       (payload) => payload.items,
@@ -261,34 +273,42 @@ var createSpotifyClient = (store) => {
       (payload) => payload.items,
       (payload) => payload.next ? payload.next.replace(SPOTIFY_API_URL, "") : null
     );
+    const readablePlaylists = playlists.filter(
+      (playlist) => playlist.owner.id === profile.id || playlist.collaborative
+    );
     const playlistNames = {};
     const playlistCounts = {};
     const trackPlaylists = /* @__PURE__ */ new Map();
-    for (const playlist of playlists) {
-      playlistNames[playlist.id] = playlist.name;
-      playlistCounts[playlist.id] = 0;
-      const playlistTracks = await fetchAllPages(
-        `/playlists/${playlist.id}/tracks?limit=100&fields=items(track(id)),next`,
-        (payload) => payload.items,
-        (payload) => payload.next ? payload.next.replace(SPOTIFY_API_URL, "") : null
-      );
-      playlistTracks.forEach((item) => {
-        const trackId = item.track?.id;
-        if (!trackId) {
-          return;
-        }
-        playlistCounts[playlist.id] = (playlistCounts[playlist.id] ?? 0) + 1;
-        const memberships = trackPlaylists.get(trackId) ?? /* @__PURE__ */ new Set();
-        memberships.add(playlist.id);
-        trackPlaylists.set(trackId, memberships);
-      });
-    }
     const trackById = /* @__PURE__ */ new Map();
     savedItems.forEach((item) => {
       if (item.track?.id) {
         trackById.set(item.track.id, item.track);
       }
     });
+    for (const playlist of readablePlaylists) {
+      playlistNames[playlist.id] = playlist.name;
+      playlistCounts[playlist.id] = 0;
+      try {
+        const playlistItems = await fetchAllPages(
+          `/playlists/${playlist.id}/items?limit=50`,
+          (payload) => payload.items,
+          (payload) => payload.next ? payload.next.replace(SPOTIFY_API_URL, "") : null
+        );
+        playlistItems.forEach((entry) => {
+          const track = getPlaylistItemTrack(entry);
+          const trackId = track?.id;
+          if (!trackId) {
+            return;
+          }
+          trackById.set(trackId, track);
+          playlistCounts[playlist.id] = (playlistCounts[playlist.id] ?? 0) + 1;
+          const memberships = trackPlaylists.get(trackId) ?? /* @__PURE__ */ new Set();
+          memberships.add(playlist.id);
+          trackPlaylists.set(trackId, memberships);
+        });
+      } catch {
+      }
+    }
     const artistIds = [...trackById.values()].flatMap((track) => track.artists.map((artist) => artist.id));
     const genresByArtist = /* @__PURE__ */ new Map();
     const uniqueArtistIds = [...new Set(artistIds)];
@@ -332,7 +352,7 @@ var createSpotifyClient = (store) => {
         genres: Object.keys(genreCounts).sort((left, right) => left.localeCompare(right)),
         genreCounts,
         maxPlayCount: songs.reduce((max, song) => Math.max(max, song.playCount), 1),
-        playlistIds: playlists.map((playlist) => playlist.id),
+        playlistIds: readablePlaylists.map((playlist) => playlist.id),
         playlistNames,
         playlistCounts
       }
@@ -346,7 +366,7 @@ var createSpotifyClient = (store) => {
     });
     const uris = trackIds.map((id) => `spotify:track:${id}`);
     for (let index = 0; index < uris.length; index += 100) {
-      await spotifyFetch(`/playlists/${created.id}/tracks`, {
+      await spotifyFetch(`/playlists/${created.id}/items`, {
         method: "POST",
         body: JSON.stringify({ uris: uris.slice(index, index + 100) })
       });
