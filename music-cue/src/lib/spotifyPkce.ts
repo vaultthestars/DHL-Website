@@ -28,6 +28,7 @@ export const beginSpotifyAuth = async (): Promise<{ authorizeUrl: string; state:
   const response = await fetch("/api/spotify/auth-url", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
+    credentials: "include",
     body: JSON.stringify({ codeChallenge, state }),
   });
 
@@ -51,9 +52,10 @@ export const completeSpotifyAuth = async (code: string, state: string): Promise<
     throw new Error("Spotify login verifier missing. Try connecting again.");
   }
 
-  const response = await fetch("/api/spotify/auth/callback", {
+  const response = await fetch("/api/spotify/auth-callback", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
+    credentials: "include",
     body: JSON.stringify({ code, codeVerifier }),
   });
 

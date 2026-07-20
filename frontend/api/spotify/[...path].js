@@ -440,7 +440,7 @@ var handleSpotifyRoute = async (route, req, res) => {
       finish(200, { authorizeUrl: client.buildAuthorizeUrl(codeChallenge, state), state });
       return;
     }
-    if (route === "auth/callback" && req.method === "POST") {
+    if (route === "auth-callback" && req.method === "POST") {
       const body = req.body;
       const code = typeof body?.code === "string" ? body.code : "";
       const codeVerifier = typeof body?.codeVerifier === "string" ? body.codeVerifier : "";

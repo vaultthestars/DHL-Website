@@ -9,7 +9,7 @@ const forward = (route: string) => (req: Request, res: Response) => {
 
 spotifyRouter.get("/status", forward("status"));
 spotifyRouter.post("/auth-url", forward("auth-url"));
-spotifyRouter.post("/auth/callback", forward("auth/callback"));
+spotifyRouter.post("/auth-callback", forward("auth-callback"));
 spotifyRouter.post("/disconnect", forward("disconnect"));
 spotifyRouter.get("/library", forward("library"));
 spotifyRouter.post("/validate-tracks", forward("validate-tracks"));

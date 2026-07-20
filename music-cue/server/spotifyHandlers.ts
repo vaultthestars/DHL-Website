@@ -52,7 +52,7 @@ export const handleSpotifyRoute = async (
       return;
     }
 
-    if (route === "auth/callback" && req.method === "POST") {
+    if (route === "auth-callback" && req.method === "POST") {
       const body = req.body as { code?: string; codeVerifier?: string };
       const code = typeof body?.code === "string" ? body.code : "";
       const codeVerifier = typeof body?.codeVerifier === "string" ? body.codeVerifier : "";
