@@ -2,7 +2,6 @@ node_modules
 *.iml
 target
 .idea
-api/spotify/[...path].js
 .env.local
 .vercel
 .env*
