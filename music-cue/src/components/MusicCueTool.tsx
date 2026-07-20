@@ -12,7 +12,13 @@ import { applyPlaybackAdvance } from "../lib/cuePlaybackTracking";
 import { formatDuration, sumDuration } from "../lib/formatDuration";
 import { getSongNodeFill } from "../lib/graphColors";
 import { generateCueFromStroke } from "../lib/pathGenerator";
+import {
+  buildTerminalPlayCueCommand,
+  buildTerminalSavePlaylistCommand,
+  CueTrack,
+} from "../lib/appleMusicScript";
 import { MusicServiceId } from "../lib/musicProvider";
+import { isWebDeployment } from "../lib/runtime";
 import { getMusicProvider } from "../lib/providers";
 import {
   DEFAULT_VIEW_TRANSFORM,
@@ -94,6 +100,35 @@ const resolveCueLayoutConfig = (cue: GeneratedCue, serviceId: MusicServiceId): L
   }
   return loadLayoutConfig(serviceId);
 };
+
+const toCueTracks = (songs: Song[]): CueTrack[] =>
+  songs.map((song) => ({
+    artist: song.artist,
+    title: song.title,
+    persistentId: song.id,
+  }));
+
+const copyTextToClipboard = async (text: string): Promise<void> => {
+  if (navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(text);
+    return;
+  }
+  const textarea = document.createElement("textarea");
+  textarea.value = text;
+  textarea.style.position = "fixed";
+  textarea.style.left = "-9999px";
+  document.body.appendChild(textarea);
+  textarea.select();
+  document.execCommand("copy");
+  document.body.removeChild(textarea);
+};
+
+const DESKTOP_APP_STEPS = [
+  "Download or clone the music-cue folder from this site's repo.",
+  "Double-click Start Music Cue.command (macOS only).",
+  "If prompted, install Node.js from nodejs.org, then try again.",
+  "Music Cue opens in your browser with full Music.app play, export, and tracking.",
+];
 
 type BoxSelectRect = {
   x1: number;
@@ -258,6 +293,7 @@ export const MusicCueTool = () => {
   const [searchFilter, setSearchFilter] = useState("");
   const [minPlayCount, setMinPlayCount] = useState("0");
   const [exportDialogOpen, setExportDialogOpen] = useState(false);
+  const [desktopHelpOpen, setDesktopHelpOpen] = useState(false);
   const [exportPlaylistName, setExportPlaylistName] = useState(() => defaultExportPlaylistName());
   const [isExportingPlaylist, setIsExportingPlaylist] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
@@ -1347,6 +1383,24 @@ export const MusicCueTool = () => {
     setExportDialogOpen(false);
   };
 
+  const isWebAppleMusic = isWebDeployment && musicService === "apple-music";
+
+  const exportTerminalCommand = useMemo(() => {
+    if (!cue || !isWebAppleMusic) {
+      return "";
+    }
+    const playlistName = exportPlaylistName.trim() || defaultExportPlaylistName();
+    return buildTerminalSavePlaylistCommand(toCueTracks(cue.songs), playlistName);
+  }, [cue, exportPlaylistName, isWebAppleMusic]);
+
+  const handleCopyExportCommand = async () => {
+    if (!exportTerminalCommand) {
+      return;
+    }
+    await copyTextToClipboard(exportTerminalCommand);
+    setStatusMessage("Copied Music.app playlist command. Paste into Terminal on your Mac.");
+  };
+
   const handleSavePlaylist = async () => {
     if (!cue) {
       return;
@@ -1354,6 +1408,13 @@ export const MusicCueTool = () => {
     const playlistName = exportPlaylistName.trim();
     if (!playlistName) {
       setStatusMessage("Enter a playlist name.");
+      return;
+    }
+
+    if (isWebAppleMusic) {
+      await copyTextToClipboard(exportTerminalCommand);
+      setStatusMessage(`Copied terminal command for playlist "${playlistName}". Paste into Terminal on your Mac.`);
+      setExportDialogOpen(false);
       return;
     }
 
@@ -1382,6 +1443,18 @@ export const MusicCueTool = () => {
 
   const handlePlayCue = async () => {
     if (!cue) {
+      return;
+    }
+    if (isWebAppleMusic) {
+      try {
+        const command = buildTerminalPlayCueCommand(toCueTracks(cue.songs));
+        await copyTextToClipboard(command);
+        setStatusMessage(
+          `Copied play command for ${cue.songs.length} tracks. Paste into Terminal on your Mac (Music.app will open).`
+        );
+      } catch (error) {
+        setStatusMessage(error instanceof Error ? error.message : "Could not copy play command.");
+      }
       return;
     }
     try {
@@ -1446,7 +1519,7 @@ export const MusicCueTool = () => {
           >
             <div className="music-cue-modal-titlebar">
               <span id="music-cue-export-dialog-title" className="music-cue-modal-title">
-                Export playlist
+                {isWebAppleMusic ? "Copy Music.app command" : "Export playlist"}
               </span>
             </div>
             <div className="music-cue-modal-body">
@@ -1466,13 +1539,80 @@ export const MusicCueTool = () => {
                   disabled={isExportingPlaylist}
                 />
               </label>
+              {isWebAppleMusic && (
+                <>
+                  <p className="music-cue-modal-hint">
+                    Paste this into Terminal on your Mac. It creates the playlist in Music.app using the
+                    persistent IDs from your Library.xml import.
+                  </p>
+                  <textarea
+                    className="music-cue-terminal-command"
+                    readOnly
+                    value={exportTerminalCommand}
+                    rows={10}
+                    onFocus={(event) => event.currentTarget.select()}
+                  />
+                </>
+              )}
             </div>
             <div className="music-cue-modal-actions">
-              <button type="button" onClick={() => void handleSavePlaylist()} disabled={isExportingPlaylist || !exportPlaylistName.trim()}>
-                {isExportingPlaylist ? "Exporting…" : "OK"}
-              </button>
+              {isWebAppleMusic ? (
+                <button
+                  type="button"
+                  onClick={() => void handleCopyExportCommand()}
+                  disabled={!exportTerminalCommand}
+                >
+                  Copy command
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => void handleSavePlaylist()}
+                  disabled={isExportingPlaylist || !exportPlaylistName.trim()}
+                >
+                  {isExportingPlaylist ? "Exporting…" : "OK"}
+                </button>
+              )}
               <button type="button" onClick={handleCloseExportDialog} disabled={isExportingPlaylist}>
-                Cancel
+                {isWebAppleMusic ? "Close" : "Cancel"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {desktopHelpOpen && (
+        <div className="music-cue-modal-backdrop" onClick={() => setDesktopHelpOpen(false)}>
+          <div
+            className="music-cue-modal music-cue-modal-wide"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="music-cue-desktop-help-title"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="music-cue-modal-titlebar">
+              <span id="music-cue-desktop-help-title" className="music-cue-modal-title">
+                Music Cue for Mac
+              </span>
+            </div>
+            <div className="music-cue-modal-body">
+              <p className="music-cue-modal-hint">
+                The website can visualize your library and build cues. The Mac app adds one-click play,
+                export, and live playback tracking in Music.app.
+              </p>
+              <ol className="music-cue-desktop-steps">
+                {DESKTOP_APP_STEPS.map((step) => (
+                  <li key={step}>{step}</li>
+                ))}
+              </ol>
+              <p className="music-cue-modal-hint">
+                On the web, use <strong>Copy play command</strong> or <strong>Copy playlist command</strong>{" "}
+                to run a cue in Terminal without installing anything.
+              </p>
+            </div>
+            <div className="music-cue-modal-actions">
+              <button type="button" onClick={() => setDesktopHelpOpen(false)}>
+                Close
               </button>
             </div>
           </div>
@@ -1524,20 +1664,27 @@ export const MusicCueTool = () => {
           </div>
 
           {musicService === "apple-music" ? (
-            <label className="music-cue-file-button">
-              {isImporting ? "Importing…" : "Load Library.xml"}
-              <input
-                type="file"
-                accept=".xml,text/xml"
-                onChange={(event) => {
-                  const file = event.target.files?.[0];
-                  if (file) {
-                    void handleImportFile(file);
-                  }
-                  event.currentTarget.value = "";
-                }}
-              />
-            </label>
+            <>
+              <label className="music-cue-file-button">
+                {isImporting ? "Importing…" : "Load Library.xml"}
+                <input
+                  type="file"
+                  accept=".xml,text/xml"
+                  onChange={(event) => {
+                    const file = event.target.files?.[0];
+                    if (file) {
+                      void handleImportFile(file);
+                    }
+                    event.currentTarget.value = "";
+                  }}
+                />
+              </label>
+              {isWebAppleMusic && (
+                <button type="button" onClick={() => setDesktopHelpOpen(true)}>
+                  Mac app setup
+                </button>
+              )}
+            </>
           ) : (
             <div className="music-cue-spotify-actions">
               <button
@@ -1862,10 +2009,10 @@ export const MusicCueTool = () => {
                 onClick={handlePlayCue}
                 disabled={!cue || (!isValidatingLibrary && cueSummary?.playableCount === 0)}
               >
-                Play
+                {isWebAppleMusic ? "Copy play command" : "Play"}
               </button>
               <button type="button" onClick={handleOpenExportDialog} disabled={!cue}>
-                Export playlist
+                {isWebAppleMusic ? "Copy playlist command" : "Export playlist"}
               </button>
               <button type="button" onClick={handleClear}>
                 Clear
@@ -1916,7 +2063,7 @@ export const MusicCueTool = () => {
           ) : (
             <p className="music-cue-cue-meta music-cue-cue-meta-empty">
               {buildMode === "path"
-                ? "Shift-drag on the graph to build a cue, then select nodes to insert."
+                ? "Drag on the graph to build a cue."
                 : "Click nodes on the graph to build a cue track by track."}
             </p>
           )}

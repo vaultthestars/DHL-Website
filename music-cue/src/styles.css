@@ -844,6 +844,33 @@ body {
   padding: 0 12px 12px;
 }
 
+.music-cue-modal-wide {
+  max-width: 560px;
+}
+
+.music-cue-modal-hint {
+  margin: 8px 0 0;
+  font-size: 11px;
+  line-height: 1.45;
+  color: #404040;
+}
+
+.music-cue-terminal-command {
+  width: 100%;
+  margin-top: 8px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 10px;
+  line-height: 1.35;
+  resize: vertical;
+}
+
+.music-cue-desktop-steps {
+  margin: 8px 0 0;
+  padding-left: 18px;
+  font-size: 11px;
+  line-height: 1.45;
+}
+
 @media (max-width: 1100px) {
   .music-cue-workspace {
     flex-direction: column;
