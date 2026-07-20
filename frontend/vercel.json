@@ -6,7 +6,7 @@
     }
   ],
   "functions": {
-    "api/spotify/[...path].ts": {
+    "api/spotify/[...path].js": {
       "maxDuration": 60
     }
   }
