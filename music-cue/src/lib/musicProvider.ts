@@ -12,6 +12,8 @@ export type CuePlaylistResult = {
 export type LoadedLibrary = {
   songs: Song[];
   stats: LibraryStats;
+  audioFeaturesCount?: number;
+  audioFeaturesError?: string | null;
 };
 
 export type ConnectionStatus = {

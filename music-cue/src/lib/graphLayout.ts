@@ -1,6 +1,6 @@
 import { ClusterCenterOverrides, LayoutConfig, LibraryStats, NormalizedPoint, Song } from "./types";
 import {
-  AXIS_METRIC_LABELS,
+  getAxisMetricLabel,
   getMetricRange,
   getMetricValue,
   isClusterView,
@@ -244,9 +244,11 @@ const axisMetricPosition = (
   const yRange = getMetricRange(songs, layoutConfig.axisY, stats);
   const rawX = getMetricValue(song, layoutConfig.axisX);
   const rawY = getMetricValue(song, layoutConfig.axisY);
-  const normalizedX = rawX === null ? 0.5 : normalizeMetricValue(rawX, layoutConfig.axisX, xRange);
-  const normalizedY = rawY === null ? 0.5 : normalizeMetricValue(rawY, layoutConfig.axisY, yRange);
-  const jitterScale = layoutConfig.axisX === layoutConfig.axisY ? 0.04 : 0;
+  const normalizedX =
+    rawX === null ? hashUnit(song.id, "missing-x") : normalizeMetricValue(rawX, layoutConfig.axisX, xRange);
+  const normalizedY =
+    rawY === null ? hashUnit(song.id, "missing-y") : normalizeMetricValue(rawY, layoutConfig.axisY, yRange);
+  const jitterScale = 0.025;
   return {
     x: GRAPH_PADDING + normalizedX * usableWidth + jitter(song.id, usableWidth * jitterScale),
     y: GRAPH_PADDING + (1 - normalizedY) * usableHeight + jitter(`${song.id}-y`, usableHeight * jitterScale),
@@ -293,7 +295,10 @@ export const buildInitialCustomPositions = (
   return positions;
 };
 
-export const getLayoutAxisLabels = (layoutConfig: LayoutConfig): { x: string; y: string } => {
+export const getLayoutAxisLabels = (
+  layoutConfig: LayoutConfig,
+  serviceId: MusicServiceId = "apple-music"
+): { x: string; y: string } => {
   if (isClusterView(layoutConfig)) {
     return {
       x: layoutConfig.clusterMode === "playlist" ? "playlist overlap clusters" : "",
@@ -301,7 +306,7 @@ export const getLayoutAxisLabels = (layoutConfig: LayoutConfig): { x: string; y:
     };
   }
   return {
-    x: `${AXIS_METRIC_LABELS[layoutConfig.axisX]} →`,
-    y: `${AXIS_METRIC_LABELS[layoutConfig.axisY]} →`,
+    x: `${getAxisMetricLabel(layoutConfig.axisX, serviceId)} →`,
+    y: `${getAxisMetricLabel(layoutConfig.axisY, serviceId)} →`,
   };
 };

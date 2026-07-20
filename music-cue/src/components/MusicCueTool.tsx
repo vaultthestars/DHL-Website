@@ -36,9 +36,12 @@ import {
   savePlaylistClusterCenterOverrides,
 } from "../lib/storage";
 import {
-  AXIS_METRIC_LABELS,
+  countSongsWithAudioFeatures,
+  getAxisMetricLabel,
   getAxisMetricsForService,
   getClusterModesForService,
+  getMetricCoverage,
+  isAudioFeatureMetric,
   isClusterView,
   layoutConfigKey,
   migrateLegacyLayoutMode,
@@ -619,7 +622,31 @@ export const MusicCueTool = () => {
     activePathLayoutConfig !== null &&
     layoutConfigKey(layoutConfig) === layoutConfigKey(activePathLayoutConfig);
 
-  const axisLabels = getLayoutAxisLabels(layoutConfig);
+  const axisMetricWarning = useMemo(() => {
+    if (layoutConfig.viewMode !== "axis" || musicService !== "spotify") {
+      return null;
+    }
+    const metrics = [layoutConfig.axisX, layoutConfig.axisY].filter(isAudioFeatureMetric);
+    if (metrics.length === 0) {
+      return null;
+    }
+    const coverage = Math.min(...metrics.map((metric) => getMetricCoverage(songs, metric)));
+    if (coverage >= 0.9) {
+      return null;
+    }
+    if (coverage === 0) {
+      return "Spotify blocked audio features for this app (common in Development Mode). Use Year or Popularity axes, or reload after extended API access.";
+    }
+    return `Only ${Math.round(coverage * 100)}% of tracks have audio features loaded. Reload library or try Year / Popularity axes.`;
+  }, [layoutConfig, musicService, songs]);
+
+  useEffect(() => {
+    if (axisMetricWarning) {
+      setStatusMessage(axisMetricWarning);
+    }
+  }, [axisMetricWarning]);
+
+  const axisLabels = getLayoutAxisLabels(layoutConfig, musicService);
   const showLabels = visibleSongs.length <= LABEL_THRESHOLD;
 
   const cueEdgePath = useMemo(() => {
@@ -1215,10 +1242,17 @@ export const MusicCueTool = () => {
     setIsImporting(true);
     try {
       const loaded = await musicProvider.loadLibrary();
+      const featureCount = loaded.audioFeaturesCount ?? countSongsWithAudioFeatures(loaded.songs);
+      const featureMessage =
+        featureCount > 0
+          ? ` Audio features loaded for ${featureCount} tracks.`
+          : loaded.audioFeaturesError
+            ? " Spotify blocked audio features — use Year or Popularity in axis mode."
+            : " No audio features returned — try Year or Popularity in axis mode.";
       applyLoadedLibrary(
         loaded.songs,
         loaded.stats,
-        `Loaded ${loaded.songs.length} saved tracks and ${loaded.stats.playlistIds.length} playlists from Spotify.`
+        `Loaded ${loaded.songs.length} saved tracks and ${loaded.stats.playlistIds.length} playlists from Spotify.${featureMessage}`
       );
     } catch (error) {
       setStatusMessage(error instanceof Error ? error.message : "Could not load Spotify library.");
@@ -1290,7 +1324,7 @@ export const MusicCueTool = () => {
     const nextConfig = { ...layoutConfig, viewMode: "axis" as const, [axis]: metric };
     updateLayoutConfig(
       nextConfig,
-      `Axis layout: ${AXIS_METRIC_LABELS[nextConfig.axisX]} × ${AXIS_METRIC_LABELS[nextConfig.axisY]}.`
+      `Axis layout: ${getAxisMetricLabel(nextConfig.axisX, musicService)} × ${getAxisMetricLabel(nextConfig.axisY, musicService)}.`
     );
   };
 
@@ -1561,7 +1595,7 @@ export const MusicCueTool = () => {
                 >
                   {getAxisMetricsForService(musicService).map((metric) => (
                     <option key={metric} value={metric}>
-                      {AXIS_METRIC_LABELS[metric]}
+                      {getAxisMetricLabel(metric, musicService)}
                     </option>
                   ))}
                 </select>
@@ -1574,7 +1608,7 @@ export const MusicCueTool = () => {
                 >
                   {getAxisMetricsForService(musicService).map((metric) => (
                     <option key={metric} value={metric}>
-                      {AXIS_METRIC_LABELS[metric]}
+                      {getAxisMetricLabel(metric, musicService)}
                     </option>
                   ))}
                 </select>

@@ -92,6 +92,8 @@ export type SpotifyLibraryStats = {
 export type SpotifyLibraryPayload = {
   songs: SpotifyLibrarySong[];
   stats: SpotifyLibraryStats;
+  audioFeaturesCount: number;
+  audioFeaturesError?: string | null;
 };
 
 export type SpotifySessionStore = {
@@ -367,6 +369,7 @@ export const createSpotifyClient = (store: SpotifySessionStore) => {
       }
     >();
     const trackIds = [...trackById.keys()];
+    let audioFeaturesError: string | null = null;
     try {
       for (let index = 0; index < trackIds.length; index += 100) {
         const chunk = trackIds.slice(index, index + 100);
@@ -397,8 +400,8 @@ export const createSpotifyClient = (store: SpotifySessionStore) => {
           });
         });
       }
-    } catch {
-      // Audio features are optional; some Spotify app modes block /audio-features.
+    } catch (error) {
+      audioFeaturesError = error instanceof Error ? error.message : "Audio features unavailable.";
     }
 
     const songs: SpotifyLibrarySong[] = [...trackById.entries()].map(([trackId, track]) => {
@@ -440,6 +443,8 @@ export const createSpotifyClient = (store: SpotifySessionStore) => {
         playlistNames,
         playlistCounts,
       },
+      audioFeaturesCount: audioFeaturesByTrack.size,
+      audioFeaturesError,
     };
   };
 
