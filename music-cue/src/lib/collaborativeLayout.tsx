@@ -44,11 +44,14 @@ export const CollaborativePlayProvider = ({ children }: { children: ReactNode })
 const areClusterOverridesEqual = (left: ClusterCenterOverrides, right: ClusterCenterOverrides): boolean =>
   JSON.stringify(left) === JSON.stringify(right);
 
+export type ClusterLayoutSyncMode = "live" | "snapshot" | "off";
+
 const CollaborativeLayoutBridge = ({
   clusterOverrides,
   setClusterOverrides,
   draggingClusterIdRef,
   layoutScope,
+  clusterLayoutSyncMode,
   enableRemoteClusterPublish,
   children,
 }: {
@@ -56,6 +59,7 @@ const CollaborativeLayoutBridge = ({
   setClusterOverrides: (overrides: ClusterCenterOverrides) => void;
   draggingClusterIdRef: RefObject<string | null>;
   layoutScope: ClusterLayoutScope;
+  clusterLayoutSyncMode: ClusterLayoutSyncMode;
   enableRemoteClusterPublish: boolean;
   children: ReactNode;
 }) => {
@@ -67,19 +71,42 @@ const CollaborativeLayoutBridge = ({
   const { isLoading } = usePlayContext();
   const localRef = useRef(clusterOverrides);
   const remoteRef = useRef(remoteOverrides);
+  const lastAppliedRemoteRef = useRef<string | null>(null);
+  const snapshotAppliedRef = useRef(false);
 
   localRef.current = clusterOverrides;
   remoteRef.current = remoteOverrides;
 
   useEffect(() => {
-    if (isLoading || draggingClusterIdRef.current) {
+    if (clusterLayoutSyncMode === "off" || isLoading || draggingClusterIdRef.current) {
+      return;
+    }
+
+    const remoteKey = JSON.stringify(remoteOverrides);
+    if (remoteKey === lastAppliedRemoteRef.current) {
       return;
     }
     if (areClusterOverridesEqual(remoteOverrides, localRef.current)) {
+      lastAppliedRemoteRef.current = remoteKey;
       return;
     }
+
+    if (clusterLayoutSyncMode === "snapshot") {
+      if (snapshotAppliedRef.current) {
+        return;
+      }
+      snapshotAppliedRef.current = true;
+    }
+
+    lastAppliedRemoteRef.current = remoteKey;
     setClusterOverrides(normalizeClusterCenterOverrides(remoteOverrides));
-  }, [draggingClusterIdRef, isLoading, remoteOverrides, setClusterOverrides]);
+  }, [
+    clusterLayoutSyncMode,
+    draggingClusterIdRef,
+    isLoading,
+    remoteOverrides,
+    setClusterOverrides,
+  ]);
 
   const publishClusterLayout = useCallback(
     (overrides: ClusterCenterOverrides) => {
@@ -107,6 +134,7 @@ export const CollaborativeLayoutProvider = ({
   setClusterOverrides,
   draggingClusterIdRef,
   layoutScope,
+  clusterLayoutSyncMode = "live",
   enableRemoteClusterPublish = true,
   children,
 }: {
@@ -114,6 +142,7 @@ export const CollaborativeLayoutProvider = ({
   setClusterOverrides: (overrides: ClusterCenterOverrides) => void;
   draggingClusterIdRef: RefObject<string | null>;
   layoutScope: ClusterLayoutScope;
+  clusterLayoutSyncMode?: ClusterLayoutSyncMode;
   enableRemoteClusterPublish?: boolean;
   children: ReactNode;
 }) => {
@@ -128,6 +157,7 @@ export const CollaborativeLayoutProvider = ({
       setClusterOverrides={setClusterOverrides}
       draggingClusterIdRef={draggingClusterIdRef}
       layoutScope={layoutScope}
+      clusterLayoutSyncMode={clusterLayoutSyncMode}
       enableRemoteClusterPublish={enableRemoteClusterPublish}
     >
       {children}
