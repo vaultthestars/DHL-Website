@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { startTransition, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { buildClusterRegions, buildIsolateScopedClusterRegions, buildOwnerMetaRegions, ClusterRegion } from "../lib/clusterRegions";
 import { syncClusterLayoutToServer } from "../lib/clusterLayoutSync";
 import {
@@ -1159,7 +1159,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     [computeLayoutPosition, layoutConfig]
   );
 
-  const layoutTransitionKey = `${songSpaceMode}:${libraryScopeMode}`;
+  const layoutTransitionKey = `${effectiveSongSpaceMode}:${libraryScopeMode}`;
 
   const { getDisplayPosition, transition } = useLayoutTransition(
     layoutConfig,
@@ -2715,27 +2715,37 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
   );
 
   useEffect(() => {
-    if (!isWebDeployment || musicService !== "spotify" || spotifyStatus === null) {
+    if (
+      !isWebDeployment ||
+      musicService !== "spotify" ||
+      spotifyStatus === null ||
+      spotifyStatus.connected
+    ) {
       return;
     }
-    if (!spotifyStatus.connected && songSpaceMode !== "shared") {
+    if (songSpaceMode !== "shared") {
       clearFrozenIsolateBounds();
       setSongSpaceMode("shared");
       saveSongSpaceMode("shared");
       reloadLayoutCaches(getActiveClusterLayoutScope("shared", libraryScopeMode));
     }
-    void refreshSharedContributors().catch(() => {
-      // refreshSharedContributors already surfaces errors in the status line.
-    });
   }, [
     clearFrozenIsolateBounds,
     libraryScopeMode,
     musicService,
-    refreshSharedContributors,
     reloadLayoutCaches,
     songSpaceMode,
     spotifyStatus,
   ]);
+
+  useEffect(() => {
+    if (!isWebDeployment || musicService !== "spotify" || spotifyStatus === null) {
+      return;
+    }
+    void refreshSharedContributors().catch(() => {
+      // refreshSharedContributors already surfaces errors in the status line.
+    });
+  }, [musicService, refreshSharedContributors, spotifyStatus]);
 
   const handleSongSpaceChange = (mode: SongSpaceMode) => {
     if (mode === songSpaceMode) {
@@ -3355,42 +3365,41 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
 
   const applySyncViewSettings = useCallback(
     (settings: CollaborativeViewSettings) => {
+      const isSpotifyGuest =
+        isWebDeployment && musicService === "spotify" && spotifyStatus !== null && !spotifyStatus.connected;
+      const resolvedSongSpaceMode =
+        isSpotifyGuest && settings.songSpaceMode !== "shared" ? "shared" : settings.songSpaceMode;
       const nextLayoutConfig = normalizeLayoutConfigForService(settings.layoutConfig, musicService);
-      setLayoutConfig(nextLayoutConfig);
-      saveLayoutConfig(nextLayoutConfig);
-      if (settings.songSpaceMode !== songSpaceMode) {
-        const isSpotifyGuest =
-          isWebDeployment && musicService === "spotify" && spotifyStatus !== null && !spotifyStatus.connected;
-        if (!isSpotifyGuest || settings.songSpaceMode === "shared") {
+
+      startTransition(() => {
+        setLayoutConfig(nextLayoutConfig);
+        saveLayoutConfig(nextLayoutConfig);
+        setViewTransform(settings.viewTransform);
+
+        if (resolvedSongSpaceMode !== songSpaceMode) {
           clearFrozenIsolateBounds();
-          setSongSpaceMode(settings.songSpaceMode);
-          saveSongSpaceMode(settings.songSpaceMode);
+          setSongSpaceMode(resolvedSongSpaceMode);
+          saveSongSpaceMode(resolvedSongSpaceMode);
         }
-      }
-      if (settings.libraryScopeMode !== libraryScopeMode) {
-        clearFrozenIsolateBounds();
-        setLibraryScopeMode(settings.libraryScopeMode);
-        saveLibraryScopeMode(settings.libraryScopeMode);
-      }
-      reloadLayoutCaches(
-        getActiveClusterLayoutScope(settings.songSpaceMode, settings.libraryScopeMode)
-      );
-      const contributorIds = getAllContributorIds(sharedContributors);
-      if (contributorIds.length > 0) {
-        void applyMergedSharedLibrary(contributorIds, sharedContributors);
-      }
+        if (settings.libraryScopeMode !== libraryScopeMode) {
+          clearFrozenIsolateBounds();
+          setLibraryScopeMode(settings.libraryScopeMode);
+          saveLibraryScopeMode(settings.libraryScopeMode);
+        }
+        reloadLayoutCaches(
+          getActiveClusterLayoutScope(resolvedSongSpaceMode, settings.libraryScopeMode)
+        );
+      });
+
       setStatusMessage("Synced view with collaborator.");
     },
     [
-      applyMergedSharedLibrary,
       clearFrozenIsolateBounds,
       libraryScopeMode,
       musicService,
       reloadLayoutCaches,
-      sharedContributors,
       songSpaceMode,
       spotifyStatus,
-      includeMockUsers,
     ]
   );
 
@@ -3400,6 +3409,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
       setClusterOverrides={setClusterOverrides}
       draggingClusterIdRef={draggingClusterIdRef}
       layoutScope={activeLayoutScope === "custom" ? "isolate" : activeLayoutScope}
+      enableRemoteSync={!isSpotifyGuest}
     >
       <CollaborativeSessionProvider
         displayName={collaboratorDisplayName}
@@ -4076,12 +4086,19 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
                 const isSelected = selectedSongId === canonicalId;
                 const nodeFill = songNodeFills.get(song.id) ?? "#000080";
                 const radius = renderGraphSongs.length > 1000 ? 2 : renderGraphSongs.length > 400 ? 2 : 3;
+                const isLargeLibrary = renderGraphSongs.length >= 500;
                 return (
                   <g
                     key={song.id}
                     transform={`translate(${position.x}, ${position.y})`}
-                    onMouseEnter={() => setHoveredSongId(song.id)}
-                    onMouseLeave={() => setHoveredSongId((current) => (current === song.id ? null : current))}
+                    onMouseEnter={
+                      isLargeLibrary ? undefined : () => setHoveredSongId(song.id)
+                    }
+                    onMouseLeave={
+                      isLargeLibrary
+                        ? undefined
+                        : () => setHoveredSongId((current) => (current === song.id ? null : current))
+                    }
                   >
                     <circle
                       r={radius + 3}

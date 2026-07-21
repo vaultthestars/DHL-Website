@@ -6,6 +6,8 @@ import { GraphPoint, LayoutConfig, Song } from "./types";
 import { getCanonicalSongId, isIsolateScopedSongId } from "./isolateScopeSongs";
 
 export const LAYOUT_TRANSITION_SPEED_PX_PER_SEC = 360;
+/** Above this count, layout changes snap instantly instead of animating every node. */
+export const LARGE_LIBRARY_LAYOUT_SNAP_THRESHOLD = 500;
 
 const easeInOut = (value: number): number =>
   value < 0.5 ? 2 * value * value : 1 - (-2 * value + 2) ** 2 / 2;
@@ -140,6 +142,20 @@ export const useLayoutTransition = (
     });
 
     if (!layoutChanged) {
+      if (to.size === animatedPositionsRef.current.size && to.size > 0) {
+        const sampleId = visibleSongs[0]?.id;
+        if (sampleId) {
+          const previous = animatedPositionsRef.current.get(sampleId);
+          const next = to.get(sampleId);
+          if (
+            previous &&
+            next &&
+            Math.hypot(previous.x - next.x, previous.y - next.y) < 0.5
+          ) {
+            return undefined;
+          }
+        }
+      }
       setAnimatedPositions(to);
       setTransition({
         progress: 1,
@@ -151,6 +167,8 @@ export const useLayoutTransition = (
       });
       return undefined;
     }
+
+    const snapLayoutInstantly = visibleSongs.length >= LARGE_LIBRARY_LAYOUT_SNAP_THRESHOLD;
 
     const startFrom =
       animatedPositionsRef.current.size > 0
@@ -188,7 +206,7 @@ export const useLayoutTransition = (
       cancelAnimationFrame(animationRef.current.frameId);
     }
 
-    if (maxDistance < 1) {
+    if (maxDistance < 1 || snapLayoutInstantly) {
       setAnimatedPositions(to);
       setTransition({
         progress: 1,

@@ -49,12 +49,14 @@ const CollaborativeLayoutBridge = ({
   setClusterOverrides,
   draggingClusterIdRef,
   layoutScope,
+  enableRemoteSync,
   children,
 }: {
   clusterOverrides: ClusterCenterOverrides;
   setClusterOverrides: (overrides: ClusterCenterOverrides) => void;
   draggingClusterIdRef: RefObject<string | null>;
   layoutScope: ClusterLayoutScope;
+  enableRemoteSync: boolean;
   children: ReactNode;
 }) => {
   const pageDataKey = clusterLayoutPageDataKey(layoutScope);
@@ -70,14 +72,14 @@ const CollaborativeLayoutBridge = ({
   remoteRef.current = remoteOverrides;
 
   useEffect(() => {
-    if (isLoading || draggingClusterIdRef.current) {
+    if (!enableRemoteSync || isLoading || draggingClusterIdRef.current) {
       return;
     }
     if (areClusterOverridesEqual(remoteOverrides, localRef.current)) {
       return;
     }
     setClusterOverrides(normalizeClusterCenterOverrides(remoteOverrides));
-  }, [draggingClusterIdRef, isLoading, remoteOverrides, setClusterOverrides]);
+  }, [draggingClusterIdRef, enableRemoteSync, isLoading, remoteOverrides, setClusterOverrides]);
 
   const publishClusterLayout = useCallback(
     (overrides: ClusterCenterOverrides) => {
@@ -102,12 +104,14 @@ export const CollaborativeLayoutProvider = ({
   setClusterOverrides,
   draggingClusterIdRef,
   layoutScope,
+  enableRemoteSync = true,
   children,
 }: {
   clusterOverrides: ClusterCenterOverrides;
   setClusterOverrides: (overrides: ClusterCenterOverrides) => void;
   draggingClusterIdRef: RefObject<string | null>;
   layoutScope: ClusterLayoutScope;
+  enableRemoteSync?: boolean;
   children: ReactNode;
 }) => {
   if (!isWebDeployment) {
@@ -121,6 +125,7 @@ export const CollaborativeLayoutProvider = ({
       setClusterOverrides={setClusterOverrides}
       draggingClusterIdRef={draggingClusterIdRef}
       layoutScope={layoutScope}
+      enableRemoteSync={enableRemoteSync}
     >
       {children}
     </CollaborativeLayoutBridge>
