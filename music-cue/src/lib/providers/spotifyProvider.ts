@@ -45,14 +45,27 @@ const fetchJson = async <T>(url: string, init?: RequestInit): Promise<T> => {
 };
 
 const fetchSpotifyPages = async <T>(
-  buildUrl: (next: string | null) => string,
-  onPage: (pageNumber: number) => void
+  endpoint: string,
+  onPage: (pageNumber: number) => void,
+  bodyFields?: Record<string, string>
 ): Promise<T[]> => {
   const items: T[] = [];
   let next: string | null = null;
   let pageNumber = 0;
   while (true) {
-    const payload = await fetchJson<SpotifyPage<T>>(buildUrl(next));
+    const payload = await fetchJson<SpotifyPage<T>>(
+      endpoint,
+      next || bodyFields
+        ? {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              ...(bodyFields ?? {}),
+              ...(next ? { next } : {}),
+            }),
+          }
+        : undefined
+    );
     items.push(...payload.items);
     pageNumber += 1;
     onPage(pageNumber);
@@ -93,10 +106,7 @@ const loadLibraryInChunks = async (options?: LoadLibraryOptions): Promise<Loaded
   const contributor = await fetchJson<{ id: string; name: string }>("/api/spotify/profile");
 
   const savedItems = await fetchSpotifyPages<SpotifySavedTrackItem>(
-    (next) =>
-      next
-        ? `/api/spotify/saved-tracks-page?next=${encodeURIComponent(next)}`
-        : "/api/spotify/saved-tracks-page",
+    "/api/spotify/saved-tracks-page",
     (pageNumber) => {
       reportProgress(onProgress, {
         phase: "saved-tracks",
@@ -107,10 +117,7 @@ const loadLibraryInChunks = async (options?: LoadLibraryOptions): Promise<Loaded
   );
 
   const playlists = await fetchSpotifyPages<SpotifyPlaylistSummary>(
-    (next) =>
-      next
-        ? `/api/spotify/playlists-page?next=${encodeURIComponent(next)}`
-        : "/api/spotify/playlists-page",
+    "/api/spotify/playlists-page",
     (pageNumber) => {
       reportProgress(onProgress, {
         phase: "playlists",
@@ -126,13 +133,7 @@ const loadLibraryInChunks = async (options?: LoadLibraryOptions): Promise<Loaded
 
   await mapWithConcurrency(readablePlaylists, 3, async (playlist) => {
     const items = await fetchSpotifyPages<SpotifyPlaylistItem>(
-      (next) => {
-        const params = new URLSearchParams({ playlistId: playlist.id });
-        if (next) {
-          params.set("next", next);
-        }
-        return `/api/spotify/playlist-tracks-page?${params.toString()}`;
-      },
+      "/api/spotify/playlist-tracks-page",
       () => {
         reportProgress(onProgress, {
           phase: "playlist-tracks",
@@ -142,7 +143,8 @@ const loadLibraryInChunks = async (options?: LoadLibraryOptions): Promise<Loaded
               ? 90
               : 28 + ((completedPlaylists + 0.35) / readablePlaylists.length) * 62,
         });
-      }
+      },
+      { playlistId: playlist.id }
     );
     playlistItemsByPlaylistId[playlist.id] = items;
     completedPlaylists += 1;

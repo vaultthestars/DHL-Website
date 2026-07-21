@@ -51,18 +51,54 @@ const parseRetryAfterMs = (retryAfterHeader: string | null, attempt: number): nu
   return Math.min(1000 * 2 ** attempt, 10_000);
 };
 
-const SPOTIFY_RELATIVE_PATH = /^\/[A-Za-z0-9_\-./?=&%]+$/;
+const SPOTIFY_API_ORIGIN = "https://api.spotify.com";
+
+const tryDecodeURIComponent = (value: string): string => {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+};
+
+const toSpotifyRelativePath = (raw: string | null | undefined): string => {
+  const trimmed = tryDecodeURIComponent(raw?.trim() ?? "");
+  if (!trimmed) {
+    return "";
+  }
+  if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
+    const url = new URL(trimmed);
+    if (url.origin !== SPOTIFY_API_ORIGIN) {
+      throw new Error("Invalid Spotify pagination path.");
+    }
+    const pathname = url.pathname.startsWith("/v1") ? url.pathname.slice(3) : url.pathname;
+    return `${pathname}${url.search}`;
+  }
+  return trimmed.startsWith("/") ? trimmed : `/${trimmed}`;
+};
+
+const toSpotifyNextCursor = (next: string | null | undefined): string | null => {
+  if (!next) {
+    return null;
+  }
+  try {
+    const relative = toSpotifyRelativePath(next);
+    return relative || null;
+  } catch {
+    return null;
+  }
+};
 
 const resolveSpotifyPagePath = (
   nextPath: string | null | undefined,
   defaultPath: string,
   allowedPrefixes: string[]
 ): string => {
-  const normalized = nextPath?.trim() ?? "";
+  const normalized = toSpotifyRelativePath(nextPath);
   if (!normalized) {
     return defaultPath;
   }
-  if (!SPOTIFY_RELATIVE_PATH.test(normalized) || normalized.includes("://")) {
+  if (normalized.includes("..")) {
     throw new Error("Invalid Spotify pagination path.");
   }
   if (!allowedPrefixes.some((prefix) => normalized.startsWith(prefix))) {
@@ -304,7 +340,7 @@ export const createSpotifyClient = (store: SpotifySessionStore) => {
     (await fetchAllPages<{ items: SpotifySavedTrackItem[]; next: string | null }>(
       "/me/tracks?limit=50",
       (payload) => payload.items,
-      (payload) => (payload.next ? payload.next.replace(SPOTIFY_API_URL, "") : null)
+      (payload) => (payload.next ? toSpotifyNextCursor(payload.next) : null)
     )) as SpotifySavedTrackItem[];
 
   const fetchSavedTracksPage = async (
@@ -314,7 +350,7 @@ export const createSpotifyClient = (store: SpotifySessionStore) => {
     const payload = await spotifyFetch<{ items: SpotifySavedTrackItem[]; next: string | null }>(path);
     return {
       items: payload.items,
-      next: payload.next ? payload.next.replace(SPOTIFY_API_URL, "") : null,
+      next: toSpotifyNextCursor(payload.next),
     };
   };
 
@@ -322,7 +358,7 @@ export const createSpotifyClient = (store: SpotifySessionStore) => {
     (await fetchAllPages<{ items: SpotifyPlaylistSummary[]; next: string | null }>(
       "/me/playlists?limit=50",
       (payload) => payload.items,
-      (payload) => (payload.next ? payload.next.replace(SPOTIFY_API_URL, "") : null)
+      (payload) => toSpotifyNextCursor(payload.next)
     )) as SpotifyPlaylistSummary[];
 
   const fetchPlaylistsPage = async (
@@ -332,7 +368,7 @@ export const createSpotifyClient = (store: SpotifySessionStore) => {
     const payload = await spotifyFetch<{ items: SpotifyPlaylistSummary[]; next: string | null }>(path);
     return {
       items: payload.items,
-      next: payload.next ? payload.next.replace(SPOTIFY_API_URL, "") : null,
+      next: toSpotifyNextCursor(payload.next),
     };
   };
 
@@ -340,7 +376,7 @@ export const createSpotifyClient = (store: SpotifySessionStore) => {
     (await fetchAllPages<{ items: SpotifyPlaylistItem[]; next: string | null }>(
       `/playlists/${playlistId}/items?limit=50`,
       (payload) => payload.items,
-      (payload) => (payload.next ? payload.next.replace(SPOTIFY_API_URL, "") : null)
+      (payload) => toSpotifyNextCursor(payload.next)
     )) as SpotifyPlaylistItem[];
 
   const fetchPlaylistTracksPage = async (
@@ -355,7 +391,7 @@ export const createSpotifyClient = (store: SpotifySessionStore) => {
     const payload = await spotifyFetch<{ items: SpotifyPlaylistItem[]; next: string | null }>(path);
     return {
       items: payload.items,
-      next: payload.next ? payload.next.replace(SPOTIFY_API_URL, "") : null,
+      next: toSpotifyNextCursor(payload.next),
     };
   };
 

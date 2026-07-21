@@ -27,6 +27,17 @@ const getQueryValue = (query: HandlerRequest["query"], key: string): string => {
   return typeof value === "string" ? value : "";
 };
 
+const readNextCursor = (req: HandlerRequest): string | null => {
+  if (req.method === "POST" && req.body && typeof req.body === "object") {
+    const next = (req.body as { next?: string }).next;
+    if (typeof next === "string" && next.trim()) {
+      return next.trim();
+    }
+  }
+  const fromQuery = getQueryValue(req.query, "next");
+  return fromQuery || null;
+};
+
 const isPublishedLibraryPayload = (body: unknown): body is SpotifyLibraryPayload => {
   if (!body || typeof body !== "object") {
     return false;
@@ -108,26 +119,28 @@ export const handleSpotifyRoute = async (
       return;
     }
 
-    if (route === "saved-tracks-page" && req.method === "GET") {
-      finish(200, await client.fetchSavedTracksPage(getQueryValue(req.query, "next") || null));
+    if (route === "saved-tracks-page" && (req.method === "GET" || req.method === "POST")) {
+      finish(200, await client.fetchSavedTracksPage(readNextCursor(req)));
       return;
     }
 
-    if (route === "playlists-page" && req.method === "GET") {
-      finish(200, await client.fetchPlaylistsPage(getQueryValue(req.query, "next") || null));
+    if (route === "playlists-page" && (req.method === "GET" || req.method === "POST")) {
+      finish(200, await client.fetchPlaylistsPage(readNextCursor(req)));
       return;
     }
 
-    if (route === "playlist-tracks-page" && req.method === "GET") {
-      const playlistId = getQueryValue(req.query, "playlistId");
+    if (route === "playlist-tracks-page" && (req.method === "GET" || req.method === "POST")) {
+      const playlistId =
+        req.method === "POST" && req.body && typeof req.body === "object"
+          ? typeof (req.body as { playlistId?: string }).playlistId === "string"
+            ? (req.body as { playlistId: string }).playlistId
+            : ""
+          : getQueryValue(req.query, "playlistId");
       if (!playlistId) {
         finish(400, { error: "playlistId is required." });
         return;
       }
-      finish(
-        200,
-        await client.fetchPlaylistTracksPage(playlistId, getQueryValue(req.query, "next") || null)
-      );
+      finish(200, await client.fetchPlaylistTracksPage(playlistId, readNextCursor(req)));
       return;
     }
 

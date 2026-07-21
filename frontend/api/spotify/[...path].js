@@ -214,13 +214,46 @@ var parseRetryAfterMs = (retryAfterHeader, attempt) => {
   }
   return Math.min(1e3 * 2 ** attempt, 1e4);
 };
-var SPOTIFY_RELATIVE_PATH = /^\/[A-Za-z0-9_\-./?=&%]+$/;
+var SPOTIFY_API_ORIGIN = "https://api.spotify.com";
+var tryDecodeURIComponent = (value) => {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+};
+var toSpotifyRelativePath = (raw) => {
+  const trimmed = tryDecodeURIComponent(raw?.trim() ?? "");
+  if (!trimmed) {
+    return "";
+  }
+  if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
+    const url = new URL(trimmed);
+    if (url.origin !== SPOTIFY_API_ORIGIN) {
+      throw new Error("Invalid Spotify pagination path.");
+    }
+    const pathname = url.pathname.startsWith("/v1") ? url.pathname.slice(3) : url.pathname;
+    return `${pathname}${url.search}`;
+  }
+  return trimmed.startsWith("/") ? trimmed : `/${trimmed}`;
+};
+var toSpotifyNextCursor = (next) => {
+  if (!next) {
+    return null;
+  }
+  try {
+    const relative = toSpotifyRelativePath(next);
+    return relative || null;
+  } catch {
+    return null;
+  }
+};
 var resolveSpotifyPagePath = (nextPath, defaultPath, allowedPrefixes) => {
-  const normalized = nextPath?.trim() ?? "";
+  const normalized = toSpotifyRelativePath(nextPath);
   if (!normalized) {
     return defaultPath;
   }
-  if (!SPOTIFY_RELATIVE_PATH.test(normalized) || normalized.includes("://")) {
+  if (normalized.includes("..")) {
     throw new Error("Invalid Spotify pagination path.");
   }
   if (!allowedPrefixes.some((prefix) => normalized.startsWith(prefix))) {
@@ -412,33 +445,33 @@ var createSpotifyClient = (store) => {
   const fetchSavedTrackItems = async () => await fetchAllPages(
     "/me/tracks?limit=50",
     (payload) => payload.items,
-    (payload) => payload.next ? payload.next.replace(SPOTIFY_API_URL, "") : null
+    (payload) => payload.next ? toSpotifyNextCursor(payload.next) : null
   );
   const fetchSavedTracksPage = async (nextPath) => {
     const path2 = resolveSpotifyPagePath(nextPath, "/me/tracks?limit=50", ["/me/tracks"]);
     const payload = await spotifyFetch(path2);
     return {
       items: payload.items,
-      next: payload.next ? payload.next.replace(SPOTIFY_API_URL, "") : null
+      next: toSpotifyNextCursor(payload.next)
     };
   };
   const fetchPlaylistSummaries = async () => await fetchAllPages(
     "/me/playlists?limit=50",
     (payload) => payload.items,
-    (payload) => payload.next ? payload.next.replace(SPOTIFY_API_URL, "") : null
+    (payload) => toSpotifyNextCursor(payload.next)
   );
   const fetchPlaylistsPage = async (nextPath) => {
     const path2 = resolveSpotifyPagePath(nextPath, "/me/playlists?limit=50", ["/me/playlists"]);
     const payload = await spotifyFetch(path2);
     return {
       items: payload.items,
-      next: payload.next ? payload.next.replace(SPOTIFY_API_URL, "") : null
+      next: toSpotifyNextCursor(payload.next)
     };
   };
   const fetchPlaylistTrackItems = async (playlistId) => await fetchAllPages(
     `/playlists/${playlistId}/items?limit=50`,
     (payload) => payload.items,
-    (payload) => payload.next ? payload.next.replace(SPOTIFY_API_URL, "") : null
+    (payload) => toSpotifyNextCursor(payload.next)
   );
   const fetchPlaylistTracksPage = async (playlistId, nextPath) => {
     if (!playlistId || !/^[A-Za-z0-9]+$/.test(playlistId)) {
@@ -449,7 +482,7 @@ var createSpotifyClient = (store) => {
     const payload = await spotifyFetch(path2);
     return {
       items: payload.items,
-      next: payload.next ? payload.next.replace(SPOTIFY_API_URL, "") : null
+      next: toSpotifyNextCursor(payload.next)
     };
   };
   const fetchArtistGenreBatch = async (artistIds) => {
@@ -772,6 +805,16 @@ var getQueryValue = (query, key) => {
   }
   return typeof value === "string" ? value : "";
 };
+var readNextCursor = (req) => {
+  if (req.method === "POST" && req.body && typeof req.body === "object") {
+    const next = req.body.next;
+    if (typeof next === "string" && next.trim()) {
+      return next.trim();
+    }
+  }
+  const fromQuery = getQueryValue(req.query, "next");
+  return fromQuery || null;
+};
 var isPublishedLibraryPayload = (body) => {
   if (!body || typeof body !== "object") {
     return false;
@@ -836,24 +879,21 @@ var handleSpotifyRoute = async (route, req, res) => {
       finish(200, await client.fetchContributorProfile());
       return;
     }
-    if (route === "saved-tracks-page" && req.method === "GET") {
-      finish(200, await client.fetchSavedTracksPage(getQueryValue(req.query, "next") || null));
+    if (route === "saved-tracks-page" && (req.method === "GET" || req.method === "POST")) {
+      finish(200, await client.fetchSavedTracksPage(readNextCursor(req)));
       return;
     }
-    if (route === "playlists-page" && req.method === "GET") {
-      finish(200, await client.fetchPlaylistsPage(getQueryValue(req.query, "next") || null));
+    if (route === "playlists-page" && (req.method === "GET" || req.method === "POST")) {
+      finish(200, await client.fetchPlaylistsPage(readNextCursor(req)));
       return;
     }
-    if (route === "playlist-tracks-page" && req.method === "GET") {
-      const playlistId = getQueryValue(req.query, "playlistId");
+    if (route === "playlist-tracks-page" && (req.method === "GET" || req.method === "POST")) {
+      const playlistId = req.method === "POST" && req.body && typeof req.body === "object" ? typeof req.body.playlistId === "string" ? req.body.playlistId : "" : getQueryValue(req.query, "playlistId");
       if (!playlistId) {
         finish(400, { error: "playlistId is required." });
         return;
       }
-      finish(
-        200,
-        await client.fetchPlaylistTracksPage(playlistId, getQueryValue(req.query, "next") || null)
-      );
+      finish(200, await client.fetchPlaylistTracksPage(playlistId, readNextCursor(req)));
       return;
     }
     if (route === "saved-tracks" && req.method === "GET") {
