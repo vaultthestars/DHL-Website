@@ -2311,18 +2311,18 @@ export const MusicCueTool = () => {
                 <path d="M10.6 3.4 12.6 5.4" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
               </svg>
             </button>
-            <button
-              type="button"
-              className="music-cue-graph-tool-btn music-cue-graph-tool-btn-clear"
-              onClick={handleClearPaths}
-              title="Clear paths"
-              aria-label="Clear paths"
-            >
-              <svg viewBox="0 0 16 16" aria-hidden>
-                <path d="M4 4 12 12M12 4 4 12" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
-              </svg>
-            </button>
           </div>
+          <button
+            type="button"
+            className="music-cue-graph-tool-btn music-cue-graph-clear-btn"
+            onClick={handleClearPaths}
+            title="Clear paths"
+            aria-label="Clear paths"
+          >
+            <svg viewBox="0 0 16 16" aria-hidden>
+              <path d="M4 4 12 12M12 4 4 12" stroke="#c00000" strokeWidth="1.6" strokeLinecap="round" />
+            </svg>
+          </button>
           <CollaborativeCursorsOverlay
             graphPanelRef={graphPanelRef}
             svgRef={svgRef}

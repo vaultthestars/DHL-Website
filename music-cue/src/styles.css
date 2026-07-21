@@ -440,8 +440,11 @@ body {
   padding: 5px 3px 3px 5px;
 }
 
-.music-cue-graph-tool-btn-clear {
-  color: #800000;
+.music-cue-graph-clear-btn {
+  position: absolute;
+  bottom: 8px;
+  right: 8px;
+  z-index: 12;
 }
 
 .music-cue-cue-path-slider-sidebar {
