@@ -1,4 +1,4 @@
-import { startTransition, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { startTransition, useCallback, useDeferredValue, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { buildClusterRegions, buildIsolateScopedClusterRegions, buildOwnerMetaRegions, ClusterRegion } from "../lib/clusterRegions";
 import { syncClusterLayoutToServer } from "../lib/clusterLayoutSync";
 import {
@@ -108,6 +108,7 @@ import {
   normalizeLayoutConfigForService,
 } from "../lib/layoutMetrics";
 import {
+  fetchAllMergedSharedLibrary,
   filterSongsForSongSpace,
   getAllContributorIds,
   listSharedContributors,
@@ -116,12 +117,14 @@ import {
   loadSongSpaceMode,
   loadLibraryScopeMode,
   publishSharedLibrary,
+  readGuestLibrarySessionCache,
   resolveActiveContributorIds,
   resolveLocalContributorId,
   saveLocalContributorId,
   saveLibraryScopeMode,
   saveSongSpaceMode,
   toLoadedLibrary,
+  writeGuestLibrarySessionCache,
   type SongSpaceMode,
 } from "../lib/sharedLibraryApi";
 import type { LibraryScopeMode } from "../lib/libraryScope";
@@ -407,6 +410,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
   );
   const isSpotifyGuest =
     isWebDeployment && musicService === "spotify" && spotifyStatus !== null && !spotifyStatus.connected;
+  const isGuestViewOnly = isSpotifyGuest;
   const effectiveSongSpaceMode = useMemo(
     (): SongSpaceMode => (isSpotifyGuest ? "shared" : songSpaceMode),
     [isSpotifyGuest, songSpaceMode]
@@ -919,6 +923,8 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     () => isolateGraphSongs(visibleSongs),
     [isolateGraphSongs, visibleSongs]
   );
+  const deferredGraphSongs = useDeferredValue(graphSongs);
+  const isGraphLayoutPending = deferredGraphSongs !== graphSongs;
 
   const liveIsolateOwnerBounds = useMemo(() => {
     if (effectiveLibraryScopeMode !== "isolate" || !isClusterView(layoutConfig)) {
@@ -1163,7 +1169,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
 
   const { getDisplayPosition, transition } = useLayoutTransition(
     layoutConfig,
-    graphSongs,
+    deferredGraphSongs,
     dimensions,
     computeLayoutPosition,
     layoutTransitionKey
@@ -1174,10 +1180,10 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
 
   const renderGraphSongs = useMemo(() => {
     if (!isScopeMergeTransition) {
-      return graphSongs;
+      return deferredGraphSongs;
     }
     return prepareGraphSongsForIsolate(visibleSongs, activeContributorIds, playlistOwners);
-  }, [activeContributorIds, graphSongs, isScopeMergeTransition, playlistOwners, visibleSongs]);
+  }, [activeContributorIds, deferredGraphSongs, isScopeMergeTransition, playlistOwners, visibleSongs]);
 
   const getRenderablePosition = useCallback(
     (song: Song): GraphPoint => getDisplayPosition(song),
@@ -1489,6 +1495,11 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
       const canonicalSong = resolveCanonicalSong(song, songs);
       setSelectedSongId(canonicalSong.id);
 
+      if (isGuestViewOnly && graphTool !== "draw") {
+        setStatusMessage(`Selected ${canonicalSong.artist} — ${canonicalSong.title}.`);
+        return;
+      }
+
       if (graphTool === "draw") {
         pushUndo(cue, { includeStrokes: true, action: "node" });
         const nextSongs = [...(cue?.songs ?? [])];
@@ -1512,8 +1523,22 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
 
       setStatusMessage(`Selected ${canonicalSong.artist} — ${canonicalSong.title}.`);
     },
-    [buildMode, createBaseCue, cue, graphTool, insertSongAt, pushUndo, songs]
+    [buildMode, createBaseCue, cue, graphTool, insertSongAt, isGuestViewOnly, pushUndo, songs]
   );
+
+  useEffect(() => {
+    if (!isGuestViewOnly) {
+      return;
+    }
+    if (graphTool === "draw-cluster") {
+      setGraphTool("navigate");
+      saveGraphTool("navigate");
+    }
+    if (buildMode === "manual") {
+      setBuildMode("path");
+      saveBuildMode("path");
+    }
+  }, [buildMode, graphTool, isGuestViewOnly]);
 
   const handleUndo = useCallback(() => {
     if (undoStackRef.current.length === 0) {
@@ -1552,19 +1577,31 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     [clearUndo]
   );
 
-  const handleGraphToolChange = useCallback((tool: GraphToolMode) => {
-    setGraphTool(tool);
-    saveGraphTool(tool);
-    if (tool === "navigate") {
-      setStatusMessage("Navigate: drag to pan · scroll or pinch to zoom · drag cluster labels to move them.");
-      return;
-    }
-    if (tool === "draw-cluster") {
-      setStatusMessage("Draw cluster: sketch a loop to create a cluster, or click one to edit it.");
-      return;
-    }
-    setStatusMessage("Draw path: drag on the graph or click nodes to add tracks. ⌘Z to undo. Switch to Navigate to pan.");
-  }, []);
+  const handleGraphToolChange = useCallback(
+    (tool: GraphToolMode) => {
+      if (isGuestViewOnly && tool === "draw-cluster") {
+        return;
+      }
+      setGraphTool(tool);
+      saveGraphTool(tool);
+      if (tool === "navigate") {
+        setStatusMessage(
+          isGuestViewOnly
+            ? "Navigate: drag to pan · scroll or pinch to zoom."
+            : "Navigate: drag to pan · scroll or pinch to zoom · drag cluster labels to move them."
+        );
+        return;
+      }
+      if (tool === "draw-cluster") {
+        setStatusMessage("Draw cluster: sketch a loop to create a cluster, or click one to edit it.");
+        return;
+      }
+      setStatusMessage(
+        "Draw path: drag on the graph or click nodes to add tracks. ⌘Z to undo. Switch to Navigate to pan."
+      );
+    },
+    [isGuestViewOnly]
+  );
 
   const cueSummary = useMemo(() => {
     if (!cue) {
@@ -1746,6 +1783,11 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
   };
 
   const finishClusterDrawing = () => {
+    if (isGuestViewOnly) {
+      clusterDrawStrokeRef.current = [];
+      setClusterDrawStroke([]);
+      return;
+    }
     const stroke = clusterDrawStrokeRef.current;
     clusterDrawStrokeRef.current = [];
     setClusterDrawStroke([]);
@@ -1885,6 +1927,9 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     event: React.PointerEvent<SVGPathElement>,
     cluster: CustomClusterDefinition
   ) => {
+    if (isGuestViewOnly) {
+      return;
+    }
     if (redrawDraft) {
       return;
     }
@@ -1917,6 +1962,9 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     event: React.MouseEvent<SVGPathElement>,
     cluster: CustomClusterDefinition
   ) => {
+    if (isGuestViewOnly) {
+      return;
+    }
     event.stopPropagation();
     if (draggingSquigglyClusterRef.current) {
       return;
@@ -2035,7 +2083,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     clusterId: string,
     label: string
   ) => {
-    if (!isClusterLayout) {
+    if (isGuestViewOnly || !isClusterLayout) {
       return;
     }
     event.stopPropagation();
@@ -2104,7 +2152,12 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
 
   const handleNodePointerDown = (event: React.PointerEvent<SVGCircleElement>, song: Song) => {
     event.stopPropagation();
-    if (isSquigglyCustomMode && graphTool === "navigate" && !redrawDraft) {
+    if (
+      isSquigglyCustomMode &&
+      graphTool === "navigate" &&
+      !redrawDraft &&
+      !isGuestViewOnly
+    ) {
       const canonicalId = getCanonicalSongId(song.id);
       let start = squigglySongPositionsRef.current[canonicalId];
       if (!start) {
@@ -2380,7 +2433,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
         return;
       }
 
-      if (session.metaShiftHeld && isClusterLayout) {
+      if (session.metaShiftHeld && isClusterLayout && !isGuestViewOnly) {
         session.mode = "box-select";
         const point = getLocalPoint(event, svgRef.current, contentGroupRef.current);
         session.boxEnd = point;
@@ -2390,7 +2443,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
           x2: point.x,
           y2: point.y,
         });
-      } else if (graphTool === "draw-cluster" && isSquigglyCustomMode) {
+      } else if (graphTool === "draw-cluster" && isSquigglyCustomMode && !isGuestViewOnly) {
         session.mode = "draw-cluster";
         beginClusterStroke(session.graphStart);
         appendClusterStrokePoint(getLocalPoint(event, svgRef.current, contentGroupRef.current));
@@ -2573,25 +2626,33 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
       owners: Record<string, string> = {},
       options?: { persist?: boolean }
     ) => {
-    invalidatePlaylistOverlapLayoutCache();
-    const normalized = normalizeSongs(loadedSongs, loadedStats);
-    setSongs(normalized);
-    setPlaylistOwners(owners);
-    setStats(normalizeStats(loadedStats, normalized));
-    if (options?.persist !== false) {
-      saveLibrary(musicService, loadedSongs, loadedStats);
+    const apply = () => {
+      invalidatePlaylistOverlapLayoutCache();
+      const normalized = normalizeSongs(loadedSongs, loadedStats);
+      setSongs(normalized);
+      setPlaylistOwners(owners);
+      setStats(normalizeStats(loadedStats, normalized));
+      if (options?.persist !== false) {
+        saveLibrary(musicService, loadedSongs, loadedStats);
+      }
+      setCue(null);
+      setCompletedStrokes([]);
+      completedStrokesRef.current = [];
+      setActiveStroke([]);
+      setStrokeLayoutConfig(null);
+      setActivePlaylistName(null);
+      setActivePersistentId(null);
+      setSelectedSongId(null);
+      setPlaybackTrackingEnabled(false);
+      playbackTrackingRef.current = { persistentId: null, cueIndex: -1 };
+      setStatusMessage(message);
+    };
+
+    if (loadedSongs.length >= 500) {
+      startTransition(apply);
+    } else {
+      apply();
     }
-    setCue(null);
-    setCompletedStrokes([]);
-    completedStrokesRef.current = [];
-    setActiveStroke([]);
-    setStrokeLayoutConfig(null);
-    setActivePlaylistName(null);
-    setActivePersistentId(null);
-    setSelectedSongId(null);
-    setPlaybackTrackingEnabled(false);
-    playbackTrackingRef.current = { persistentId: null, cueIndex: -1 };
-    setStatusMessage(message);
   },
   [musicService]
 );
@@ -2629,6 +2690,24 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     [applyLoadedLibrary, includeMockUsers]
   );
 
+  const applyMergedSharedLibraryPayload = useCallback(
+    (merged: Awaited<ReturnType<typeof fetchAllMergedSharedLibrary>>, message: string) => {
+      const loaded = toLoadedLibrary(merged);
+      setSharedContributors(merged.contributors);
+      setSharedTrackCount(merged.sharedTrackCount);
+      applyLoadedLibrary(loaded.songs, loaded.stats, message, merged.playlistOwners, { persist: false });
+      writeGuestLibrarySessionCache({
+        cachedAt: new Date().toISOString(),
+        contributors: merged.contributors,
+        songs: loaded.songs,
+        stats: loaded.stats,
+        playlistOwners: merged.playlistOwners,
+        sharedTrackCount: merged.sharedTrackCount,
+      });
+    },
+    [applyLoadedLibrary]
+  );
+
   useEffect(
     () => () => {
       if (metaBoundsDebounceRef.current) {
@@ -2644,15 +2723,83 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
   }, [clearFrozenIsolateBounds, layoutConfig.clusterMode, layoutConfig.viewMode]);
 
   const refreshSharedContributors = useCallback(
-    async (options?: { loadLibrary?: boolean }) => {
+    async (options?: { loadLibrary?: boolean; forceRefresh?: boolean }) => {
       try {
+        if (spotifyStatus === null) {
+          const contributors = await listSharedContributors(includeMockUsers);
+          setSharedContributors(contributors);
+          return contributors;
+        }
+
+        const isGuest = !spotifyStatus.connected;
+        const shouldLoadLibrary =
+          options?.loadLibrary ?? (isGuest || songSpaceMode === "shared");
+
+        if (isWebDeployment && musicService === "spotify" && isGuest && shouldLoadLibrary) {
+          const cached = options?.forceRefresh ? null : readGuestLibrarySessionCache();
+          if (cached) {
+            setSharedContributors(cached.contributors);
+            setSharedTrackCount(cached.sharedTrackCount);
+            startTransition(() => {
+              applyLoadedLibrary(
+                cached.songs,
+                cached.stats,
+                `Loaded shared library (${cached.songs.length} tracks).`,
+                cached.playlistOwners,
+                { persist: false }
+              );
+            });
+            void fetchAllMergedSharedLibrary()
+              .then((merged) => {
+                const cachedStamp = cached.contributors
+                  .map((contributor) => contributor.updatedAt)
+                  .sort()
+                  .join("|");
+                const mergedStamp = merged.contributors
+                  .map((contributor) => contributor.updatedAt)
+                  .sort()
+                  .join("|");
+                if (
+                  mergedStamp !== cachedStamp ||
+                  merged.songs.length !== cached.songs.length
+                ) {
+                  const contributorNames = merged.contributors
+                    .map((contributor) => contributor.name)
+                    .join(" + ");
+                  applyMergedSharedLibraryPayload(
+                    merged,
+                    `Loaded shared library from ${contributorNames} (${merged.songs.length} tracks).`
+                  );
+                }
+              })
+              .catch(() => {
+                // Keep cached library visible if the background refresh fails.
+              });
+            return cached.contributors;
+          }
+
+          setIsLoadingSharedLibrary(true);
+          try {
+            const merged = await fetchAllMergedSharedLibrary();
+            if (merged.contributors.length === 0) {
+              setSharedTrackCount(0);
+              setStatusMessage("No shared libraries published yet.");
+              return [];
+            }
+            const contributorNames = merged.contributors.map((contributor) => contributor.name).join(" + ");
+            applyMergedSharedLibraryPayload(
+              merged,
+              `Loaded shared library from ${contributorNames} (${merged.songs.length} tracks).`
+            );
+            return merged.contributors;
+          } finally {
+            setIsLoadingSharedLibrary(false);
+          }
+        }
+
         const contributors = await listSharedContributors(includeMockUsers);
         setSharedContributors(contributors);
         const contributorIds = getAllContributorIds(contributors);
-        const isGuest = spotifyStatus !== null && !spotifyStatus.connected;
-        const shouldLoadLibrary =
-          options?.loadLibrary ??
-          (spotifyStatus === null ? songSpaceMode === "shared" : isGuest || songSpaceMode === "shared");
 
         if (
           isWebDeployment &&
@@ -2707,6 +2854,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     [
       applyLoadedLibrary,
       applyMergedSharedLibrary,
+      applyMergedSharedLibraryPayload,
       includeMockUsers,
       musicService,
       songSpaceMode,
@@ -2797,7 +2945,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
   };
 
   const handleRefreshSharedLibrary = () => {
-    void refreshSharedContributors({ loadLibrary: true });
+    void refreshSharedContributors({ loadLibrary: true, forceRefresh: true });
   };
 
   const handlePublishSharedLibrary = async () => {
@@ -3351,6 +3499,9 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     : undefined;
 
   const collaboratorDisplayName = spotifyStatus?.displayName?.trim() || "Guest";
+  const guestGraphBusy =
+    isSpotifyGuest &&
+    (isLoadingSharedLibrary || isGraphLayoutPending || (spotifyStatus !== null && songs.length === 0));
 
   const collaborativeViewSettings = useMemo<CollaborativeViewSettings>(
     () => ({
@@ -3415,6 +3566,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
         displayName={collaboratorDisplayName}
         viewSettings={collaborativeViewSettings}
         onSyncViewSettings={applySyncViewSettings}
+        enabled={!isSpotifyGuest || songs.length > 0}
       >
       <ClusterLayoutPublisher publishRef={publishClusterLayoutRef} />
       <GraphCursorPublisherBridge publishRef={setGraphCursorRef} />
@@ -3620,7 +3772,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
                 : graphTool === "draw-cluster"
                   ? " · drag to draw squiggly cluster loop · scroll or pinch to zoom"
                   : " · drag to pan · scroll or pinch to zoom"}
-              {graphTool === "navigate" && isClusterLayout && !isSquigglyCustomMode
+              {graphTool === "navigate" && isClusterLayout && !isSquigglyCustomMode && !isGuestViewOnly
                 ? " · drag labels to move clusters · ⌘⇧ drag to box-select"
                 : ""}
             </p>
@@ -3801,7 +3953,9 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
               </div>
               {layoutConfig.clusterMode === "custom" && isSquigglyCustomMode ? (
                 <span className="music-cue-axis-note">
-                  Use the square tool to draw clusters · click a cluster to edit it in the side panel
+                  {isGuestViewOnly
+                    ? "Custom clusters are view-only for guests."
+                    : "Use the square tool to draw clusters · click a cluster to edit it in the side panel"}
                 </span>
               ) : null}
             </>
@@ -3875,6 +4029,11 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
 
       <div className="music-cue-workspace">
         <div className="music-cue-graph-panel" ref={graphPanelRef}>
+          {guestGraphBusy ? (
+            <div className="music-cue-graph-loading-overlay" aria-live="polite">
+              {isLoadingSharedLibrary ? "Loading shared library…" : "Preparing graph…"}
+            </div>
+          ) : null}
           <div className="music-cue-graph-tools-overlay" role="toolbar" aria-label="Graph tools">
             <button
               type="button"
@@ -3935,7 +4094,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
                 </svg>
               </button>
             ) : null}
-            {isSquigglyCustomMode ? (
+            {isSquigglyCustomMode && !isGuestViewOnly ? (
               <>
                 <button
                   type="button"
@@ -4071,6 +4230,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
                   selectedClusterIds={selectedClusterIds}
                   redrawDraft={redrawDraft}
                   activeDrawStroke={clusterDrawStroke}
+                  readOnly={isGuestViewOnly}
                   onClusterPointerDown={handleSquigglyClusterPointerDown}
                   onClusterDoubleClick={handleSquigglyClusterDoubleClick}
                   onClusterHover={setHoveredSquigglyClusterId}
@@ -4143,11 +4303,17 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
                     x={region.center.x}
                     y={region.center.y}
                     className={`music-cue-cluster-label ${
-                      effectiveClusterRevealOpacity >= 1 ? "music-cue-cluster-label-draggable" : ""
+                      effectiveClusterRevealOpacity >= 1 && !isGuestViewOnly
+                        ? "music-cue-cluster-label-draggable"
+                        : ""
                     } ${selectedClusterIds.has(region.id) ? "music-cue-cluster-label-selected" : ""}`}
                     opacity={effectiveClusterRevealOpacity}
-                    pointerEvents={effectiveClusterRevealOpacity >= 1 ? undefined : "none"}
-                    onPointerDown={(event) => handleClusterLabelPointerDown(event, region.id, region.label)}
+                    pointerEvents={effectiveClusterRevealOpacity >= 1 && !isGuestViewOnly ? undefined : "none"}
+                    onPointerDown={
+                      isGuestViewOnly
+                        ? undefined
+                        : (event) => handleClusterLabelPointerDown(event, region.id, region.label)
+                    }
                     onPointerUp={(event) => {
                       if (!draggingClusterIdRef.current) {
                         return;
@@ -4316,7 +4482,9 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
             <p className="music-cue-cue-meta music-cue-cue-meta-empty">
               {graphTool === "draw"
                 ? "Drag paths on the graph or click nodes to build a cue."
-                : "Click nodes on the graph to build a cue track by track."}
+                : isGuestViewOnly
+                  ? "Switch to Draw path to build a cue, or pan around to explore."
+                  : "Click nodes on the graph to build a cue track by track."}
             </p>
           )}
 

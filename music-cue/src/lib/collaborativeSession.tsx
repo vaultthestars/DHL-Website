@@ -185,14 +185,16 @@ export const CollaborativeSessionProvider = ({
   displayName,
   viewSettings,
   onSyncViewSettings,
+  enabled = true,
   children,
 }: {
   displayName: string;
   viewSettings: CollaborativeViewSettings;
   onSyncViewSettings: (settings: CollaborativeViewSettings) => void;
+  enabled?: boolean;
   children: ReactNode;
 }) => {
-  if (!isWebDeployment) {
+  if (!isWebDeployment || !enabled) {
     return <>{children}</>;
   }
 

@@ -15,6 +15,7 @@ type SquigglyClusterLayerProps = {
     draftHull: NormalizedPoint[];
   } | null;
   activeDrawStroke: NormalizedPoint[];
+  readOnly?: boolean;
   onClusterPointerDown: (
     event: React.PointerEvent<SVGPathElement>,
     cluster: CustomClusterDefinition
@@ -35,6 +36,7 @@ export const SquigglyClusterLayer = ({
   selectedClusterIds,
   redrawDraft,
   activeDrawStroke,
+  readOnly = false,
   onClusterPointerDown,
   onClusterDoubleClick,
   onClusterHover,
@@ -72,8 +74,8 @@ export const SquigglyClusterLayer = ({
               className="music-cue-squiggly-cluster-fill"
               fill={color}
               fillOpacity={isSelected ? 0.22 : 0.14}
-              onPointerDown={(event) => onClusterPointerDown(event, cluster)}
-              onDoubleClick={(event) => onClusterDoubleClick(event, cluster)}
+              onPointerDown={readOnly ? undefined : (event) => onClusterPointerDown(event, cluster)}
+              onDoubleClick={readOnly ? undefined : (event) => onClusterDoubleClick(event, cluster)}
               onPointerEnter={() => onClusterHover(cluster.id)}
               onPointerLeave={() => onClusterHover(null)}
             />
@@ -95,7 +97,7 @@ export const SquigglyClusterLayer = ({
             >
               {cluster.label}
             </text>
-            {redrawDraft?.clusterId === cluster.id ? (
+            {redrawDraft?.clusterId === cluster.id && !readOnly ? (
               <foreignObject
                 x={labelPoint.x - 110}
                 y={labelPoint.y + 14}

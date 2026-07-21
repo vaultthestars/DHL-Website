@@ -409,6 +409,19 @@ body {
   background: var(--w95-window-bg);
 }
 
+.music-cue-graph-loading-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(192, 192, 192, 0.72);
+  color: var(--w95-text);
+  font-size: 13px;
+  pointer-events: all;
+}
+
 .music-cue-graph-tools-overlay {
   position: absolute;
   top: 8px;

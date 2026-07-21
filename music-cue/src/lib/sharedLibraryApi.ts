@@ -1,8 +1,52 @@
 import type { LibraryContributor, MergedLibrary, SharedLibrarySnapshot } from "../../shared/sharedLibrary";
 import { mergeSharedLibrarySnapshots } from "../../shared/sharedLibrary";
 import type { LoadedLibrary } from "./musicProvider";
+import type { LibraryStats, Song } from "./types";
 import { isMockContributorId } from "./libraryScope";
 import { isWebDeployment } from "./runtime";
+
+const GUEST_LIBRARY_SESSION_KEY = "music-cue-shared-library-session";
+
+export type GuestLibrarySessionCache = {
+  cachedAt: string;
+  contributors: LibraryContributor[];
+  songs: Song[];
+  stats: LibraryStats;
+  playlistOwners: Record<string, string>;
+  sharedTrackCount: number;
+};
+
+export const readGuestLibrarySessionCache = (): GuestLibrarySessionCache | null => {
+  try {
+    const raw = sessionStorage.getItem(GUEST_LIBRARY_SESSION_KEY);
+    if (!raw) {
+      return null;
+    }
+    const parsed = JSON.parse(raw) as GuestLibrarySessionCache;
+    if (!Array.isArray(parsed.songs) || parsed.songs.length === 0) {
+      return null;
+    }
+    return parsed;
+  } catch {
+    return null;
+  }
+};
+
+export const writeGuestLibrarySessionCache = (cache: GuestLibrarySessionCache): void => {
+  try {
+    sessionStorage.setItem(GUEST_LIBRARY_SESSION_KEY, JSON.stringify(cache));
+  } catch {
+    // sessionStorage may be full or unavailable.
+  }
+};
+
+export const clearGuestLibrarySessionCache = (): void => {
+  try {
+    sessionStorage.removeItem(GUEST_LIBRARY_SESSION_KEY);
+  } catch {
+    // Ignore storage errors.
+  }
+};
 
 const fetchJson = async <T>(url: string, init?: RequestInit): Promise<T> => {
   const response = await fetch(url, {
@@ -54,6 +98,19 @@ export const fetchSharedLibrarySnapshot = async (contributorId: string): Promise
   );
 };
 
+export const fetchAllMergedSharedLibrary = async (): Promise<MergedSharedLibraryResponse> => {
+  const merged = await fetchJson<MergedSharedLibraryResponse>("/api/shared-libraries/merge");
+  if (merged.songs.length === 0) {
+    throw new Error(
+      "Shared library is listed but could not be loaded. Ask the owner to re-share, or try Refresh shared."
+    );
+  }
+  return {
+    ...merged,
+    contributors: merged.contributors ?? [],
+  };
+};
+
 export const loadMergedSharedLibrary = async (
   contributorIds: string[],
   includeMockUsers = false
@@ -65,9 +122,9 @@ export const loadMergedSharedLibrary = async (
   const realIds = selectedIds.filter((contributorId) => !isMockContributorId(contributorId));
   const mockIds = selectedIds.filter((contributorId) => isMockContributorId(contributorId));
 
-  let mergedFromServer: MergedLibrary | null = null;
+  let mergedFromServer: MergedSharedLibraryResponse | null = null;
   if (realIds.length > 0) {
-    mergedFromServer = await fetchJson<MergedLibrary>(
+    mergedFromServer = await fetchJson<MergedSharedLibraryResponse>(
       `/api/shared-libraries/merge?contributors=${encodeURIComponent(realIds.join(","))}`
     );
     if (mergedFromServer.songs.length === 0) {
@@ -82,6 +139,14 @@ export const loadMergedSharedLibrary = async (
     const { getMockSnapshots } = await import("./mockLibraries");
     snapshots.push(...getMockSnapshots(mockIds));
   }
+
+  const resolveContributors = async (): Promise<LibraryContributor[]> => {
+    if (mergedFromServer?.contributors?.length) {
+      return mergedFromServer.contributors.filter((contributor) => selectedIds.includes(contributor.id));
+    }
+    const contributors = await listSharedContributors(includeMockUsers);
+    return contributors.filter((contributor) => selectedIds.includes(contributor.id));
+  };
 
   if (snapshots.length === 0) {
     if (!mergedFromServer) {
@@ -102,10 +167,9 @@ export const loadMergedSharedLibrary = async (
         contributors: [],
       };
     }
-    const contributors = await listSharedContributors(includeMockUsers);
     return {
       ...mergedFromServer,
-      contributors: contributors.filter((contributor) => selectedIds.includes(contributor.id)),
+      contributors: await resolveContributors(),
     };
   }
 
@@ -120,17 +184,15 @@ export const loadMergedSharedLibrary = async (
       },
       ...snapshots,
     ]);
-    const contributors = await listSharedContributors(includeMockUsers);
     return {
       ...combined,
-      contributors: contributors.filter((contributor) => selectedIds.includes(contributor.id)),
+      contributors: await resolveContributors(),
     };
   }
 
-  const contributors = await listSharedContributors(includeMockUsers);
   return {
     ...merged,
-    contributors: contributors.filter((contributor) => selectedIds.includes(contributor.id)),
+    contributors: await resolveContributors(),
   };
 };
 
