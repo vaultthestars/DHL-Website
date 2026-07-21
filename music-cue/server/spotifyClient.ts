@@ -1,8 +1,19 @@
 import {
+  assembleSpotifyLibrary,
+  filterReadablePlaylists,
+  mapWithConcurrency,
+  type SpotifyLibraryPayload,
+  type SpotifyPlaylistItem,
+  type SpotifyPlaylistSummary,
+  type SpotifySavedTrackItem,
+} from "../shared/spotifyLibraryAssembly.js";
+import {
   SpotifyTokens,
   buildSpotifySessionSetCookie,
   getSpotifySessionCookie,
 } from "./spotifySession.js";
+
+export type { SpotifyLibraryPayload, SpotifyLibrarySong, SpotifyLibraryStats } from "../shared/spotifyLibraryAssembly.js";
 
 const SPOTIFY_ACCOUNTS_URL = "https://accounts.spotify.com";
 const SPOTIFY_API_URL = "https://api.spotify.com/v1";
@@ -15,32 +26,6 @@ const SPOTIFY_SCOPES = [
   "user-read-playback-state",
   "user-modify-playback-state",
 ].join(" ");
-
-type SpotifySavedTrackItem = {
-  added_at: string;
-  track: SpotifyTrack | null;
-};
-
-type SpotifyTrack = {
-  id: string;
-  name: string;
-  duration_ms: number;
-  popularity: number;
-  artists: { id: string; name: string }[];
-  album: { name: string; release_date: string };
-};
-
-type SpotifyPlaylistItem = {
-  track?: SpotifyTrack | null;
-  item?: SpotifyTrack | null;
-};
-
-type SpotifyPlaylistSummary = {
-  id: string;
-  name: string;
-  owner: { id: string };
-  collaborative?: boolean;
-};
 
 type SpotifyDevice = {
   id: string;
@@ -71,6 +56,9 @@ const formatSpotifyApiError = (status: number, path: string, spotifyMessage?: st
   if (status === 429) {
     return "Spotify rate limit reached. Wait a minute, then try Load & share again.";
   }
+  if (status === 504) {
+    return "Spotify library import timed out. Try again in a moment.";
+  }
   if (
     status === 403 &&
     (normalizedMessage.includes("not registered") ||
@@ -98,62 +86,6 @@ const pickPlaybackDevice = (devices: SpotifyDevice[]): SpotifyDevice | null => {
     available.find((device) => device.type === "Computer") ??
     available[0]
   );
-};
-
-const getPlaylistItemTrack = (entry: SpotifyPlaylistItem): SpotifyTrack | null => {
-  const candidate = (entry.item ?? entry.track) as (SpotifyTrack & { type?: string }) | null;
-  if (!candidate?.id) {
-    return null;
-  }
-  if (candidate.type && candidate.type !== "track") {
-    return null;
-  }
-  return candidate;
-};
-
-export type SpotifyLibrarySong = {
-  id: string;
-  title: string;
-  artist: string;
-  album: string;
-  genre: string;
-  year: number;
-  playCount: number;
-  rating: number;
-  loved: boolean;
-  dateAdded: string;
-  trackType: string;
-  durationMs: number;
-  playlists: string[];
-  audioFeatures?: {
-    acousticness: number;
-    danceability: number;
-    energy: number;
-    instrumentalness: number;
-    liveness: number;
-    tempo: number;
-    valence: number;
-  };
-};
-
-export type SpotifyLibraryStats = {
-  minYear: number;
-  maxYear: number;
-  genres: string[];
-  genreCounts: Record<string, number>;
-  maxPlayCount: number;
-  playlistIds: string[];
-  playlistNames: Record<string, string>;
-  playlistCounts: Record<string, number>;
-};
-
-export type SpotifyLibraryPayload = {
-  contributor: {
-    id: string;
-    name: string;
-  };
-  songs: SpotifyLibrarySong[];
-  stats: SpotifyLibraryStats;
 };
 
 export type SpotifySessionStore = {
@@ -291,9 +223,6 @@ export const createSpotifyClient = (store: SpotifySessionStore) => {
       items.push(...collect(payload));
       const next = nextPath(payload);
       path = next ?? "";
-      if (path) {
-        await sleep(75);
-      }
     }
     return items;
   };
@@ -343,69 +272,37 @@ export const createSpotifyClient = (store: SpotifySessionStore) => {
     });
   };
 
-  const fetchLibrary = async (): Promise<SpotifyLibraryPayload> => {
+  const fetchContributorProfile = async (): Promise<SpotifyLibraryPayload["contributor"]> => {
     const profile = await spotifyFetch<{ id: string; display_name?: string }>("/me");
-    const contributor = {
+    return {
       id: profile.id,
       name: profile.display_name?.trim() || "Spotify user",
     };
+  };
 
-    const savedItems = (await fetchAllPages<{ items: SpotifySavedTrackItem[]; next: string | null }>(
+  const fetchSavedTrackItems = async (): Promise<SpotifySavedTrackItem[]> =>
+    (await fetchAllPages<{ items: SpotifySavedTrackItem[]; next: string | null }>(
       "/me/tracks?limit=50",
       (payload) => payload.items,
       (payload) => (payload.next ? payload.next.replace(SPOTIFY_API_URL, "") : null)
     )) as SpotifySavedTrackItem[];
 
-    const playlists = (await fetchAllPages<{ items: SpotifyPlaylistSummary[]; next: string | null }>(
+  const fetchPlaylistSummaries = async (): Promise<SpotifyPlaylistSummary[]> =>
+    (await fetchAllPages<{ items: SpotifyPlaylistSummary[]; next: string | null }>(
       "/me/playlists?limit=50",
       (payload) => payload.items,
       (payload) => (payload.next ? payload.next.replace(SPOTIFY_API_URL, "") : null)
     )) as SpotifyPlaylistSummary[];
 
-    const readablePlaylists = playlists.filter(
-      (playlist) => playlist.owner.id === profile.id || playlist.collaborative
-    );
+  const fetchPlaylistTrackItems = async (playlistId: string): Promise<SpotifyPlaylistItem[]> =>
+    (await fetchAllPages<{ items: SpotifyPlaylistItem[]; next: string | null }>(
+      `/playlists/${playlistId}/items?limit=50`,
+      (payload) => payload.items,
+      (payload) => (payload.next ? payload.next.replace(SPOTIFY_API_URL, "") : null)
+    )) as SpotifyPlaylistItem[];
 
-    const playlistNames: Record<string, string> = {};
-    const playlistCounts: Record<string, number> = {};
-    const trackPlaylists = new Map<string, Set<string>>();
-    const trackById = new Map<string, SpotifyTrack>();
-
-    savedItems.forEach((item) => {
-      if (item.track?.id) {
-        trackById.set(item.track.id, item.track);
-      }
-    });
-
-    for (const playlist of readablePlaylists) {
-      playlistNames[playlist.id] = playlist.name;
-      playlistCounts[playlist.id] = 0;
-      try {
-        const playlistItems = (await fetchAllPages<{ items: SpotifyPlaylistItem[]; next: string | null }>(
-          `/playlists/${playlist.id}/items?limit=50`,
-          (payload) => payload.items,
-          (payload) => (payload.next ? payload.next.replace(SPOTIFY_API_URL, "") : null)
-        )) as SpotifyPlaylistItem[];
-        playlistItems.forEach((entry) => {
-          const track = getPlaylistItemTrack(entry);
-          const trackId = track?.id;
-          if (!trackId) {
-            return;
-          }
-          trackById.set(trackId, track);
-          playlistCounts[playlist.id] = (playlistCounts[playlist.id] ?? 0) + 1;
-          const memberships = trackPlaylists.get(trackId) ?? new Set<string>();
-          memberships.add(playlist.id);
-          trackPlaylists.set(trackId, memberships);
-        });
-      } catch {
-        // Skip playlists we cannot read (followed playlists, revoked access, etc.).
-      }
-      await sleep(100);
-    }
-
-    const artistIds = [...trackById.values()].flatMap((track) => track.artists.map((artist) => artist.id));
-    const genresByArtist = new Map<string, string[]>();
+  const fetchArtistGenres = async (artistIds: string[]): Promise<Record<string, string[]>> => {
+    const genresByArtistId: Record<string, string[]> = {};
     const uniqueArtistIds = [...new Set(artistIds)];
     try {
       for (let index = 0; index < uniqueArtistIds.length; index += 50) {
@@ -413,52 +310,59 @@ export const createSpotifyClient = (store: SpotifySessionStore) => {
         const payload = await spotifyFetch<{ artists: { id: string; genres: string[] }[] }>(
           `/artists?ids=${chunk.join(",")}`
         );
-        payload.artists.forEach((artist) => genresByArtist.set(artist.id, artist.genres ?? []));
+        payload.artists.forEach((artist) => {
+          genresByArtistId[artist.id] = artist.genres ?? [];
+        });
       }
     } catch {
       // Genre lookup is optional; some Spotify app modes block /artists.
     }
+    return genresByArtistId;
+  };
 
-    const songs: SpotifyLibrarySong[] = [...trackById.entries()].map(([trackId, track]) => {
-      const primaryArtist = track.artists[0];
-      const genres = primaryArtist ? genresByArtist.get(primaryArtist.id) ?? [] : [];
-      const savedItem = savedItems.find((item) => item.track?.id === trackId);
-      return {
-        id: trackId,
-        title: track.name,
-        artist: track.artists.map((artist) => artist.name).join(", "),
-        album: track.album.name,
-        genre: genres[0] ?? "Unknown",
-        year: Number.parseInt(track.album.release_date.slice(0, 4), 10) || new Date().getFullYear(),
-        playCount: track.popularity,
-        rating: 0,
-        loved: true,
-        dateAdded: savedItem?.added_at ?? "",
-        trackType: "File",
-        durationMs: track.duration_ms,
-        playlists: [...(trackPlaylists.get(trackId) ?? [])],
-      };
+  const buildLibraryPayload = async (input: {
+    contributor: SpotifyLibraryPayload["contributor"];
+    savedItems: SpotifySavedTrackItem[];
+    readablePlaylists: SpotifyPlaylistSummary[];
+    playlistItemsByPlaylistId: Record<string, SpotifyPlaylistItem[]>;
+  }): Promise<SpotifyLibraryPayload> => {
+    const artistIds = [
+      ...input.savedItems.flatMap((item) => (item.track ? item.track.artists.map((artist) => artist.id) : [])),
+      ...Object.values(input.playlistItemsByPlaylistId).flatMap((entries) =>
+        entries.flatMap((entry) => {
+          const track = entry.item ?? entry.track;
+          return track ? track.artists.map((artist) => artist.id) : [];
+        })
+      ),
+    ];
+    const genresByArtistId = await fetchArtistGenres(artistIds);
+    return assembleSpotifyLibrary({
+      contributor: input.contributor,
+      savedItems: input.savedItems,
+      readablePlaylists: input.readablePlaylists,
+      playlistItemsByPlaylistId: input.playlistItemsByPlaylistId,
+      genresByArtistId,
     });
+  };
 
-    const genreCounts: Record<string, number> = {};
-    songs.forEach((song) => {
-      genreCounts[song.genre] = (genreCounts[song.genre] ?? 0) + 1;
+  const fetchLibrary = async (): Promise<SpotifyLibraryPayload> => {
+    const contributor = await fetchContributorProfile();
+    const [savedItems, playlists] = await Promise.all([fetchSavedTrackItems(), fetchPlaylistSummaries()]);
+    const readablePlaylists = filterReadablePlaylists(playlists, contributor.id);
+    const playlistItemsByPlaylistId: Record<string, SpotifyPlaylistItem[]> = {};
+    await mapWithConcurrency(readablePlaylists, 4, async (playlist) => {
+      try {
+        playlistItemsByPlaylistId[playlist.id] = await fetchPlaylistTrackItems(playlist.id);
+      } catch {
+        playlistItemsByPlaylistId[playlist.id] = [];
+      }
     });
-    const years = songs.map((song) => song.year);
-    return {
+    return buildLibraryPayload({
       contributor,
-      songs,
-      stats: {
-        minYear: years.length ? Math.min(...years) : 1970,
-        maxYear: years.length ? Math.max(...years) : new Date().getFullYear(),
-        genres: Object.keys(genreCounts).sort((left, right) => left.localeCompare(right)),
-        genreCounts,
-        maxPlayCount: songs.reduce((max, song) => Math.max(max, song.playCount), 1),
-        playlistIds: readablePlaylists.map((playlist) => playlist.id),
-        playlistNames,
-        playlistCounts,
-      },
-    };
+      savedItems,
+      readablePlaylists,
+      playlistItemsByPlaylistId,
+    });
   };
 
   const resolvePlaybackDeviceId = async (): Promise<string> => {
@@ -606,6 +510,12 @@ export const createSpotifyClient = (store: SpotifySessionStore) => {
     buildAuthorizeUrl,
     exchangeAuthCode,
     fetchLibrary,
+    fetchContributorProfile,
+    fetchSavedTrackItems,
+    fetchPlaylistSummaries,
+    fetchPlaylistTrackItems,
+    fetchArtistGenres,
+    buildLibraryPayload,
     verifyContributorId,
     createPlaylist,
     playCue,

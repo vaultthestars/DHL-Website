@@ -34,6 +34,104 @@ __export(spotify_handler_exports, {
 });
 module.exports = __toCommonJS(spotify_handler_exports);
 
+// api/lib/spotify/spotifyLibraryAssembly.ts
+var getPlaylistItemTrack = (entry) => {
+  const candidate = entry.item ?? entry.track;
+  if (!candidate?.id) {
+    return null;
+  }
+  if (candidate.type && candidate.type !== "track") {
+    return null;
+  }
+  return candidate;
+};
+var filterReadablePlaylists = (playlists, profileId) => playlists.filter((playlist) => playlist.owner.id === profileId || playlist.collaborative);
+var assembleSpotifyLibrary = (input) => {
+  const playlistNames = {};
+  const playlistCounts = {};
+  const trackPlaylists = /* @__PURE__ */ new Map();
+  const trackById = /* @__PURE__ */ new Map();
+  input.savedItems.forEach((item) => {
+    if (item.track?.id) {
+      trackById.set(item.track.id, item.track);
+    }
+  });
+  input.readablePlaylists.forEach((playlist) => {
+    playlistNames[playlist.id] = playlist.name;
+    playlistCounts[playlist.id] = 0;
+    const playlistItems = input.playlistItemsByPlaylistId[playlist.id] ?? [];
+    playlistItems.forEach((entry) => {
+      const track = getPlaylistItemTrack(entry);
+      const trackId = track?.id;
+      if (!trackId) {
+        return;
+      }
+      trackById.set(trackId, track);
+      playlistCounts[playlist.id] = (playlistCounts[playlist.id] ?? 0) + 1;
+      const memberships = trackPlaylists.get(trackId) ?? /* @__PURE__ */ new Set();
+      memberships.add(playlist.id);
+      trackPlaylists.set(trackId, memberships);
+    });
+  });
+  const songs = [...trackById.entries()].map(([trackId, track]) => {
+    const primaryArtist = track.artists[0];
+    const genres = primaryArtist ? input.genresByArtistId[primaryArtist.id] ?? [] : [];
+    const savedItem = input.savedItems.find((item) => item.track?.id === trackId);
+    return {
+      id: trackId,
+      title: track.name,
+      artist: track.artists.map((artist) => artist.name).join(", "),
+      album: track.album.name,
+      genre: genres[0] ?? "Unknown",
+      year: Number.parseInt(track.album.release_date.slice(0, 4), 10) || (/* @__PURE__ */ new Date()).getFullYear(),
+      playCount: track.popularity,
+      rating: 0,
+      loved: true,
+      dateAdded: savedItem?.added_at ?? "",
+      trackType: "File",
+      durationMs: track.duration_ms,
+      playlists: [...trackPlaylists.get(trackId) ?? []]
+    };
+  });
+  const genreCounts = {};
+  songs.forEach((song) => {
+    genreCounts[song.genre] = (genreCounts[song.genre] ?? 0) + 1;
+  });
+  const years = songs.map((song) => song.year);
+  return {
+    contributor: input.contributor,
+    songs,
+    stats: {
+      minYear: years.length ? Math.min(...years) : 1970,
+      maxYear: years.length ? Math.max(...years) : (/* @__PURE__ */ new Date()).getFullYear(),
+      genres: Object.keys(genreCounts).sort((left, right) => left.localeCompare(right)),
+      genreCounts,
+      maxPlayCount: songs.reduce((max, song) => Math.max(max, song.playCount), 1),
+      playlistIds: input.readablePlaylists.map((playlist) => playlist.id),
+      playlistNames,
+      playlistCounts
+    }
+  };
+};
+var mapWithConcurrency = async (items, concurrency, mapper) => {
+  if (items.length === 0) {
+    return [];
+  }
+  const results = new Array(items.length);
+  let nextIndex = 0;
+  const worker = async () => {
+    while (nextIndex < items.length) {
+      const currentIndex = nextIndex;
+      nextIndex += 1;
+      results[currentIndex] = await mapper(items[currentIndex], currentIndex);
+    }
+  };
+  await Promise.all(
+    Array.from({ length: Math.min(Math.max(1, concurrency), items.length) }, () => worker())
+  );
+  return results;
+};
+
 // api/lib/spotify/spotifySession.ts
 var import_node_crypto = require("node:crypto");
 var SPOTIFY_SESSION_COOKIE = "music_cue_spotify_session";
@@ -121,6 +219,9 @@ var formatSpotifyApiError = (status, path2, spotifyMessage) => {
   if (status === 429) {
     return "Spotify rate limit reached. Wait a minute, then try Load & share again.";
   }
+  if (status === 504) {
+    return "Spotify library import timed out. Try again in a moment.";
+  }
   if (status === 403 && (normalizedMessage.includes("not registered") || normalizedMessage.includes("developer dashboard") || normalizedMessage.includes("check settings on developer.spotify.com"))) {
     return "This Spotify account is not allowlisted for this app yet. The site owner must add your Spotify email in the Spotify Developer Dashboard (User Management), then you can disconnect and connect again.";
   }
@@ -135,16 +236,6 @@ var pickPlaybackDevice = (devices) => {
     return null;
   }
   return available.find((device) => device.is_active) ?? available.find((device) => device.type === "Computer") ?? available[0];
-};
-var getPlaylistItemTrack = (entry) => {
-  const candidate = entry.item ?? entry.track;
-  if (!candidate?.id) {
-    return null;
-  }
-  if (candidate.type && candidate.type !== "track") {
-    return null;
-  }
-  return candidate;
 };
 var getSpotifyRedirectUri = () => {
   if (process.env.SPOTIFY_REDIRECT_URI) {
@@ -256,9 +347,6 @@ var createSpotifyClient = (store) => {
       items.push(...collect(payload));
       const next = nextPath(payload);
       path2 = next ?? "";
-      if (path2) {
-        await sleep(75);
-      }
     }
     return items;
   };
@@ -300,61 +388,30 @@ var createSpotifyClient = (store) => {
       scope: payload.scope
     });
   };
-  const fetchLibrary = async () => {
+  const fetchContributorProfile = async () => {
     const profile = await spotifyFetch("/me");
-    const contributor = {
+    return {
       id: profile.id,
       name: profile.display_name?.trim() || "Spotify user"
     };
-    const savedItems = await fetchAllPages(
-      "/me/tracks?limit=50",
-      (payload) => payload.items,
-      (payload) => payload.next ? payload.next.replace(SPOTIFY_API_URL, "") : null
-    );
-    const playlists = await fetchAllPages(
-      "/me/playlists?limit=50",
-      (payload) => payload.items,
-      (payload) => payload.next ? payload.next.replace(SPOTIFY_API_URL, "") : null
-    );
-    const readablePlaylists = playlists.filter(
-      (playlist) => playlist.owner.id === profile.id || playlist.collaborative
-    );
-    const playlistNames = {};
-    const playlistCounts = {};
-    const trackPlaylists = /* @__PURE__ */ new Map();
-    const trackById = /* @__PURE__ */ new Map();
-    savedItems.forEach((item) => {
-      if (item.track?.id) {
-        trackById.set(item.track.id, item.track);
-      }
-    });
-    for (const playlist of readablePlaylists) {
-      playlistNames[playlist.id] = playlist.name;
-      playlistCounts[playlist.id] = 0;
-      try {
-        const playlistItems = await fetchAllPages(
-          `/playlists/${playlist.id}/items?limit=50`,
-          (payload) => payload.items,
-          (payload) => payload.next ? payload.next.replace(SPOTIFY_API_URL, "") : null
-        );
-        playlistItems.forEach((entry) => {
-          const track = getPlaylistItemTrack(entry);
-          const trackId = track?.id;
-          if (!trackId) {
-            return;
-          }
-          trackById.set(trackId, track);
-          playlistCounts[playlist.id] = (playlistCounts[playlist.id] ?? 0) + 1;
-          const memberships = trackPlaylists.get(trackId) ?? /* @__PURE__ */ new Set();
-          memberships.add(playlist.id);
-          trackPlaylists.set(trackId, memberships);
-        });
-      } catch {
-      }
-      await sleep(100);
-    }
-    const artistIds = [...trackById.values()].flatMap((track) => track.artists.map((artist) => artist.id));
-    const genresByArtist = /* @__PURE__ */ new Map();
+  };
+  const fetchSavedTrackItems = async () => await fetchAllPages(
+    "/me/tracks?limit=50",
+    (payload) => payload.items,
+    (payload) => payload.next ? payload.next.replace(SPOTIFY_API_URL, "") : null
+  );
+  const fetchPlaylistSummaries = async () => await fetchAllPages(
+    "/me/playlists?limit=50",
+    (payload) => payload.items,
+    (payload) => payload.next ? payload.next.replace(SPOTIFY_API_URL, "") : null
+  );
+  const fetchPlaylistTrackItems = async (playlistId) => await fetchAllPages(
+    `/playlists/${playlistId}/items?limit=50`,
+    (payload) => payload.items,
+    (payload) => payload.next ? payload.next.replace(SPOTIFY_API_URL, "") : null
+  );
+  const fetchArtistGenres = async (artistIds) => {
+    const genresByArtistId = {};
     const uniqueArtistIds = [...new Set(artistIds)];
     try {
       for (let index = 0; index < uniqueArtistIds.length; index += 50) {
@@ -362,49 +419,51 @@ var createSpotifyClient = (store) => {
         const payload = await spotifyFetch(
           `/artists?ids=${chunk.join(",")}`
         );
-        payload.artists.forEach((artist) => genresByArtist.set(artist.id, artist.genres ?? []));
+        payload.artists.forEach((artist) => {
+          genresByArtistId[artist.id] = artist.genres ?? [];
+        });
       }
     } catch {
     }
-    const songs = [...trackById.entries()].map(([trackId, track]) => {
-      const primaryArtist = track.artists[0];
-      const genres = primaryArtist ? genresByArtist.get(primaryArtist.id) ?? [] : [];
-      const savedItem = savedItems.find((item) => item.track?.id === trackId);
-      return {
-        id: trackId,
-        title: track.name,
-        artist: track.artists.map((artist) => artist.name).join(", "),
-        album: track.album.name,
-        genre: genres[0] ?? "Unknown",
-        year: Number.parseInt(track.album.release_date.slice(0, 4), 10) || (/* @__PURE__ */ new Date()).getFullYear(),
-        playCount: track.popularity,
-        rating: 0,
-        loved: true,
-        dateAdded: savedItem?.added_at ?? "",
-        trackType: "File",
-        durationMs: track.duration_ms,
-        playlists: [...trackPlaylists.get(trackId) ?? []]
-      };
+    return genresByArtistId;
+  };
+  const buildLibraryPayload = async (input) => {
+    const artistIds = [
+      ...input.savedItems.flatMap((item) => item.track ? item.track.artists.map((artist) => artist.id) : []),
+      ...Object.values(input.playlistItemsByPlaylistId).flatMap(
+        (entries) => entries.flatMap((entry) => {
+          const track = entry.item ?? entry.track;
+          return track ? track.artists.map((artist) => artist.id) : [];
+        })
+      )
+    ];
+    const genresByArtistId = await fetchArtistGenres(artistIds);
+    return assembleSpotifyLibrary({
+      contributor: input.contributor,
+      savedItems: input.savedItems,
+      readablePlaylists: input.readablePlaylists,
+      playlistItemsByPlaylistId: input.playlistItemsByPlaylistId,
+      genresByArtistId
     });
-    const genreCounts = {};
-    songs.forEach((song) => {
-      genreCounts[song.genre] = (genreCounts[song.genre] ?? 0) + 1;
-    });
-    const years = songs.map((song) => song.year);
-    return {
-      contributor,
-      songs,
-      stats: {
-        minYear: years.length ? Math.min(...years) : 1970,
-        maxYear: years.length ? Math.max(...years) : (/* @__PURE__ */ new Date()).getFullYear(),
-        genres: Object.keys(genreCounts).sort((left, right) => left.localeCompare(right)),
-        genreCounts,
-        maxPlayCount: songs.reduce((max, song) => Math.max(max, song.playCount), 1),
-        playlistIds: readablePlaylists.map((playlist) => playlist.id),
-        playlistNames,
-        playlistCounts
+  };
+  const fetchLibrary = async () => {
+    const contributor = await fetchContributorProfile();
+    const [savedItems, playlists] = await Promise.all([fetchSavedTrackItems(), fetchPlaylistSummaries()]);
+    const readablePlaylists = filterReadablePlaylists(playlists, contributor.id);
+    const playlistItemsByPlaylistId = {};
+    await mapWithConcurrency(readablePlaylists, 4, async (playlist) => {
+      try {
+        playlistItemsByPlaylistId[playlist.id] = await fetchPlaylistTrackItems(playlist.id);
+      } catch {
+        playlistItemsByPlaylistId[playlist.id] = [];
       }
-    };
+    });
+    return buildLibraryPayload({
+      contributor,
+      savedItems,
+      readablePlaylists,
+      playlistItemsByPlaylistId
+    });
   };
   const resolvePlaybackDeviceId = async () => {
     const payload = await spotifyFetch("/me/player/devices");
@@ -535,6 +594,12 @@ var createSpotifyClient = (store) => {
     buildAuthorizeUrl,
     exchangeAuthCode,
     fetchLibrary,
+    fetchContributorProfile,
+    fetchSavedTrackItems,
+    fetchPlaylistSummaries,
+    fetchPlaylistTrackItems,
+    fetchArtistGenres,
+    buildLibraryPayload,
     verifyContributorId,
     createPlaylist,
     playCue,
@@ -645,6 +710,13 @@ var saveSharedLibrarySnapshot = async (snapshot) => {
 };
 
 // api/lib/spotify/spotifyHandlers.ts
+var getQueryValue = (query, key) => {
+  const value = query?.[key];
+  if (Array.isArray(value)) {
+    return typeof value[0] === "string" ? value[0] : "";
+  }
+  return typeof value === "string" ? value : "";
+};
 var isPublishedLibraryPayload = (body) => {
   if (!body || typeof body !== "object") {
     return false;
@@ -703,6 +775,33 @@ var handleSpotifyRoute = async (route, req, res) => {
     }
     if (route === "library" && req.method === "GET") {
       finish(200, await client.fetchLibrary());
+      return;
+    }
+    if (route === "profile" && req.method === "GET") {
+      finish(200, await client.fetchContributorProfile());
+      return;
+    }
+    if (route === "saved-tracks" && req.method === "GET") {
+      finish(200, { items: await client.fetchSavedTrackItems() });
+      return;
+    }
+    if (route === "playlists" && req.method === "GET") {
+      finish(200, { playlists: await client.fetchPlaylistSummaries() });
+      return;
+    }
+    if (route === "playlist-tracks" && req.method === "GET") {
+      const playlistId = getQueryValue(req.query, "playlistId");
+      if (!playlistId) {
+        finish(400, { error: "playlistId is required." });
+        return;
+      }
+      finish(200, { items: await client.fetchPlaylistTrackItems(playlistId) });
+      return;
+    }
+    if (route === "artist-genres" && req.method === "POST") {
+      const body = req.body;
+      const artistIds = Array.isArray(body?.artistIds) ? body.artistIds : [];
+      finish(200, { genresByArtistId: await client.fetchArtistGenres(artistIds) });
       return;
     }
     if (route === "publish-shared-library" && req.method === "POST") {

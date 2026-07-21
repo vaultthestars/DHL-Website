@@ -10,12 +10,21 @@ type HandlerRequest = {
   method?: string;
   body?: unknown;
   headers?: { cookie?: string };
+  query?: Record<string, unknown>;
 };
 
 type HandlerResponse = {
   status: (code: number) => HandlerResponse;
   json: (body: unknown) => void;
   setHeader: (name: string, value: string | string[]) => void;
+};
+
+const getQueryValue = (query: HandlerRequest["query"], key: string): string => {
+  const value = query?.[key];
+  if (Array.isArray(value)) {
+    return typeof value[0] === "string" ? value[0] : "";
+  }
+  return typeof value === "string" ? value : "";
 };
 
 const isPublishedLibraryPayload = (body: unknown): body is SpotifyLibraryPayload => {
@@ -91,6 +100,38 @@ export const handleSpotifyRoute = async (
 
     if (route === "library" && req.method === "GET") {
       finish(200, await client.fetchLibrary());
+      return;
+    }
+
+    if (route === "profile" && req.method === "GET") {
+      finish(200, await client.fetchContributorProfile());
+      return;
+    }
+
+    if (route === "saved-tracks" && req.method === "GET") {
+      finish(200, { items: await client.fetchSavedTrackItems() });
+      return;
+    }
+
+    if (route === "playlists" && req.method === "GET") {
+      finish(200, { playlists: await client.fetchPlaylistSummaries() });
+      return;
+    }
+
+    if (route === "playlist-tracks" && req.method === "GET") {
+      const playlistId = getQueryValue(req.query, "playlistId");
+      if (!playlistId) {
+        finish(400, { error: "playlistId is required." });
+        return;
+      }
+      finish(200, { items: await client.fetchPlaylistTrackItems(playlistId) });
+      return;
+    }
+
+    if (route === "artist-genres" && req.method === "POST") {
+      const body = req.body as { artistIds?: string[] };
+      const artistIds = Array.isArray(body?.artistIds) ? body.artistIds : [];
+      finish(200, { genresByArtistId: await client.fetchArtistGenres(artistIds) });
       return;
     }
 

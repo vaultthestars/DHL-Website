@@ -2771,6 +2771,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     }
     setIsImporting(true);
     try {
+      setStatusMessage("Loading saved tracks and playlists from Spotify…");
       const loaded = await musicProvider.loadLibrary();
       applyLoadedLibrary(
         loaded.songs,
