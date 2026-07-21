@@ -117,14 +117,12 @@ import {
   loadSongSpaceMode,
   loadLibraryScopeMode,
   publishSharedLibrary,
-  readGuestLibrarySessionCache,
   resolveActiveContributorIds,
   resolveLocalContributorId,
   saveLocalContributorId,
   saveLibraryScopeMode,
   saveSongSpaceMode,
   toLoadedLibrary,
-  writeGuestLibrarySessionCache,
   type SongSpaceMode,
 } from "../lib/sharedLibraryApi";
 import type { LibraryScopeMode } from "../lib/libraryScope";
@@ -341,6 +339,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     startMidY: number;
   } | null>(null);
   const isDrawingRef = useRef(false);
+  const guestMergeLoadRef = useRef<"idle" | "loading" | "done">("idle");
   const draggingClusterIdRef = useRef<string | null>(null);
   const publishClusterLayoutRef = useRef<(overrides: ClusterCenterOverrides) => void>(() => {});
   const setGraphCursorRef = useRef<(cursor: NormalizedPoint | null) => void>(() => {});
@@ -924,7 +923,6 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     [isolateGraphSongs, visibleSongs]
   );
   const deferredGraphSongs = useDeferredValue(graphSongs);
-  const isGraphLayoutPending = deferredGraphSongs !== graphSongs;
 
   const liveIsolateOwnerBounds = useMemo(() => {
     if (effectiveLibraryScopeMode !== "isolate" || !isClusterView(layoutConfig)) {
@@ -2693,19 +2691,53 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
   const applyMergedSharedLibraryPayload = useCallback(
     (merged: Awaited<ReturnType<typeof fetchAllMergedSharedLibrary>>, message: string) => {
       const loaded = toLoadedLibrary(merged);
-      setSharedContributors(merged.contributors);
-      setSharedTrackCount(merged.sharedTrackCount);
-      applyLoadedLibrary(loaded.songs, loaded.stats, message, merged.playlistOwners, { persist: false });
-      writeGuestLibrarySessionCache({
-        cachedAt: new Date().toISOString(),
-        contributors: merged.contributors,
-        songs: loaded.songs,
-        stats: loaded.stats,
-        playlistOwners: merged.playlistOwners,
-        sharedTrackCount: merged.sharedTrackCount,
+      startTransition(() => {
+        setSharedContributors(merged.contributors);
+        setSharedTrackCount(merged.sharedTrackCount);
+        applyLoadedLibrary(loaded.songs, loaded.stats, message, merged.playlistOwners, { persist: false });
       });
     },
     [applyLoadedLibrary]
+  );
+
+  const loadGuestMergedLibrary = useCallback(
+    async (options?: { forceRefresh?: boolean }) => {
+      if (!isWebDeployment || musicService !== "spotify") {
+        return [];
+      }
+      if (options?.forceRefresh) {
+        guestMergeLoadRef.current = "idle";
+      }
+      if (guestMergeLoadRef.current === "loading" || guestMergeLoadRef.current === "done") {
+        return [];
+      }
+
+      guestMergeLoadRef.current = "loading";
+      setIsLoadingSharedLibrary(true);
+      try {
+        const merged = await fetchAllMergedSharedLibrary();
+        if (merged.contributors.length === 0) {
+          guestMergeLoadRef.current = "idle";
+          setSharedTrackCount(0);
+          setStatusMessage("No shared libraries published yet.");
+          return [];
+        }
+        const contributorNames = merged.contributors.map((contributor) => contributor.name).join(" + ");
+        applyMergedSharedLibraryPayload(
+          merged,
+          `Loaded shared library from ${contributorNames} (${merged.songs.length} tracks).`
+        );
+        guestMergeLoadRef.current = "done";
+        return merged.contributors;
+      } catch (error) {
+        guestMergeLoadRef.current = "idle";
+        setStatusMessage(error instanceof Error ? error.message : "Could not load shared library.");
+        return [];
+      } finally {
+        setIsLoadingSharedLibrary(false);
+      }
+    },
+    [applyMergedSharedLibraryPayload, musicService]
   );
 
   useEffect(
@@ -2725,76 +2757,23 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
   const refreshSharedContributors = useCallback(
     async (options?: { loadLibrary?: boolean; forceRefresh?: boolean }) => {
       try {
+        const isGuest = spotifyStatus?.connected !== true;
+        const shouldLoadLibrary =
+          options?.loadLibrary ?? (isGuest || songSpaceMode === "shared");
+
+        if (
+          isWebDeployment &&
+          musicService === "spotify" &&
+          isGuest &&
+          shouldLoadLibrary
+        ) {
+          return loadGuestMergedLibrary({ forceRefresh: options?.forceRefresh });
+        }
+
         if (spotifyStatus === null) {
           const contributors = await listSharedContributors(includeMockUsers);
           setSharedContributors(contributors);
           return contributors;
-        }
-
-        const isGuest = !spotifyStatus.connected;
-        const shouldLoadLibrary =
-          options?.loadLibrary ?? (isGuest || songSpaceMode === "shared");
-
-        if (isWebDeployment && musicService === "spotify" && isGuest && shouldLoadLibrary) {
-          const cached = options?.forceRefresh ? null : readGuestLibrarySessionCache();
-          if (cached) {
-            setSharedContributors(cached.contributors);
-            setSharedTrackCount(cached.sharedTrackCount);
-            startTransition(() => {
-              applyLoadedLibrary(
-                cached.songs,
-                cached.stats,
-                `Loaded shared library (${cached.songs.length} tracks).`,
-                cached.playlistOwners,
-                { persist: false }
-              );
-            });
-            void fetchAllMergedSharedLibrary()
-              .then((merged) => {
-                const cachedStamp = cached.contributors
-                  .map((contributor) => contributor.updatedAt)
-                  .sort()
-                  .join("|");
-                const mergedStamp = merged.contributors
-                  .map((contributor) => contributor.updatedAt)
-                  .sort()
-                  .join("|");
-                if (
-                  mergedStamp !== cachedStamp ||
-                  merged.songs.length !== cached.songs.length
-                ) {
-                  const contributorNames = merged.contributors
-                    .map((contributor) => contributor.name)
-                    .join(" + ");
-                  applyMergedSharedLibraryPayload(
-                    merged,
-                    `Loaded shared library from ${contributorNames} (${merged.songs.length} tracks).`
-                  );
-                }
-              })
-              .catch(() => {
-                // Keep cached library visible if the background refresh fails.
-              });
-            return cached.contributors;
-          }
-
-          setIsLoadingSharedLibrary(true);
-          try {
-            const merged = await fetchAllMergedSharedLibrary();
-            if (merged.contributors.length === 0) {
-              setSharedTrackCount(0);
-              setStatusMessage("No shared libraries published yet.");
-              return [];
-            }
-            const contributorNames = merged.contributors.map((contributor) => contributor.name).join(" + ");
-            applyMergedSharedLibraryPayload(
-              merged,
-              `Loaded shared library from ${contributorNames} (${merged.songs.length} tracks).`
-            );
-            return merged.contributors;
-          } finally {
-            setIsLoadingSharedLibrary(false);
-          }
         }
 
         const contributors = await listSharedContributors(includeMockUsers);
@@ -2854,13 +2833,28 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     [
       applyLoadedLibrary,
       applyMergedSharedLibrary,
-      applyMergedSharedLibraryPayload,
       includeMockUsers,
+      loadGuestMergedLibrary,
       musicService,
       songSpaceMode,
       spotifyStatus,
     ]
   );
+
+  useEffect(() => {
+    if (!isWebDeployment || musicService !== "spotify") {
+      guestMergeLoadRef.current = "idle";
+      return;
+    }
+    if (spotifyStatus?.connected === true) {
+      return;
+    }
+    const hasPersonalLibrary = loadPersonalSpotifyLibrary().songs.length > 0;
+    if (hasPersonalLibrary && songSpaceMode === "mine") {
+      return;
+    }
+    void loadGuestMergedLibrary();
+  }, [loadGuestMergedLibrary, musicService, songSpaceMode, spotifyStatus?.connected]);
 
   useEffect(() => {
     if (
@@ -3499,9 +3493,9 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     : undefined;
 
   const collaboratorDisplayName = spotifyStatus?.displayName?.trim() || "Guest";
-  const guestGraphBusy =
-    isSpotifyGuest &&
-    (isLoadingSharedLibrary || isGraphLayoutPending || (spotifyStatus !== null && songs.length === 0));
+  const isLikelySpotifyGuest =
+    isWebDeployment && musicService === "spotify" && spotifyStatus?.connected !== true;
+  const guestGraphBusy = isLikelySpotifyGuest && isLoadingSharedLibrary;
 
   const collaborativeViewSettings = useMemo<CollaborativeViewSettings>(
     () => ({
