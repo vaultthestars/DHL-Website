@@ -1020,6 +1020,32 @@ body {
   color: var(--w95-surface-dark);
 }
 
+.music-cue-remote-cursor-svg {
+  cursor: pointer;
+  opacity: 0.42;
+}
+
+.music-cue-remote-cursor-svg-synced {
+  opacity: 1;
+}
+
+.music-cue-remote-cursor-svg-dot {
+  stroke: rgba(255, 255, 255, 0.9);
+  stroke-width: 1;
+  paint-order: stroke fill;
+}
+
+.music-cue-remote-cursor-svg-label {
+  fill: #000000;
+  font-family: var(--w95-font);
+  font-size: 10px;
+  font-weight: 700;
+  stroke: rgba(255, 255, 255, 0.92);
+  stroke-width: 3;
+  paint-order: stroke fill;
+  pointer-events: none;
+}
+
 .music-cue-remote-cursors {
   position: absolute;
   inset: 0;

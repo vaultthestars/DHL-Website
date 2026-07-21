@@ -13,7 +13,7 @@ import {
 import { createPortal } from "react-dom";
 import { usePlayerIdentity, usePresence, usePlayContext } from "@playhtml/react";
 import { fromNormalizedPosition, type GraphDimensions } from "./graphLayout";
-import { graphPointToPanelPosition, type ViewTransform } from "./graphView";
+import type { ViewTransform } from "./graphView";
 import type { LibraryScopeMode } from "./libraryScope";
 import type { SongSpaceMode } from "./sharedLibraryApi";
 import { layoutConfigKey } from "./layoutMetrics";
@@ -308,53 +308,10 @@ export const CollaborativeParticipantsPanel = () => {
   );
 };
 
-export const CollaborativeCursorsOverlay = ({
-  graphPanelRef,
-  svgRef,
-  dimensions,
-  viewTransformRef,
-}: {
-  graphPanelRef: RefObject<HTMLDivElement | null>;
-  svgRef: RefObject<SVGSVGElement | null>;
-  dimensions: GraphDimensions;
-  viewTransformRef: RefObject<ViewTransform>;
-}) => {
-  if (!isWebDeployment) {
-    return null;
-  }
-
-  return (
-    <CollaborativeCursorsOverlayInner
-      graphPanelRef={graphPanelRef}
-      svgRef={svgRef}
-      dimensions={dimensions}
-      viewTransformRef={viewTransformRef}
-    />
-  );
-};
-
-const CollaborativeCursorsOverlayInner = ({
-  graphPanelRef,
-  svgRef,
-  dimensions,
-  viewTransformRef,
-}: {
-  graphPanelRef: RefObject<HTMLDivElement | null>;
-  svgRef: RefObject<SVGSVGElement | null>;
-  dimensions: GraphDimensions;
-  viewTransformRef: RefObject<ViewTransform>;
-}) => {
+const CollaborativeGraphCursorsInner = ({ dimensions }: { dimensions: GraphDimensions }) => {
   const { presences } = usePresence<SessionPresenceData>(SESSION_PRESENCE_CHANNEL);
   const { myPresenceLayout, syncWithParticipant } = useCollaborativeSession();
-  const panel = graphPanelRef.current;
-  const svg = svgRef.current;
-  const viewTransform = viewTransformRef.current;
 
-  if (!panel || !svg) {
-    return null;
-  }
-
-  const panelRect = panel.getBoundingClientRect();
   const cursors = [...presences.entries()]
     .filter(([, presence]) => !presence.isMe)
     .map(([id, presence]) => {
@@ -363,42 +320,62 @@ const CollaborativeCursorsOverlayInner = ({
         return null;
       }
       const graphPoint = fromNormalizedPosition(session.graphCursor, dimensions);
-      const screenPoint = graphPointToPanelPosition(graphPoint, viewTransform, svg);
       const isSynced =
         presenceLayoutKey(session.presenceLayout) === presenceLayoutKey(myPresenceLayout);
       return {
         id,
         displayName: session.displayName,
         color: presence.playerIdentity?.color ?? "#4a90d9",
-        x: screenPoint.x - panelRect.left,
-        y: screenPoint.y - panelRect.top,
+        x: graphPoint.x,
+        y: graphPoint.y,
         isSynced,
       };
     })
     .filter((cursor): cursor is NonNullable<typeof cursor> => cursor !== null);
 
-  return createPortal(
-    <div className="music-cue-remote-cursors" aria-hidden>
+  if (cursors.length === 0) {
+    return null;
+  }
+
+  return (
+    <g className="music-cue-remote-cursors-svg" aria-hidden>
       {cursors.map((cursor) => (
-        <button
+        <g
           key={cursor.id}
-          type="button"
-          className={`music-cue-remote-cursor ${cursor.isSynced ? "music-cue-remote-cursor-synced" : ""}`}
-          style={{
-            left: cursor.x,
-            top: cursor.y,
-            color: cursor.color,
-          }}
-          title={`Sync with ${cursor.displayName}`}
+          className={`music-cue-remote-cursor-svg ${cursor.isSynced ? "music-cue-remote-cursor-svg-synced" : ""}`}
+          transform={`translate(${cursor.x}, ${cursor.y})`}
+          pointerEvents="visiblePainted"
           onClick={() => syncWithParticipant(cursor.id)}
         >
-          <span className="music-cue-remote-cursor-pointer" style={{ background: cursor.color }} />
-          <span className="music-cue-remote-cursor-label">{cursor.displayName}</span>
-        </button>
+          <title>{`Sync with ${cursor.displayName}`}</title>
+          <circle className="music-cue-remote-cursor-svg-dot" r={5} fill={cursor.color} />
+          <text className="music-cue-remote-cursor-svg-label" x={8} y={4}>
+            {cursor.displayName}
+          </text>
+        </g>
       ))}
-    </div>,
-    panel
+    </g>
   );
+};
+
+export const CollaborativeGraphCursorsPortal = ({
+  contentGroupRef,
+  dimensions,
+}: {
+  contentGroupRef: RefObject<SVGGElement | null>;
+  dimensions: GraphDimensions;
+}) => {
+  const [host, setHost] = useState<SVGGElement | null>(null);
+
+  useEffect(() => {
+    setHost(contentGroupRef.current);
+  }, [contentGroupRef, dimensions.height, dimensions.width]);
+
+  if (!host) {
+    return null;
+  }
+
+  return createPortal(<CollaborativeGraphCursorsInner dimensions={dimensions} />, host);
 };
 
 export const CollaborativeParticipantsPortal = ({
@@ -421,27 +398,18 @@ export const CollaborativeParticipantsPortal = ({
 
 export const CollaborativeSessionUi = ({
   publishRef,
-  graphPanelRef,
-  svgRef,
+  contentGroupRef,
   dimensions,
-  viewTransformRef,
   participantsHostRef,
 }: {
   publishRef: MutableRefObject<(cursor: NormalizedPoint | null) => void>;
-  graphPanelRef: RefObject<HTMLDivElement | null>;
-  svgRef: RefObject<SVGSVGElement | null>;
+  contentGroupRef: RefObject<SVGGElement | null>;
   dimensions: GraphDimensions;
-  viewTransformRef: RefObject<ViewTransform>;
   participantsHostRef: RefObject<HTMLSpanElement | null>;
 }) => (
   <>
     <GraphCursorPublisherBridge publishRef={publishRef} />
     <CollaborativeParticipantsPortal hostRef={participantsHostRef} />
-    <CollaborativeCursorsOverlay
-      graphPanelRef={graphPanelRef}
-      svgRef={svgRef}
-      dimensions={dimensions}
-      viewTransformRef={viewTransformRef}
-    />
+    <CollaborativeGraphCursorsPortal contentGroupRef={contentGroupRef} dimensions={dimensions} />
   </>
 );

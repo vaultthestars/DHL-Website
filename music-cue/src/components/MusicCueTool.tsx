@@ -493,6 +493,63 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     return clusterOverrides;
   }, [clusterOverrides, layoutConfig, localContributorId, songSpaceMode]);
 
+  const resolveLayoutClusterOverrides = useCallback(
+    (overrides: ClusterCenterOverrides = clusterOverridesRef.current): ClusterCenterOverrides => {
+      if (songSpaceMode === "mine" && localContributorId) {
+        return getClusterOverridesForOwner(overrides, localContributorId, layoutConfig);
+      }
+      return overrides;
+    },
+    [layoutConfig, localContributorId, songSpaceMode]
+  );
+
+  const scheduleClusterDragPreview = useCallback(() => {
+    if (clusterDragRafRef.current) {
+      return;
+    }
+    clusterDragRafRef.current = requestAnimationFrame(() => {
+      clusterDragRafRef.current = 0;
+      setClusterDragPreviewTick((value) => value + 1);
+    });
+  }, []);
+
+  const buildClusterDragOverrides = useCallback(
+    (
+      current: ClusterCenterOverrides,
+      session: NonNullable<typeof clusterDragSessionRef.current>,
+      delta: NormalizedPoint,
+      resolvedOwnerId: string | null
+    ): ClusterCenterOverrides => {
+      const updates: Record<string, NormalizedPoint> = {};
+      session.clusterIds.forEach((id) => {
+        const start = session.startPositions[id];
+        const displayNorm = { x: start.x + delta.x, y: start.y + delta.y };
+        if (session.useDisplaySpace && session.bounds && session.metaCenter) {
+          updates[id] = displayNormalizedToSoloNormalized(
+            displayNorm,
+            dimensions,
+            session.bounds,
+            session.metaCenter
+          );
+        } else {
+          updates[id] = displayNorm;
+        }
+      });
+      const scopedUpdates = toOwnerScopedOverrideUpdates(resolvedOwnerId, session.clusterIds, updates);
+      if (layoutConfig.viewMode === "cluster" && layoutConfig.clusterMode === "genre") {
+        return { ...current, genre: { ...current.genre, ...scopedUpdates } };
+      }
+      if (layoutConfig.viewMode === "cluster" && layoutConfig.clusterMode === "playlist") {
+        return { ...current, playlist: { ...current.playlist, ...scopedUpdates } };
+      }
+      if (layoutConfig.viewMode === "cluster" && layoutConfig.clusterMode === "custom") {
+        return { ...current, custom: { ...current.custom, ...scopedUpdates } };
+      }
+      return current;
+    },
+    [dimensions, layoutConfig]
+  );
+
   const persistCustomCatalog = useCallback(
     (catalog: CustomClusterCatalog, ownerId?: string | null) => {
       if (activeLayoutScope === "conglomerate") {
@@ -571,6 +628,8 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
   const [boxSelectRect, setBoxSelectRect] = useState<BoxSelectRect | null>(null);
   const [selectedClusterIds, setSelectedClusterIds] = useState<Set<string>>(() => new Set());
   const clusterOverridesRef = useRef(clusterOverrides);
+  const clusterDragRafRef = useRef(0);
+  const [clusterDragPreviewTick, setClusterDragPreviewTick] = useState(0);
   const [squigglySongPositions, setSquigglySongPositions] = useState<Record<string, NormalizedPoint>>(() =>
     loadCustomPositions()
   );
@@ -1050,8 +1109,11 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
       scopeMode: LibraryScopeMode = effectiveLibraryScopeMode,
       layoutSongs: Song[] = isolateGraphSongs(visibleSongs),
       ownerBounds = isolateOwnerBounds
-    ): GraphPoint =>
-      layoutSongPosition(song, dimensions, config, stats, isSquigglyCustomMode ? squigglySongPositions : {}, layoutClusterOverrides, layoutSongs, {
+    ): GraphPoint => {
+      const clusterOverridesForLayout = draggingClusterIdRef.current
+        ? resolveLayoutClusterOverrides()
+        : layoutClusterOverrides;
+      return layoutSongPosition(song, dimensions, config, stats, isSquigglyCustomMode ? squigglySongPositions : {}, clusterOverridesForLayout, layoutSongs, {
         libraryScopeMode: scopeMode,
         enabledOwnerIds: activeContributorIds,
         isolateOwnerBounds: ownerBounds,
@@ -1059,10 +1121,12 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
         metaClusterCenterForOwner: getMetaClusterCenter,
         customClusterCatalog: activeCustomCatalog,
         customCatalogForOwner,
-      }),
+      });
+    },
     [
       activeContributorIds,
       activeCustomCatalog,
+      clusterDragPreviewTick,
       customCatalogForOwner,
       dimensions,
       effectiveLibraryScopeMode,
@@ -1070,6 +1134,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
       isolateGraphSongs,
       isolateOwnerBounds,
       layoutClusterOverrides,
+      resolveLayoutClusterOverrides,
       skipIsolateCentroidTranslation,
       isSquigglyCustomMode,
       squigglySongPositions,
@@ -1223,7 +1288,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
       }));
     }
     return renderGraphSongs.map((song) => ({ song, position: getRenderablePosition(song) }));
-  }, [computeLayoutPosition, getRenderablePosition, isLargeLibrary, layoutConfig, renderGraphSongs]);
+  }, [computeLayoutPosition, getRenderablePosition, isLargeLibrary, layoutConfig, renderGraphSongs, clusterDragPreviewTick]);
 
   const songNodeFills = useMemo(() => {
     const fills = new Map<string, string>();
@@ -1241,6 +1306,9 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
   const positionForClusterRegions = useAnimatedClusterPositions ? getRenderablePosition : getPosition;
 
   const clusterRegions = useMemo(() => {
+    const clusterOverridesForLayout = draggingClusterIdRef.current
+      ? resolveLayoutClusterOverrides()
+      : layoutClusterOverrides;
     const ownerRegions =
       effectiveLibraryScopeMode === "isolate"
         ? buildOwnerMetaRegions(
@@ -1273,7 +1341,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
             layoutConfig,
             positionForClusterRegions,
             dimensions,
-            clusterOverrides,
+            clusterOverridesForLayout,
             activeContributorIds,
             stats.playlistNames,
             isolateOwnerBounds,
@@ -1285,13 +1353,14 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
             positionForClusterRegions,
             stats,
             dimensions,
-            layoutClusterOverrides,
+            clusterOverridesForLayout,
             activeCustomCatalog
           );
 
     return [...ownerRegions, ...innerClusterRegions];
   }, [
     activeCustomCatalog,
+    clusterDragPreviewTick,
     clusterOverrides,
     customCatalogForOwner,
     layoutClusterOverrides,
@@ -1302,6 +1371,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     graphSongs,
     isolateOwnerBounds,
     layoutConfig,
+    resolveLayoutClusterOverrides,
     stats,
   ]);
 
@@ -2320,7 +2390,6 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
 
     if (
       isWebDeployment &&
-      graphTool !== "navigate" &&
       !pinchSessionRef.current &&
       panSessionRef.current?.mode !== "pan" &&
       !draggingClusterIdRef.current &&
@@ -2424,50 +2493,14 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
       const clusterId = draggingClusterIdRef.current;
       const { ownerId } = parseOwnerScopedRegionId(clusterId);
       const resolvedOwnerId = resolveOverrideOwnerId(ownerId);
-      setClusterOverrides((current) => {
-        const updates: Record<string, NormalizedPoint> = {};
-        session.clusterIds.forEach((id) => {
-          const start = session.startPositions[id];
-          const displayNorm = { x: start.x + delta.x, y: start.y + delta.y };
-          if (session.useDisplaySpace && session.bounds && session.metaCenter) {
-            updates[id] = displayNormalizedToSoloNormalized(
-              displayNorm,
-              dimensions,
-              session.bounds,
-              session.metaCenter
-            );
-          } else {
-            updates[id] = displayNorm;
-          }
-        });
-        const scopedUpdates = toOwnerScopedOverrideUpdates(resolvedOwnerId, session.clusterIds, updates);
-        if (layoutConfig.viewMode === "cluster" && layoutConfig.clusterMode === "genre") {
-          const next = { ...current, genre: { ...current.genre, ...scopedUpdates } };
-          saveGenreClusterCenterOverrides(next.genre, activeLayoutScope);
-          clusterOverridesRef.current = next;
-          return next;
-        }
-        if (layoutConfig.viewMode === "cluster" && layoutConfig.clusterMode === "playlist") {
-          const next = {
-            ...current,
-            playlist: { ...current.playlist, ...scopedUpdates },
-          };
-          savePlaylistClusterCenterOverrides(next.playlist, activeLayoutScope);
-          invalidatePlaylistOverlapLayoutCache();
-          clusterOverridesRef.current = next;
-          return next;
-        }
-        if (layoutConfig.viewMode === "cluster" && layoutConfig.clusterMode === "custom") {
-          const next = {
-            ...current,
-            custom: { ...current.custom, ...scopedUpdates },
-          };
-          saveCustomClusterCenterOverrides(next.custom, activeLayoutScope);
-          clusterOverridesRef.current = next;
-          return next;
-        }
-        return current;
-      });
+      const nextOverrides = buildClusterDragOverrides(
+        clusterOverridesRef.current,
+        session,
+        delta,
+        resolvedOwnerId
+      );
+      clusterOverridesRef.current = nextOverrides;
+      scheduleClusterDragPreview();
       return;
     }
 
@@ -2598,6 +2631,17 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
       draggingClusterIdRef.current = null;
       clusterDragSessionRef.current = null;
       endIsolateClusterDrag();
+      const nextOverrides = clusterOverridesRef.current;
+      setClusterOverrides(nextOverrides);
+      if (layoutConfig.viewMode === "cluster" && layoutConfig.clusterMode === "genre") {
+        saveGenreClusterCenterOverrides(nextOverrides.genre, activeLayoutScope);
+      } else if (layoutConfig.viewMode === "cluster" && layoutConfig.clusterMode === "playlist") {
+        savePlaylistClusterCenterOverrides(nextOverrides.playlist, activeLayoutScope);
+        invalidatePlaylistOverlapLayoutCache();
+      } else if (layoutConfig.viewMode === "cluster" && layoutConfig.clusterMode === "custom") {
+        saveCustomClusterCenterOverrides(nextOverrides.custom, activeLayoutScope);
+      }
+      invalidateLayoutPositionCaches();
       setStatusMessage(
         skipIsolateCentroidTranslation
           ? "Cluster position saved."
@@ -3196,11 +3240,19 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
   const updateLayoutConfig = (nextConfig: LayoutConfig, message?: string) => {
     if (layoutConfigKey(layoutConfig) !== layoutConfigKey(nextConfig)) {
       clearDrawnPath();
+      invalidateLayoutPositionCaches();
     }
-    setLayoutConfig(nextConfig);
-    saveLayoutConfig(nextConfig);
-    if (message) {
-      setStatusMessage(message);
+    const applyLayoutConfig = () => {
+      setLayoutConfig(nextConfig);
+      saveLayoutConfig(nextConfig);
+      if (message) {
+        setStatusMessage(message);
+      }
+    };
+    if (isLargeLibrary) {
+      startTransition(applyLayoutConfig);
+    } else {
+      applyLayoutConfig();
     }
   };
 
@@ -4562,10 +4614,8 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
           >
             <CollaborativeSessionUi
               publishRef={setGraphCursorRef}
-              graphPanelRef={graphPanelRef}
-              svgRef={svgRef}
+              contentGroupRef={contentGroupRef}
               dimensions={dimensions}
-              viewTransformRef={viewTransformRef}
               participantsHostRef={participantsHostRef}
             />
           </CollaborativeSessionProvider>
