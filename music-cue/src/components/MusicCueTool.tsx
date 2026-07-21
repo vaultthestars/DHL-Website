@@ -2156,9 +2156,6 @@ export const MusicCueTool = () => {
             onPointerMove={handlePointerMove}
             onPointerUp={finishPointerInteraction}
             onPointerLeave={(event) => {
-              if (isWebDeployment) {
-                setGraphCursorRef.current(null);
-              }
               if (event.buttons === 0) {
                 finishPointerInteraction();
               }

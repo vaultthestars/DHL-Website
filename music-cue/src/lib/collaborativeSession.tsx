@@ -126,6 +126,9 @@ const CollaborativeSessionBridge = ({
 
   const setGraphCursor = useCallback(
     (cursor: NormalizedPoint | null) => {
+      if (!cursor) {
+        return;
+      }
       graphCursorRef.current = cursor;
       if (publishFrameRef.current) {
         return;
