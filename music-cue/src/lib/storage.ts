@@ -144,6 +144,9 @@ const emptyClusterOverrides = (): ClusterCenterOverrides => ({
   custom: {},
 });
 
+export const loadBundledClusterCenterOverrides = (): ClusterCenterOverrides =>
+  normalizeClusterCenterOverrides(bundledClusterDefaults());
+
 export const normalizeClusterCenterOverrides = (
   overrides: Partial<ClusterCenterOverrides> | ClusterCenterOverrides
 ): ClusterCenterOverrides => ({

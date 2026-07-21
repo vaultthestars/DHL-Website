@@ -1,7 +1,11 @@
 import { useCallback, useEffect, useRef, type MutableRefObject, type ReactNode, type RefObject } from "react";
 import { PlayProvider, usePageData, usePlayContext } from "@playhtml/react";
 import { isWebDeployment } from "./runtime";
-import { loadClusterCenterOverrides, normalizeClusterCenterOverrides, type ClusterLayoutScope } from "./storage";
+import {
+  loadClusterCenterOverrides,
+  normalizeClusterCenterOverrides,
+  type ClusterLayoutScope,
+} from "./storage";
 import type { ClusterCenterOverrides } from "./types";
 
 export const PLAYHTML_ROOM = "dhl-music-cue-v1";
@@ -21,34 +25,27 @@ const CollaborativeLayoutSync = ({
   clusterOverrides,
   setClusterOverrides,
   draggingClusterIdRef,
-  layoutScope,
+  roomLayoutSeed,
   clusterLayoutSyncMode,
   enableRemoteClusterPublish,
   publishRef,
-  clusterLayoutSyncRevision = 0,
 }: {
   clusterOverrides: ClusterCenterOverrides;
   setClusterOverrides: (overrides: ClusterCenterOverrides) => void;
   draggingClusterIdRef: RefObject<string | null>;
-  layoutScope: ClusterLayoutScope;
+  roomLayoutSeed: ClusterCenterOverrides;
   clusterLayoutSyncMode: ClusterLayoutSyncMode;
   enableRemoteClusterPublish: boolean;
   publishRef: MutableRefObject<(overrides: ClusterCenterOverrides) => void>;
-  clusterLayoutSyncRevision?: number;
 }) => {
   const pageDataKey = PLAYHTML_CLUSTER_LAYOUT_KEY;
   const [remoteOverrides, setRemoteOverrides] = usePageData<ClusterCenterOverrides>(
     pageDataKey,
-    loadClusterCenterOverrides(layoutScope)
+    roomLayoutSeed
   );
   const { isLoading } = usePlayContext();
   const localRef = useRef(clusterOverrides);
   const remoteRef = useRef(remoteOverrides);
-  const snapshotAppliedRef = useRef(false);
-
-  useEffect(() => {
-    snapshotAppliedRef.current = false;
-  }, [clusterLayoutSyncRevision]);
 
   localRef.current = clusterOverrides;
   remoteRef.current = remoteOverrides;
@@ -57,14 +54,9 @@ const CollaborativeLayoutSync = ({
     if (clusterLayoutSyncMode !== "snapshot" || isLoading || draggingClusterIdRef.current) {
       return;
     }
-    if (snapshotAppliedRef.current) {
-      return;
-    }
     if (areClusterOverridesEqual(remoteOverrides, localRef.current)) {
-      snapshotAppliedRef.current = true;
       return;
     }
-    snapshotAppliedRef.current = true;
     setClusterOverrides(normalizeClusterCenterOverrides(remoteOverrides));
   }, [
     clusterLayoutSyncMode,
@@ -73,6 +65,16 @@ const CollaborativeLayoutSync = ({
     remoteOverrides,
     setClusterOverrides,
   ]);
+
+  useEffect(() => {
+    if (!enableRemoteClusterPublish || isLoading) {
+      return;
+    }
+    if (areClusterOverridesEqual(clusterOverrides, remoteOverrides)) {
+      return;
+    }
+    setRemoteOverrides(normalizeClusterCenterOverrides(clusterOverrides));
+  }, [clusterOverrides, enableRemoteClusterPublish, isLoading, remoteOverrides, setRemoteOverrides]);
 
   const publishClusterLayout = useCallback(
     (overrides: ClusterCenterOverrides) => {
@@ -120,16 +122,17 @@ export const CollaborativeLayoutProvider = ({
   setClusterOverrides,
   draggingClusterIdRef,
   layoutScope,
+  roomLayoutSeed,
   clusterLayoutSyncMode = "off",
   enableRemoteClusterPublish = true,
   publishRef,
-  clusterLayoutSyncRevision = 0,
   children,
 }: {
   clusterOverrides: ClusterCenterOverrides;
   setClusterOverrides: (overrides: ClusterCenterOverrides) => void;
   draggingClusterIdRef: RefObject<string | null>;
   layoutScope: ClusterLayoutScope;
+  roomLayoutSeed?: ClusterCenterOverrides;
   clusterLayoutSyncMode?: ClusterLayoutSyncMode;
   enableRemoteClusterPublish?: boolean;
   publishRef: MutableRefObject<(overrides: ClusterCenterOverrides) => void>;
@@ -140,6 +143,8 @@ export const CollaborativeLayoutProvider = ({
     return <>{children}</>;
   }
 
+  const resolvedRoomLayoutSeed = roomLayoutSeed ?? loadClusterCenterOverrides(layoutScope);
+
   return (
     <>
       {children}
@@ -148,11 +153,10 @@ export const CollaborativeLayoutProvider = ({
         clusterOverrides={clusterOverrides}
         setClusterOverrides={setClusterOverrides}
         draggingClusterIdRef={draggingClusterIdRef}
-        layoutScope={layoutScope}
+        roomLayoutSeed={resolvedRoomLayoutSeed}
         clusterLayoutSyncMode={clusterLayoutSyncMode}
         enableRemoteClusterPublish={enableRemoteClusterPublish}
         publishRef={publishRef}
-        clusterLayoutSyncRevision={clusterLayoutSyncRevision}
       />
     </>
   );

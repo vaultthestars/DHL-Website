@@ -63,6 +63,16 @@ const CollaborativeCustomClusterSync = ({
     setCustomClusterCatalogState(normalizeRoomCustomClusterCatalogState(remoteState));
   }, [customClusterSyncMode, isLoading, remoteState, setCustomClusterCatalogState]);
 
+  useEffect(() => {
+    if (!enableRemotePublish || isLoading) {
+      return;
+    }
+    if (areRoomCatalogStatesEqual(customClusterCatalogState, remoteState)) {
+      return;
+    }
+    setRemoteState(normalizeRoomCustomClusterCatalogState(customClusterCatalogState));
+  }, [customClusterCatalogState, enableRemotePublish, isLoading, remoteState, setRemoteState]);
+
   const publishCustomClusterCatalog = useCallback(
     (state: RoomCustomClusterCatalogState) => {
       if (!enableRemotePublish) {

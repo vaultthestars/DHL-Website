@@ -63,6 +63,7 @@ import {
 } from "../lib/graphView";
 import {
   loadBuildMode,
+  loadBundledClusterCenterOverrides,
   loadClusterCenterOverrides,
   loadCustomClusterCatalogState,
   loadGraphTool,
@@ -486,7 +487,9 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
   );
   const [customClusterCatalogState, setCustomClusterCatalogState] = useState(() => loadCustomClusterCatalogState());
   const reloadLayoutCaches = useCallback((scope: ClusterLayoutScope) => {
-    setClusterOverrides(loadClusterCenterOverrides(scope));
+    if (!isSpotifyGuest) {
+      setClusterOverrides(loadClusterCenterOverrides(scope));
+    }
     if (!isSpotifyGuest) {
       setCustomClusterCatalogState(loadCustomClusterCatalogState());
     }
@@ -797,6 +800,12 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
   useEffect(() => {
     clusterOverridesRef.current = clusterOverrides;
   }, [clusterOverrides]);
+
+  const applyClusterOverrides = useCallback((overrides: ClusterCenterOverrides) => {
+    setClusterOverrides(overrides);
+    invalidatePlaylistOverlapLayoutCache();
+    invalidateLayoutPositionCaches();
+  }, []);
 
   useEffect(() => {
     if (isWebDeployment) {
@@ -3703,6 +3712,14 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     return "snapshot";
   }, [isSpotifyGuest]);
 
+  const roomClusterLayoutSeed = useMemo(
+    () =>
+      isSpotifyGuest
+        ? loadBundledClusterCenterOverrides()
+        : loadClusterCenterOverrides(activeLayoutScope === "custom" ? "isolate" : activeLayoutScope),
+    [activeLayoutScope, isSpotifyGuest]
+  );
+
   const presenceLayout = useMemo<CollaborativePresenceLayout>(
     () => ({
       layoutConfig,
@@ -4732,9 +4749,10 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
       <CollaborativePlayProvider>
         <CollaborativeLayoutProvider
           clusterOverrides={clusterOverrides}
-          setClusterOverrides={setClusterOverrides}
+          setClusterOverrides={applyClusterOverrides}
           draggingClusterIdRef={draggingClusterIdRef}
           layoutScope={activeLayoutScope === "custom" ? "isolate" : activeLayoutScope}
+          roomLayoutSeed={roomClusterLayoutSeed}
           clusterLayoutSyncMode={clusterLayoutSyncMode}
           enableRemoteClusterPublish={!isSpotifyGuest}
           publishRef={publishClusterLayoutRef}
