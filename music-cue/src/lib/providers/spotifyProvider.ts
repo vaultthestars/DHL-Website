@@ -49,11 +49,34 @@ const paginatedPhasePercent = (pageNumber: number, startPercent: number, endPerc
 
 const isRateLimitMessage = (message: string): boolean => message.toLowerCase().includes("rate limit");
 
+const isNetworkError = (error: unknown): boolean => {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+  const message = error.message.toLowerCase();
+  return (
+    error.name === "TypeError" ||
+    message.includes("failed to fetch") ||
+    message.includes("network") ||
+    message.includes("load failed")
+  );
+};
+
 const fetchJson = async <T>(url: string, init?: RequestInit, attempt = 0): Promise<T> => {
-  const response = await fetch(url, {
-    credentials: "include",
-    ...init,
-  });
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      credentials: "include",
+      ...init,
+    });
+  } catch (error) {
+    if (isNetworkError(error) && attempt < 3) {
+      await sleep(1_500 * (attempt + 1));
+      return fetchJson<T>(url, init, attempt + 1);
+    }
+    throw new Error("Network error while talking to Spotify. Check your connection and try again.");
+  }
+
   const payload = (await response.json().catch(() => ({}))) as T & { error?: string };
 
   if (!response.ok) {
@@ -350,14 +373,31 @@ const loadLibraryInChunks = async (options?: LoadLibraryOptions): Promise<Loaded
     clearSpotifyImportSession();
   }
 
-  reportProgress(onProgress, {
-    phase: "profile",
-    message: "Connecting to Spotify…",
-    percent: 2,
-  });
+  let session = options?.fresh ? null : loadSpotifyImportSession();
+  let profile: { id: string; name: string };
 
-  const profile = await fetchJson<{ id: string; name: string }>("/api/spotify/profile");
-  let session = loadSpotifyImportSession();
+  if (session) {
+    profile = session.contributor;
+    reportProgress(onProgress, {
+      phase: "profile",
+      message: `Resuming import (${session.savedItems.length.toLocaleString()} saved tracks loaded)…`,
+      percent: 8,
+    });
+  } else if (options?.knownContributor?.id) {
+    profile = options.knownContributor;
+    reportProgress(onProgress, {
+      phase: "profile",
+      message: "Starting library import…",
+      percent: 2,
+    });
+  } else {
+    reportProgress(onProgress, {
+      phase: "profile",
+      message: "Verifying Spotify account…",
+      percent: 2,
+    });
+    profile = await fetchJson<{ id: string; name: string }>("/api/spotify/profile");
+  }
 
   if (session && session.contributor.id !== profile.id) {
     clearSpotifyImportSession();
@@ -367,12 +407,6 @@ const loadLibraryInChunks = async (options?: LoadLibraryOptions): Promise<Loaded
   if (!session) {
     session = createSpotifyImportSession(profile);
     persistSession(session);
-  } else {
-    reportProgress(onProgress, {
-      phase: session.phase,
-      message: `Resuming import (${session.savedItems.length.toLocaleString()} saved tracks loaded)…`,
-      percent: session.phase === "saved-tracks" ? 8 : session.phase === "playlists" ? 25 : 35,
-    });
   }
 
   try {

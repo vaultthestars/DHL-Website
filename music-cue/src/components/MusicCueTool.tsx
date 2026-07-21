@@ -392,6 +392,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     configured: boolean;
     message?: string;
     displayName?: string;
+    userId?: string;
   } | null>(null);
   const [spotifyUseLocalExport, setSpotifyUseLocalExport] = useState(false);
   const [sharedContributors, setSharedContributors] = useState<LibraryContributor[]>([]);
@@ -668,7 +669,16 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     if (params.get("spotify") === "connected" && musicService === "spotify") {
       setStatusMessage("Spotify connected. Load your library to begin.");
       window.history.replaceState({}, "", window.location.pathname);
-      void musicProvider.getConnectionStatus().then(setSpotifyStatus);
+      void musicProvider
+        .getConnectionStatus()
+        .then(setSpotifyStatus)
+        .catch(() => {
+          setSpotifyStatus({
+            connected: false,
+            configured: true,
+            message: "Could not verify Spotify connection.",
+          });
+        });
     }
   }, [musicProvider, musicService]);
 
@@ -698,7 +708,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
   }, [spotifyStatus?.connected]);
 
   const spotifyStatusLoading = musicService === "spotify" && spotifyStatus === null;
-  const spotifyDisconnected = spotifyStatus?.connected === false;
+  const spotifyCanLoadLibrary = spotifyStatus?.connected === true;
 
   const spotifyImportResumeLabel = useMemo(() => {
     void importResumeRevision;
@@ -2798,6 +2808,10 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     if (!musicProvider.loadLibrary) {
       return;
     }
+    if (!spotifyCanLoadLibrary) {
+      setStatusMessage("Connect Spotify before loading your library.");
+      return;
+    }
     if (options?.fresh) {
       clearSpotifyImportSession();
       setImportResumeRevision((revision) => revision + 1);
@@ -2821,6 +2835,12 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     try {
       const loaded = await musicProvider.loadLibrary({
         fresh: options?.fresh,
+        knownContributor:
+          spotifyStatus?.userId && spotifyStatus.displayName
+            ? { id: spotifyStatus.userId, name: spotifyStatus.displayName }
+            : spotifyStatus?.userId
+              ? { id: spotifyStatus.userId, name: "Spotify user" }
+              : undefined,
         onProgress: (progress) => {
           setImportProgress(progress);
           setStatusMessage(progress.message);
@@ -3583,11 +3603,13 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
               <button
                 type="button"
                 onClick={() => void handleLoadSpotifyLibrary()}
-                disabled={isImporting || spotifyDisconnected}
+                disabled={isImporting || spotifyStatusLoading || !spotifyCanLoadLibrary}
                 title={
                   spotifyStatusLoading
                     ? "Checking Spotify connection…"
-                    : spotifyImportResumeLabel ?? undefined
+                    : !spotifyCanLoadLibrary
+                      ? "Connect Spotify first"
+                      : spotifyImportResumeLabel ?? undefined
                 }
               >
                 {isImporting
@@ -3598,11 +3620,11 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
                       ? "Resume load & share"
                       : "Load & share library"}
               </button>
-              {spotifyImportResumeLabel && !isImporting && !spotifyStatusLoading ? (
+              {spotifyImportResumeLabel && !isImporting && spotifyCanLoadLibrary ? (
                 <button
                   type="button"
                   onClick={() => void handleLoadSpotifyLibrary({ fresh: true })}
-                  disabled={spotifyDisconnected}
+                  disabled={!spotifyCanLoadLibrary}
                   title={spotifyImportResumeLabel}
                 >
                   Start fresh

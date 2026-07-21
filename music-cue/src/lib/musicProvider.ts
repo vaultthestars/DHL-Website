@@ -33,6 +33,7 @@ export type LibraryLoadProgress = {
 export type LoadLibraryOptions = {
   onProgress?: (progress: LibraryLoadProgress) => void;
   fresh?: boolean;
+  knownContributor?: { id: string; name: string };
 };
 
 export type ConnectionStatus = {
@@ -40,6 +41,7 @@ export type ConnectionStatus = {
   configured: boolean;
   message?: string;
   displayName?: string;
+  userId?: string;
 };
 
 export interface MusicProvider {

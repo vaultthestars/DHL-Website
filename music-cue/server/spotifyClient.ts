@@ -603,6 +603,7 @@ export const createSpotifyClient = (store: SpotifySessionStore) => {
         configured: true,
         message: "Connected to Spotify.",
         displayName: profile.display_name?.trim() || "Spotify user",
+        userId: profile.id,
       };
     } catch (error) {
       const message = error instanceof Error ? error.message : "Spotify connection could not be verified.";
