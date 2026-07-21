@@ -40,6 +40,7 @@ import {
   type CollaborativeViewSettings,
 } from "../lib/collaborativeSession";
 import { getMusicProvider } from "../lib/providers";
+import type { LibraryLoadProgress } from "../lib/musicProvider";
 import {
   DEFAULT_VIEW_TRANSFORM,
   MIN_ZOOM,
@@ -522,6 +523,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
   const [exportPlaylistName, setExportPlaylistName] = useState(() => defaultExportPlaylistName());
   const [isExportingPlaylist, setIsExportingPlaylist] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
+  const [importProgress, setImportProgress] = useState<LibraryLoadProgress | null>(null);
   const [isPanning, setIsPanning] = useState(false);
   const [shiftHeld, setShiftHeld] = useState(false);
   const [boxSelectRect, setBoxSelectRect] = useState<BoxSelectRect | null>(null);
@@ -2770,9 +2772,18 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
       return;
     }
     setIsImporting(true);
+    setImportProgress({
+      phase: "profile",
+      message: "Starting Spotify import…",
+      percent: 0,
+    });
     try {
-      setStatusMessage("Loading saved tracks and playlists from Spotify…");
-      const loaded = await musicProvider.loadLibrary();
+      const loaded = await musicProvider.loadLibrary({
+        onProgress: (progress) => {
+          setImportProgress(progress);
+          setStatusMessage(progress.message);
+        },
+      });
       applyLoadedLibrary(
         loaded.songs,
         loaded.stats,
@@ -2807,6 +2818,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
       setStatusMessage(error instanceof Error ? error.message : "Could not load Spotify library.");
     } finally {
       setIsImporting(false);
+      setImportProgress(null);
     }
   };
 
@@ -3537,6 +3549,20 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
               ) : null}
             </div>
           )}
+
+          {musicService === "spotify" && importProgress ? (
+            <div className="music-cue-import-progress" aria-live="polite">
+              <div className="music-cue-import-progress__track">
+                <div
+                  className="music-cue-import-progress__bar"
+                  style={{ width: `${Math.max(4, Math.min(100, importProgress.percent))}%` }}
+                />
+              </div>
+              <div className="music-cue-import-progress__label">
+                {importProgress.message} ({Math.round(importProgress.percent)}%)
+              </div>
+            </div>
+          ) : null}
 
           {isWebDeployment && musicService === "spotify" ? (
             <div className="music-cue-shared-controls">

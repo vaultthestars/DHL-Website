@@ -108,6 +108,29 @@ export const handleSpotifyRoute = async (
       return;
     }
 
+    if (route === "saved-tracks-page" && req.method === "GET") {
+      finish(200, await client.fetchSavedTracksPage(getQueryValue(req.query, "next") || null));
+      return;
+    }
+
+    if (route === "playlists-page" && req.method === "GET") {
+      finish(200, await client.fetchPlaylistsPage(getQueryValue(req.query, "next") || null));
+      return;
+    }
+
+    if (route === "playlist-tracks-page" && req.method === "GET") {
+      const playlistId = getQueryValue(req.query, "playlistId");
+      if (!playlistId) {
+        finish(400, { error: "playlistId is required." });
+        return;
+      }
+      finish(
+        200,
+        await client.fetchPlaylistTracksPage(playlistId, getQueryValue(req.query, "next") || null)
+      );
+      return;
+    }
+
     if (route === "saved-tracks" && req.method === "GET") {
       finish(200, { items: await client.fetchSavedTrackItems() });
       return;
@@ -131,7 +154,7 @@ export const handleSpotifyRoute = async (
     if (route === "artist-genres" && req.method === "POST") {
       const body = req.body as { artistIds?: string[] };
       const artistIds = Array.isArray(body?.artistIds) ? body.artistIds : [];
-      finish(200, { genresByArtistId: await client.fetchArtistGenres(artistIds) });
+      finish(200, { genresByArtistId: await client.fetchArtistGenreBatch(artistIds) });
       return;
     }
 

@@ -214,6 +214,20 @@ var parseRetryAfterMs = (retryAfterHeader, attempt) => {
   }
   return Math.min(1e3 * 2 ** attempt, 1e4);
 };
+var SPOTIFY_RELATIVE_PATH = /^\/[A-Za-z0-9_\-./?=&%]+$/;
+var resolveSpotifyPagePath = (nextPath, defaultPath, allowedPrefixes) => {
+  const normalized = nextPath?.trim() ?? "";
+  if (!normalized) {
+    return defaultPath;
+  }
+  if (!SPOTIFY_RELATIVE_PATH.test(normalized) || normalized.includes("://")) {
+    throw new Error("Invalid Spotify pagination path.");
+  }
+  if (!allowedPrefixes.some((prefix) => normalized.startsWith(prefix))) {
+    throw new Error("Invalid Spotify pagination path.");
+  }
+  return normalized;
+};
 var formatSpotifyApiError = (status, path2, spotifyMessage) => {
   const normalizedMessage = spotifyMessage?.toLowerCase() ?? "";
   if (status === 429) {
@@ -400,30 +414,67 @@ var createSpotifyClient = (store) => {
     (payload) => payload.items,
     (payload) => payload.next ? payload.next.replace(SPOTIFY_API_URL, "") : null
   );
+  const fetchSavedTracksPage = async (nextPath) => {
+    const path2 = resolveSpotifyPagePath(nextPath, "/me/tracks?limit=50", ["/me/tracks"]);
+    const payload = await spotifyFetch(path2);
+    return {
+      items: payload.items,
+      next: payload.next ? payload.next.replace(SPOTIFY_API_URL, "") : null
+    };
+  };
   const fetchPlaylistSummaries = async () => await fetchAllPages(
     "/me/playlists?limit=50",
     (payload) => payload.items,
     (payload) => payload.next ? payload.next.replace(SPOTIFY_API_URL, "") : null
   );
+  const fetchPlaylistsPage = async (nextPath) => {
+    const path2 = resolveSpotifyPagePath(nextPath, "/me/playlists?limit=50", ["/me/playlists"]);
+    const payload = await spotifyFetch(path2);
+    return {
+      items: payload.items,
+      next: payload.next ? payload.next.replace(SPOTIFY_API_URL, "") : null
+    };
+  };
   const fetchPlaylistTrackItems = async (playlistId) => await fetchAllPages(
     `/playlists/${playlistId}/items?limit=50`,
     (payload) => payload.items,
     (payload) => payload.next ? payload.next.replace(SPOTIFY_API_URL, "") : null
   );
+  const fetchPlaylistTracksPage = async (playlistId, nextPath) => {
+    if (!playlistId || !/^[A-Za-z0-9]+$/.test(playlistId)) {
+      throw new Error("Invalid playlistId.");
+    }
+    const defaultPath = `/playlists/${playlistId}/items?limit=50`;
+    const path2 = resolveSpotifyPagePath(nextPath, defaultPath, [`/playlists/${playlistId}/`]);
+    const payload = await spotifyFetch(path2);
+    return {
+      items: payload.items,
+      next: payload.next ? payload.next.replace(SPOTIFY_API_URL, "") : null
+    };
+  };
+  const fetchArtistGenreBatch = async (artistIds) => {
+    const genresByArtistId = {};
+    const chunk = [...new Set(artistIds)].slice(0, 50);
+    if (chunk.length === 0) {
+      return genresByArtistId;
+    }
+    try {
+      const payload = await spotifyFetch(
+        `/artists?ids=${chunk.join(",")}`
+      );
+      payload.artists.forEach((artist) => {
+        genresByArtistId[artist.id] = artist.genres ?? [];
+      });
+    } catch {
+    }
+    return genresByArtistId;
+  };
   const fetchArtistGenres = async (artistIds) => {
     const genresByArtistId = {};
     const uniqueArtistIds = [...new Set(artistIds)];
-    try {
-      for (let index = 0; index < uniqueArtistIds.length; index += 50) {
-        const chunk = uniqueArtistIds.slice(index, index + 50);
-        const payload = await spotifyFetch(
-          `/artists?ids=${chunk.join(",")}`
-        );
-        payload.artists.forEach((artist) => {
-          genresByArtistId[artist.id] = artist.genres ?? [];
-        });
-      }
-    } catch {
+    for (let index = 0; index < uniqueArtistIds.length; index += 50) {
+      const batch = await fetchArtistGenreBatch(uniqueArtistIds.slice(index, index + 50));
+      Object.assign(genresByArtistId, batch);
     }
     return genresByArtistId;
   };
@@ -596,9 +647,13 @@ var createSpotifyClient = (store) => {
     fetchLibrary,
     fetchContributorProfile,
     fetchSavedTrackItems,
+    fetchSavedTracksPage,
     fetchPlaylistSummaries,
+    fetchPlaylistsPage,
     fetchPlaylistTrackItems,
+    fetchPlaylistTracksPage,
     fetchArtistGenres,
+    fetchArtistGenreBatch,
     buildLibraryPayload,
     verifyContributorId,
     createPlaylist,
@@ -781,6 +836,26 @@ var handleSpotifyRoute = async (route, req, res) => {
       finish(200, await client.fetchContributorProfile());
       return;
     }
+    if (route === "saved-tracks-page" && req.method === "GET") {
+      finish(200, await client.fetchSavedTracksPage(getQueryValue(req.query, "next") || null));
+      return;
+    }
+    if (route === "playlists-page" && req.method === "GET") {
+      finish(200, await client.fetchPlaylistsPage(getQueryValue(req.query, "next") || null));
+      return;
+    }
+    if (route === "playlist-tracks-page" && req.method === "GET") {
+      const playlistId = getQueryValue(req.query, "playlistId");
+      if (!playlistId) {
+        finish(400, { error: "playlistId is required." });
+        return;
+      }
+      finish(
+        200,
+        await client.fetchPlaylistTracksPage(playlistId, getQueryValue(req.query, "next") || null)
+      );
+      return;
+    }
     if (route === "saved-tracks" && req.method === "GET") {
       finish(200, { items: await client.fetchSavedTrackItems() });
       return;
@@ -801,7 +876,7 @@ var handleSpotifyRoute = async (route, req, res) => {
     if (route === "artist-genres" && req.method === "POST") {
       const body = req.body;
       const artistIds = Array.isArray(body?.artistIds) ? body.artistIds : [];
-      finish(200, { genresByArtistId: await client.fetchArtistGenres(artistIds) });
+      finish(200, { genresByArtistId: await client.fetchArtistGenreBatch(artistIds) });
       return;
     }
     if (route === "publish-shared-library" && req.method === "POST") {

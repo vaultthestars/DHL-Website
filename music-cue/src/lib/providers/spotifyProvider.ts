@@ -7,8 +7,27 @@ import {
   type SpotifyPlaylistSummary,
   type SpotifySavedTrackItem,
 } from "../../../shared/spotifyLibraryAssembly";
-import { ConnectionStatus, CuePlaylistResult, LoadedLibrary, MusicProvider } from "../musicProvider";
+import {
+  ConnectionStatus,
+  CuePlaylistResult,
+  LibraryLoadProgress,
+  LoadLibraryOptions,
+  LoadedLibrary,
+  MusicProvider,
+} from "../musicProvider";
 import { PlaybackState, Song } from "../types";
+
+type SpotifyPage<T> = {
+  items: T[];
+  next: string | null;
+};
+
+const reportProgress = (
+  onProgress: LoadLibraryOptions["onProgress"],
+  progress: LibraryLoadProgress
+): void => {
+  onProgress?.(progress);
+};
 
 const fetchJson = async <T>(url: string, init?: RequestInit): Promise<T> => {
   const response = await fetch(url, {
@@ -23,6 +42,26 @@ const fetchJson = async <T>(url: string, init?: RequestInit): Promise<T> => {
     throw new Error(payload.error ?? `Request failed (${response.status}).`);
   }
   return (await response.json()) as T;
+};
+
+const fetchSpotifyPages = async <T>(
+  buildUrl: (next: string | null) => string,
+  onPage: (pageNumber: number) => void
+): Promise<T[]> => {
+  const items: T[] = [];
+  let next: string | null = null;
+  let pageNumber = 0;
+  while (true) {
+    const payload = await fetchJson<SpotifyPage<T>>(buildUrl(next));
+    items.push(...payload.items);
+    pageNumber += 1;
+    onPage(pageNumber);
+    next = payload.next;
+    if (!next) {
+      break;
+    }
+  }
+  return items;
 };
 
 const collectArtistIds = (
@@ -43,51 +82,125 @@ const collectArtistIds = (
   return [...new Set(artistIds)];
 };
 
-const loadLibraryInChunks = async (): Promise<LoadedLibrary> => {
-  const [contributor, savedPayload, playlistsPayload] = await Promise.all([
-    fetchJson<{ id: string; name: string }>("/api/spotify/profile"),
-    fetchJson<{ items: SpotifySavedTrackItem[] }>("/api/spotify/saved-tracks"),
-    fetchJson<{ playlists: SpotifyPlaylistSummary[] }>("/api/spotify/playlists"),
-  ]);
+const loadLibraryInChunks = async (options?: LoadLibraryOptions): Promise<LoadedLibrary> => {
+  const onProgress = options?.onProgress;
 
-  const readablePlaylists = filterReadablePlaylists(playlistsPayload.playlists, contributor.id);
+  reportProgress(onProgress, {
+    phase: "profile",
+    message: "Connecting to Spotify…",
+    percent: 2,
+  });
+  const contributor = await fetchJson<{ id: string; name: string }>("/api/spotify/profile");
+
+  const savedItems = await fetchSpotifyPages<SpotifySavedTrackItem>(
+    (next) =>
+      next
+        ? `/api/spotify/saved-tracks-page?next=${encodeURIComponent(next)}`
+        : "/api/spotify/saved-tracks-page",
+    (pageNumber) => {
+      reportProgress(onProgress, {
+        phase: "saved-tracks",
+        message: `Loading saved tracks (page ${pageNumber})…`,
+        percent: Math.min(22, 3 + pageNumber * 2),
+      });
+    }
+  );
+
+  const playlists = await fetchSpotifyPages<SpotifyPlaylistSummary>(
+    (next) =>
+      next
+        ? `/api/spotify/playlists-page?next=${encodeURIComponent(next)}`
+        : "/api/spotify/playlists-page",
+    (pageNumber) => {
+      reportProgress(onProgress, {
+        phase: "playlists",
+        message: `Loading playlist list (page ${pageNumber})…`,
+        percent: Math.min(28, 23 + pageNumber * 2),
+      });
+    }
+  );
+
+  const readablePlaylists = filterReadablePlaylists(playlists, contributor.id);
   const playlistItemsByPlaylistId: Record<string, SpotifyPlaylistItem[]> = {};
+  let completedPlaylists = 0;
 
   await mapWithConcurrency(readablePlaylists, 3, async (playlist) => {
-    try {
-      const payload = await fetchJson<{ items: SpotifyPlaylistItem[] }>(
-        `/api/spotify/playlist-tracks?playlistId=${encodeURIComponent(playlist.id)}`
-      );
-      playlistItemsByPlaylistId[playlist.id] = payload.items;
-    } catch {
-      playlistItemsByPlaylistId[playlist.id] = [];
-    }
+    const items = await fetchSpotifyPages<SpotifyPlaylistItem>(
+      (next) => {
+        const params = new URLSearchParams({ playlistId: playlist.id });
+        if (next) {
+          params.set("next", next);
+        }
+        return `/api/spotify/playlist-tracks-page?${params.toString()}`;
+      },
+      () => {
+        reportProgress(onProgress, {
+          phase: "playlist-tracks",
+          message: `Loading playlist ${completedPlaylists + 1} of ${readablePlaylists.length}: ${playlist.name}`,
+          percent:
+            readablePlaylists.length === 0
+              ? 90
+              : 28 + ((completedPlaylists + 0.35) / readablePlaylists.length) * 62,
+        });
+      }
+    );
+    playlistItemsByPlaylistId[playlist.id] = items;
+    completedPlaylists += 1;
+    reportProgress(onProgress, {
+      phase: "playlist-tracks",
+      message: `Loaded playlist ${completedPlaylists} of ${readablePlaylists.length}`,
+      percent:
+        readablePlaylists.length === 0
+          ? 90
+          : 28 + (completedPlaylists / readablePlaylists.length) * 62,
+    });
   });
 
   let genresByArtistId: Record<string, string[]> = {};
-  const artistIds = collectArtistIds(savedPayload.items, playlistItemsByPlaylistId);
+  const artistIds = collectArtistIds(savedItems, playlistItemsByPlaylistId);
   if (artistIds.length > 0) {
-    try {
-      const genresPayload = await fetchJson<{ genresByArtistId: Record<string, string[]> }>(
-        "/api/spotify/artist-genres",
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ artistIds }),
-        }
-      );
-      genresByArtistId = genresPayload.genresByArtistId ?? {};
-    } catch {
-      // Genre lookup is optional.
+    const genreBatchCount = Math.ceil(artistIds.length / 50);
+    for (let index = 0; index < artistIds.length; index += 50) {
+      const batchIndex = Math.floor(index / 50) + 1;
+      reportProgress(onProgress, {
+        phase: "genres",
+        message: `Looking up genres (batch ${batchIndex} of ${genreBatchCount})…`,
+        percent: 90 + (batchIndex / genreBatchCount) * 8,
+      });
+      try {
+        const genresPayload = await fetchJson<{ genresByArtistId: Record<string, string[]> }>(
+          "/api/spotify/artist-genres",
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ artistIds: artistIds.slice(index, index + 50) }),
+          }
+        );
+        genresByArtistId = { ...genresByArtistId, ...(genresPayload.genresByArtistId ?? {}) };
+      } catch {
+        // Genre lookup is optional.
+      }
     }
   }
 
+  reportProgress(onProgress, {
+    phase: "assembling",
+    message: "Building your library graph…",
+    percent: 99,
+  });
+
   const library = assembleSpotifyLibrary({
     contributor,
-    savedItems: savedPayload.items,
+    savedItems,
     readablePlaylists,
     playlistItemsByPlaylistId,
     genresByArtistId,
+  });
+
+  reportProgress(onProgress, {
+    phase: "assembling",
+    message: `Loaded ${library.songs.length} tracks.`,
+    percent: 100,
   });
 
   return {
@@ -118,8 +231,8 @@ export const spotifyProvider: MusicProvider = {
     await fetchJson("/api/spotify/disconnect", { method: "POST" });
   },
 
-  async loadLibrary(): Promise<LoadedLibrary> {
-    return loadLibraryInChunks();
+  async loadLibrary(options?: LoadLibraryOptions): Promise<LoadedLibrary> {
+    return loadLibraryInChunks(options);
   },
 
   async validateTracks(songs) {

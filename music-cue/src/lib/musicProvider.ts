@@ -16,6 +16,24 @@ export type LoadedLibrary = {
   contributor?: { id: string; name: string };
 };
 
+export type LibraryLoadPhase =
+  | "profile"
+  | "saved-tracks"
+  | "playlists"
+  | "playlist-tracks"
+  | "genres"
+  | "assembling";
+
+export type LibraryLoadProgress = {
+  phase: LibraryLoadPhase;
+  message: string;
+  percent: number;
+};
+
+export type LoadLibraryOptions = {
+  onProgress?: (progress: LibraryLoadProgress) => void;
+};
+
 export type ConnectionStatus = {
   connected: boolean;
   configured: boolean;
@@ -32,7 +50,7 @@ export interface MusicProvider {
   connect?(): Promise<void>;
   disconnect?(): Promise<void>;
   loadLibraryFromFile?(file: File): Promise<LoadedLibrary>;
-  loadLibrary?(): Promise<LoadedLibrary>;
+  loadLibrary?(options?: LoadLibraryOptions): Promise<LoadedLibrary>;
   validateTracks(songs: Song[]): Promise<Record<string, boolean>>;
   playCue(songs: Song[]): Promise<CuePlaylistResult>;
   savePlaylist(songs: Song[], playlistName: string): Promise<CuePlaylistResult>;
