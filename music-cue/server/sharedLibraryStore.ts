@@ -11,10 +11,33 @@ export const SHARED_LIBRARY_STORAGE_ERROR =
 
 const isVercelProduction = (): boolean => process.env.VERCEL === "1";
 
-const useBlobStorage = (): boolean => Boolean(process.env.BLOB_READ_WRITE_TOKEN);
+/** True when @vercel/blob can authenticate (static token or Vercel OIDC + store id). */
+const useBlobStorage = (): boolean => {
+  if (process.env.BLOB_READ_WRITE_TOKEN) {
+    return true;
+  }
+  if (isVercelProduction() && process.env.BLOB_STORE_ID) {
+    return true;
+  }
+  return false;
+};
 
-export const isSharedLibraryStorageConfigured = (): boolean =>
-  useBlobStorage() || !isVercelProduction();
+export const getSharedLibraryStorageDiagnostics = (): {
+  vercel: boolean;
+  blobConfigured: boolean;
+  hasReadWriteToken: boolean;
+  hasStoreId: boolean;
+} => ({
+  vercel: isVercelProduction(),
+  blobConfigured: useBlobStorage(),
+  hasReadWriteToken: Boolean(process.env.BLOB_READ_WRITE_TOKEN),
+  hasStoreId: Boolean(process.env.BLOB_STORE_ID),
+});
+
+export const isSharedLibraryStorageConfigured = (): boolean => {
+  const diagnostics = getSharedLibraryStorageDiagnostics();
+  return diagnostics.blobConfigured || !diagnostics.vercel;
+};
 
 export const assertSharedLibraryStorageConfigured = (): void => {
   if (!isSharedLibraryStorageConfigured()) {

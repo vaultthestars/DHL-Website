@@ -744,8 +744,25 @@ var BLOB_PREFIX = "music-cue/libraries";
 var INDEX_PATH = `${BLOB_PREFIX}/index.json`;
 var SHARED_LIBRARY_STORAGE_ERROR = "Shared library storage is not configured. In the Vercel project, open Storage \u2192 Create Blob store \u2192 connect it to this project, then redeploy.";
 var isVercelProduction = () => process.env.VERCEL === "1";
-var useBlobStorage = () => Boolean(process.env.BLOB_READ_WRITE_TOKEN);
-var isSharedLibraryStorageConfigured = () => useBlobStorage() || !isVercelProduction();
+var useBlobStorage = () => {
+  if (process.env.BLOB_READ_WRITE_TOKEN) {
+    return true;
+  }
+  if (isVercelProduction() && process.env.BLOB_STORE_ID) {
+    return true;
+  }
+  return false;
+};
+var getSharedLibraryStorageDiagnostics = () => ({
+  vercel: isVercelProduction(),
+  blobConfigured: useBlobStorage(),
+  hasReadWriteToken: Boolean(process.env.BLOB_READ_WRITE_TOKEN),
+  hasStoreId: Boolean(process.env.BLOB_STORE_ID)
+});
+var isSharedLibraryStorageConfigured = () => {
+  const diagnostics = getSharedLibraryStorageDiagnostics();
+  return diagnostics.blobConfigured || !diagnostics.vercel;
+};
 var assertSharedLibraryStorageConfigured = () => {
   if (!isSharedLibraryStorageConfigured()) {
     throw new Error(SHARED_LIBRARY_STORAGE_ERROR);

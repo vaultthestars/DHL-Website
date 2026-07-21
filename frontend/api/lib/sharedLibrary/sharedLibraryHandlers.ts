@@ -2,6 +2,7 @@ import { mergeSharedLibrarySnapshots } from "./sharedLibrary";
 import {
   getSharedLibrarySnapshot,
   getSharedLibrarySnapshots,
+  getSharedLibraryStorageDiagnostics,
   isSharedLibraryStorageConfigured,
   listSharedLibraryContributors,
   SHARED_LIBRARY_STORAGE_ERROR,
@@ -36,6 +37,11 @@ export const handleSharedLibraryRoute = async (
   try {
     if (!isSharedLibraryStorageConfigured()) {
       res.status(503).json({ error: SHARED_LIBRARY_STORAGE_ERROR, contributors: [] });
+      return;
+    }
+
+    if (route === "storage-status" && req.method === "GET") {
+      res.status(200).json(getSharedLibraryStorageDiagnostics());
       return;
     }
 
