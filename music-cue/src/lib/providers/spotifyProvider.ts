@@ -149,7 +149,9 @@ const resolveImportContributor = async (
   if (connectedContributor?.id) {
     return connectedContributor;
   }
-  return fetchJson<{ id: string; name: string }>("/api/spotify/profile");
+  throw new Error(
+    "Spotify account id is not available yet. Reconnect Spotify, or wait a minute if you were rate limited."
+  );
 };
 
 const waitBetweenPages = async (): Promise<void> => {

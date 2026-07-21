@@ -221,14 +221,40 @@ export const createSpotifyClient = (store: SpotifySessionStore) => {
       expires_in: number;
       scope?: string;
     };
+    const existing = store.getTokens();
     const nextTokens: SpotifyTokens = {
       accessToken: payload.access_token,
       refreshToken: payload.refresh_token ?? refreshToken,
       expiresAt: Date.now() + payload.expires_in * 1000 - 60_000,
-      scope: payload.scope ?? store.getTokens()?.scope ?? SPOTIFY_SCOPES,
+      scope: payload.scope ?? existing?.scope ?? SPOTIFY_SCOPES,
+      userId: existing?.userId,
+      displayName: existing?.displayName,
     };
     store.setTokens(nextTokens);
     return nextTokens;
+  };
+
+  const cacheProfileInSession = async (): Promise<{ id: string; name: string }> => {
+    const tokens = store.getTokens();
+    if (tokens?.userId) {
+      return {
+        id: tokens.userId,
+        name: tokens.displayName?.trim() || "Spotify user",
+      };
+    }
+    const profile = await spotifyFetch<{ id: string; display_name?: string }>("/me");
+    const contributor = {
+      id: profile.id,
+      name: profile.display_name?.trim() || "Spotify user",
+    };
+    if (tokens) {
+      store.setTokens({
+        ...tokens,
+        userId: contributor.id,
+        displayName: contributor.name,
+      });
+    }
+    return contributor;
   };
 
   const getAccessToken = async (): Promise<string> => {
@@ -289,7 +315,7 @@ export const createSpotifyClient = (store: SpotifySessionStore) => {
   };
 
   const verifyContributorId = async (contributorId: string): Promise<void> => {
-    const profile = await spotifyFetch<{ id: string }>("/me");
+    const profile = await cacheProfileInSession();
     if (profile.id !== contributorId) {
       throw new Error("Contributor id does not match connected Spotify account.");
     }
@@ -331,14 +357,12 @@ export const createSpotifyClient = (store: SpotifySessionStore) => {
       expiresAt: Date.now() + payload.expires_in * 1000 - 60_000,
       scope: payload.scope,
     });
+    await cacheProfileInSession();
   };
 
   const fetchContributorProfile = async (): Promise<SpotifyLibraryPayload["contributor"]> => {
-    const profile = await spotifyFetch<{ id: string; display_name?: string }>("/me");
-    return {
-      id: profile.id,
-      name: profile.display_name?.trim() || "Spotify user",
-    };
+    const contributor = await cacheProfileInSession();
+    return contributor;
   };
 
   const fetchSavedTrackItems = async (): Promise<SpotifySavedTrackItem[]> =>
@@ -596,14 +620,23 @@ export const createSpotifyClient = (store: SpotifySessionStore) => {
         message: "Not connected to Spotify.",
       };
     }
-    try {
-      const profile = await spotifyFetch<{ id: string; display_name?: string }>("/me");
+    if (tokens.userId) {
       return {
         connected: true,
         configured: true,
         message: "Connected to Spotify.",
-        displayName: profile.display_name?.trim() || "Spotify user",
-        userId: profile.id,
+        displayName: tokens.displayName?.trim() || "Spotify user",
+        userId: tokens.userId,
+      };
+    }
+    try {
+      const contributor = await cacheProfileInSession();
+      return {
+        connected: true,
+        configured: true,
+        message: "Connected to Spotify.",
+        displayName: contributor.name,
+        userId: contributor.id,
       };
     } catch (error) {
       const message = error instanceof Error ? error.message : "Spotify connection could not be verified.";
@@ -611,7 +644,7 @@ export const createSpotifyClient = (store: SpotifySessionStore) => {
         return {
           connected: true,
           configured: true,
-          message: "Spotify rate limited — you can resume your import.",
+          message: "Spotify rate limited — wait a minute, then try again.",
         };
       }
       return {

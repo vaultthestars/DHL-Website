@@ -5,6 +5,8 @@ export type SpotifyTokens = {
   refreshToken: string;
   expiresAt: number;
   scope: string;
+  userId?: string;
+  displayName?: string;
 };
 
 export const SPOTIFY_SESSION_COOKIE = "music_cue_spotify_session";
