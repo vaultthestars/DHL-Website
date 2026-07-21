@@ -55,6 +55,7 @@ import {
   loadGraphTool,
   loadLayoutConfig,
   loadLibrary,
+  clearStoredLibrary,
   loadMusicService,
   loadPathThreshold,
   loadCustomPositions,
@@ -369,7 +370,10 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
   const handleUndoRef = useRef<() => void>(() => {});
 
   const initialMusicService = loadMusicService();
-  const initialLibrary = loadLibrary(initialMusicService);
+  const shouldSkipCachedLibrary = isWebDeployment && initialMusicService === "spotify";
+  const initialLibrary = shouldSkipCachedLibrary
+    ? { songs: [], stats: null }
+    : loadLibrary(initialMusicService);
   const initialSongs = normalizeSongs(initialLibrary.songs, initialLibrary.stats);
   const [musicService, setMusicService] = useState<MusicServiceId>(initialMusicService);
   const musicProvider = useMemo(() => getMusicProvider(musicService), [musicService]);
@@ -652,7 +656,10 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
       return;
     }
     disableMockUsersForWeb();
-  }, []);
+    if (musicService === "spotify" && spotifyStatus && !spotifyStatus.connected) {
+      clearStoredLibrary("spotify");
+    }
+  }, [musicService, spotifyStatus]);
 
   useEffect(() => {
     if (!onWelcomeNameChange) {
@@ -2472,14 +2479,17 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
       loadedSongs: Song[],
       loadedStats: LibraryStats,
       message: string,
-      owners: Record<string, string> = {}
+      owners: Record<string, string> = {},
+      options?: { persist?: boolean }
     ) => {
     invalidatePlaylistOverlapLayoutCache();
     const normalized = normalizeSongs(loadedSongs, loadedStats);
     setSongs(normalized);
     setPlaylistOwners(owners);
     setStats(normalizeStats(loadedStats, normalized));
-    saveLibrary(musicService, loadedSongs, loadedStats);
+    if (options?.persist !== false) {
+      saveLibrary(musicService, loadedSongs, loadedStats);
+    }
     setCue(null);
     setCompletedStrokes([]);
     completedStrokesRef.current = [];
@@ -2516,7 +2526,8 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
           loaded.songs,
           loaded.stats,
           `Loaded shared library from ${contributorNames} (${loaded.songs.length} tracks${sharedLabel}).`,
-          merged.playlistOwners
+          merged.playlistOwners,
+          { persist: false }
         );
       } catch (error) {
         setStatusMessage(error instanceof Error ? error.message : "Could not load shared library.");
@@ -2554,6 +2565,9 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
         shouldLoadLibrary
       ) {
         await applyMergedSharedLibrary(contributorIds, contributors);
+      } else if (isWebDeployment && musicService === "spotify" && shouldLoadLibrary && contributorIds.length === 0) {
+        setSharedTrackCount(0);
+        setStatusMessage("No shared libraries published yet. Connect Spotify and use Load & share library.");
       }
       return contributors;
     },

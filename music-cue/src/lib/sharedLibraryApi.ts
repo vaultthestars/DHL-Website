@@ -2,7 +2,7 @@ import type { LibraryContributor, MergedLibrary, SharedLibrarySnapshot } from ".
 import { mergeSharedLibrarySnapshots } from "../../shared/sharedLibrary";
 import type { LoadedLibrary } from "./musicProvider";
 import { isMockContributorId } from "./libraryScope";
-import { MOCK_CONTRIBUTOR_IDS, getMockContributors, getMockSnapshots } from "./mockLibraries";
+import { isWebDeployment } from "./runtime";
 
 const fetchJson = async <T>(url: string, init?: RequestInit): Promise<T> => {
   const response = await fetch(url, {
@@ -24,21 +24,31 @@ export type MergedSharedLibraryResponse = MergedLibrary & {
   contributors: LibraryContributor[];
 };
 
+const canUseClientMocks = (includeMockUsers: boolean): boolean =>
+  includeMockUsers && !isWebDeployment;
+
 export const listSharedContributors = async (includeMockUsers = false): Promise<LibraryContributor[]> => {
   const payload = await fetchJson<SharedLibraryIndexResponse>("/api/shared-libraries").catch(() => ({
     contributors: [],
   }));
   const contributors = payload.contributors ?? [];
-  if (!includeMockUsers) {
-    return contributors;
+  if (!canUseClientMocks(includeMockUsers)) {
+    return contributors.filter((contributor) => !isMockContributorId(contributor.id));
   }
+  const { getMockContributors } = await import("./mockLibraries");
   const merged = [...contributors, ...getMockContributors()];
   const byId = new Map(merged.map((contributor) => [contributor.id, contributor]));
-  return [...byId.values()].sort((left, right) => left.name.localeCompare(right.name));
+  return [...byId.values()]
+    .filter((contributor) => !isMockContributorId(contributor.id) || canUseClientMocks(includeMockUsers))
+    .sort((left, right) => left.name.localeCompare(right.name));
 };
 
 export const fetchSharedLibrarySnapshot = async (contributorId: string): Promise<SharedLibrarySnapshot | null> => {
   if (isMockContributorId(contributorId)) {
+    if (isWebDeployment) {
+      return null;
+    }
+    const { getMockSnapshots } = await import("./mockLibraries");
     return getMockSnapshots([contributorId])[0] ?? null;
   }
   return fetchJson<SharedLibrarySnapshot>(`/api/shared-libraries/snapshot/${encodeURIComponent(contributorId)}`).catch(
@@ -50,7 +60,7 @@ export const loadMergedSharedLibrary = async (
   contributorIds: string[],
   includeMockUsers = false
 ): Promise<MergedSharedLibraryResponse> => {
-  const selectedIds = includeMockUsers
+  const selectedIds = canUseClientMocks(includeMockUsers)
     ? contributorIds
     : contributorIds.filter((contributorId) => !isMockContributorId(contributorId));
 
@@ -62,7 +72,10 @@ export const loadMergedSharedLibrary = async (
     const realSnapshots = await Promise.all(realIds.map((contributorId) => fetchSharedLibrarySnapshot(contributorId)));
     snapshots.push(...realSnapshots.filter((snapshot): snapshot is SharedLibrarySnapshot => snapshot !== null));
   }
-  snapshots.push(...getMockSnapshots(mockIds));
+  if (mockIds.length > 0 && canUseClientMocks(includeMockUsers)) {
+    const { getMockSnapshots } = await import("./mockLibraries");
+    snapshots.push(...getMockSnapshots(mockIds));
+  }
 
   if (snapshots.length === 0) {
     return {
@@ -148,8 +161,8 @@ export const resolveLocalContributorId = (
   includeMockUsers: boolean,
   contributors: LibraryContributor[]
 ): string | null => {
-  if (includeMockUsers) {
-    return MOCK_CONTRIBUTOR_IDS.august;
+  if (includeMockUsers && !isWebDeployment) {
+    return "mock-user-august";
   }
   const stored = loadLocalContributorId();
   if (stored && isMockContributorId(stored)) {
@@ -183,7 +196,6 @@ export const filterSongsForSongSpace = (
     return songs;
   }
   if (!localContributorId) {
-    // Without a published identity, "mine" is only the locally loaded library (no shared owners).
     return songs.filter((song) => (song.owners ?? []).length === 0);
   }
   return songs.filter((song) => {

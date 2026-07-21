@@ -289,6 +289,11 @@ export const saveLibrary = (serviceId: MusicServiceId, songs: Song[], stats: Lib
   localStorage.setItem(statsKey(serviceId), JSON.stringify(stats));
 };
 
+export const clearStoredLibrary = (serviceId: MusicServiceId): void => {
+  localStorage.removeItem(libraryKey(serviceId));
+  localStorage.removeItem(statsKey(serviceId));
+};
+
 export const loadLibrary = (
   serviceId: MusicServiceId
 ): { songs: Song[]; stats: LibraryStats | null } => {

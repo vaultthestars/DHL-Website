@@ -11,7 +11,7 @@ import {
   type MutableRefObject,
 } from "react";
 import { createPortal } from "react-dom";
-import { usePlayerIdentity, usePresence } from "@playhtml/react";
+import { usePlayerIdentity, usePresence, usePlayContext } from "@playhtml/react";
 import { fromNormalizedPosition, type GraphDimensions } from "./graphLayout";
 import { graphPointToPanelPosition, type ViewTransform } from "./graphView";
 import type { LibraryScopeMode } from "./libraryScope";
@@ -105,6 +105,7 @@ const CollaborativeSessionBridge = ({
   children: ReactNode;
 }) => {
   const { presences, setMyPresence, myIdentity } = usePresence<SessionPresenceData>(SESSION_PRESENCE_CHANNEL);
+  const { isLoading } = usePlayContext();
   const viewSettingsRef = useRef(viewSettings);
   const displayNameRef = useRef(displayName);
   const graphCursorRef = useRef<NormalizedPoint | null>(null);
@@ -173,9 +174,9 @@ const CollaborativeSessionBridge = ({
         }
         onSyncViewSettings(session.viewSettings);
       },
-      isLiveSyncReady: Boolean(myIdentity?.pid),
+      isLiveSyncReady: !isLoading,
     };
-  }, [myIdentity?.pid, onSyncViewSettings, presences, setGraphCursor, viewSettings]);
+  }, [isLoading, onSyncViewSettings, presences, setGraphCursor, viewSettings]);
 
   return <CollaborativeSessionContext.Provider value={value}>{children}</CollaborativeSessionContext.Provider>;
 };
@@ -231,10 +232,27 @@ export const CollaborativeParticipantsPanel = () => {
 
   const { participants, isLiveSyncReady, syncWithParticipant } = useCollaborativeSession();
   const { color, pid } = usePlayerIdentity();
+  const { isLoading } = usePlayContext();
   const [open, setOpen] = useState(false);
+  const [showConnecting, setShowConnecting] = useState(true);
+
+  useEffect(() => {
+    if (!isLoading) {
+      setShowConnecting(false);
+    }
+  }, [isLoading]);
+
+  useEffect(() => {
+    const timeout = window.setTimeout(() => setShowConnecting(false), 12_000);
+    return () => window.clearTimeout(timeout);
+  }, []);
+
+  if (!isLiveSyncReady && showConnecting) {
+    return <span className="music-cue-live-badge music-cue-live-badge-connecting">Connecting live sync…</span>;
+  }
 
   if (!isLiveSyncReady) {
-    return <span className="music-cue-live-badge music-cue-live-badge-connecting">Connecting live sync…</span>;
+    return null;
   }
 
   const totalCount = participants.length + 1;

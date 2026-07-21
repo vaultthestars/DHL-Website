@@ -35,6 +35,19 @@ __export(shared_libraries_handler_exports, {
 module.exports = __toCommonJS(shared_libraries_handler_exports);
 
 // api/lib/sharedLibrary/sharedLibrary.ts
+var buildPlaylistOwnersFromSnapshots = (snapshots) => {
+  const playlistOwners = {};
+  snapshots.forEach((snapshot) => {
+    snapshot.songs.forEach((song) => {
+      (song.playlists ?? []).forEach((playlistId) => {
+        if (!playlistOwners[playlistId]) {
+          playlistOwners[playlistId] = snapshot.contributor.id;
+        }
+      });
+    });
+  });
+  return playlistOwners;
+};
 var defaultStats = () => ({
   minYear: 1970,
   maxYear: (/* @__PURE__ */ new Date()).getFullYear(),
@@ -84,19 +97,24 @@ var buildLibraryStatsFromSongs = (songs, playlistNames = {}) => {
     playlistCounts
   };
 };
-var mergeSongOwners = (left, right) => {
+var mergeSongOwners = (left, right, playlistOwners) => {
   const ownersById = /* @__PURE__ */ new Map();
   (left.owners ?? []).forEach((owner) => ownersById.set(owner.id, owner));
   (right.owners ?? []).forEach((owner) => ownersById.set(owner.id, owner));
   const owners = [...ownersById.values()].sort(
     (leftOwner, rightOwner) => leftOwner.name.localeCompare(rightOwner.name)
   );
+  const ownerIds = new Set(owners.map((owner) => owner.id));
   const playlistSet = /* @__PURE__ */ new Set([...left.playlists ?? [], ...right.playlists ?? []]);
+  const playlists = [...playlistSet].filter((playlistId) => {
+    const creatorId = playlistOwners[playlistId];
+    return creatorId !== void 0 && ownerIds.has(creatorId);
+  });
   return {
     ...left,
     playCount: Math.max(left.playCount, right.playCount),
     loved: left.loved || right.loved,
-    playlists: [...playlistSet],
+    playlists,
     owners,
     ownerCount: owners.length
   };
@@ -109,12 +127,16 @@ var tagSongsForContributor = (songs, contributor) => songs.map((song) => ({
 var mergeSharedLibrarySnapshots = (snapshots) => {
   const songMap = /* @__PURE__ */ new Map();
   const playlistNames = {};
+  const playlistOwners = buildPlaylistOwnersFromSnapshots(snapshots);
   snapshots.forEach((snapshot) => {
     Object.assign(playlistNames, snapshot.stats.playlistNames ?? {});
     const taggedSongs = tagSongsForContributor(snapshot.songs, snapshot.contributor);
     taggedSongs.forEach((song) => {
       const existing = songMap.get(song.id);
-      songMap.set(song.id, existing ? mergeSongOwners(existing, song) : song);
+      songMap.set(
+        song.id,
+        existing ? mergeSongOwners(existing, song, playlistOwners) : song
+      );
     });
   });
   const songs = [...songMap.values()];
@@ -122,7 +144,8 @@ var mergeSharedLibrarySnapshots = (snapshots) => {
   return {
     songs,
     stats,
-    sharedTrackCount: songs.filter((song) => (song.ownerCount ?? 1) > 1).length
+    sharedTrackCount: songs.filter((song) => (song.ownerCount ?? 1) > 1).length,
+    playlistOwners
   };
 };
 
@@ -181,14 +204,21 @@ var readBlobJson = async (pathname) => {
     return null;
   }
 };
+var isMockContributorId = (contributorId) => contributorId.startsWith("mock-user-");
+var filterMockContributors = (index) => ({
+  contributors: index.contributors.filter((contributor) => !isMockContributorId(contributor.id))
+});
 var listSharedLibraryContributors = async () => {
   if (!useBlobStorage()) {
-    return readLocalIndex();
+    return filterMockContributors(readLocalIndex());
   }
   const index = await readBlobJson(INDEX_PATH);
-  return index ?? { contributors: [] };
+  return filterMockContributors(index ?? { contributors: [] });
 };
 var getSharedLibrarySnapshot = async (contributorId) => {
+  if (isMockContributorId(contributorId)) {
+    return null;
+  }
   if (!useBlobStorage()) {
     return readLocalSnapshot(contributorId);
   }

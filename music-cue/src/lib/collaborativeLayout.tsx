@@ -27,6 +27,7 @@ export const CollaborativePlayProvider = ({ children }: { children: ReactNode })
 
   return (
     <PlayProvider
+      pathname="/music-cue/"
       initOptions={{
         room: PLAYHTML_ROOM,
         cursors: {
