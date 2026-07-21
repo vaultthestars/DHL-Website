@@ -13,6 +13,7 @@ export type LoadedLibrary = {
   songs: Song[];
   stats: LibraryStats;
   playlistOwners?: Record<string, string>;
+  contributor?: { id: string; name: string };
 };
 
 export type ConnectionStatus = {

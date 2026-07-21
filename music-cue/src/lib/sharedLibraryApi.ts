@@ -102,8 +102,16 @@ export const loadMergedSharedLibrary = async (
   };
 };
 
-export const publishSharedLibrary = async (): Promise<{ contributor: { id: string; name: string }; trackCount: number }> => {
-  return fetchJson("/api/spotify/publish-shared-library", { method: "POST" });
+export const publishSharedLibrary = async (library?: {
+  contributor: { id: string; name: string };
+  songs: LoadedLibrary["songs"];
+  stats: LoadedLibrary["stats"];
+}): Promise<{ contributor: { id: string; name: string }; trackCount: number }> => {
+  return fetchJson("/api/spotify/publish-shared-library", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(library ?? {}),
+  });
 };
 
 export const toLoadedLibrary = (merged: MergedSharedLibraryResponse): LoadedLibrary => ({

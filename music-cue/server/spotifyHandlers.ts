@@ -1,4 +1,9 @@
-import { createCookieSessionStore, createSpotifyClient, isSpotifyConfigured } from "./spotifyClient.js";
+import {
+  createCookieSessionStore,
+  createSpotifyClient,
+  isSpotifyConfigured,
+  type SpotifyLibraryPayload,
+} from "./spotifyClient.js";
 import { saveSharedLibrarySnapshot } from "./sharedLibraryStore.js";
 
 type HandlerRequest = {
@@ -11,6 +16,18 @@ type HandlerResponse = {
   status: (code: number) => HandlerResponse;
   json: (body: unknown) => void;
   setHeader: (name: string, value: string | string[]) => void;
+};
+
+const isPublishedLibraryPayload = (body: unknown): body is SpotifyLibraryPayload => {
+  if (!body || typeof body !== "object") {
+    return false;
+  }
+  const candidate = body as Partial<SpotifyLibraryPayload>;
+  return (
+    Boolean(candidate.contributor?.id && candidate.contributor?.name) &&
+    Array.isArray(candidate.songs) &&
+    Boolean(candidate.stats)
+  );
 };
 
 export const handleSpotifyRoute = async (
@@ -78,7 +95,14 @@ export const handleSpotifyRoute = async (
     }
 
     if (route === "publish-shared-library" && req.method === "POST") {
-      const library = await client.fetchLibrary();
+      const body = req.body;
+      let library: SpotifyLibraryPayload;
+      if (isPublishedLibraryPayload(body)) {
+        await client.verifyContributorId(body.contributor.id);
+        library = body;
+      } else {
+        library = await client.fetchLibrary();
+      }
       const updatedAt = new Date().toISOString();
       await saveSharedLibrarySnapshot({
         contributor: library.contributor,

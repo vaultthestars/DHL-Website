@@ -2780,7 +2780,15 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
       );
       if (isWebDeployment) {
         try {
-          const published = await publishSharedLibrary();
+          const published = await publishSharedLibrary(
+            loaded.contributor
+              ? {
+                  contributor: loaded.contributor,
+                  songs: loaded.songs,
+                  stats: loaded.stats,
+                }
+              : undefined
+          );
           saveLocalContributorId(published.contributor.id);
           await refreshSharedContributors({ loadLibrary: songSpaceMode === "shared" });
           setStatusMessage(

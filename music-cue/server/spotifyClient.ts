@@ -54,8 +54,23 @@ type SpotifyDevice = {
 const NO_DEVICES_MESSAGE =
   "No Spotify devices found. Open the Spotify app, play any song once, then try Play again.";
 
+const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
+
+const parseRetryAfterMs = (retryAfterHeader: string | null, attempt: number): number => {
+  if (retryAfterHeader) {
+    const seconds = Number.parseInt(retryAfterHeader, 10);
+    if (Number.isFinite(seconds) && seconds > 0) {
+      return seconds * 1000;
+    }
+  }
+  return Math.min(1000 * 2 ** attempt, 10_000);
+};
+
 const formatSpotifyApiError = (status: number, path: string, spotifyMessage?: string): string => {
   const normalizedMessage = spotifyMessage?.toLowerCase() ?? "";
+  if (status === 429) {
+    return "Spotify rate limit reached. Wait a minute, then try Load & share again.";
+  }
   if (
     status === 403 &&
     (normalizedMessage.includes("not registered") ||
@@ -240,7 +255,7 @@ export const createSpotifyClient = (store: SpotifySessionStore) => {
     return refreshed.accessToken;
   };
 
-  const spotifyFetch = async <T>(path: string, init?: RequestInit): Promise<T> => {
+  const spotifyFetch = async <T>(path: string, init?: RequestInit, attempt = 0): Promise<T> => {
     const accessToken = await getAccessToken();
     const response = await fetch(`${SPOTIFY_API_URL}${path}`, {
       ...init,
@@ -252,6 +267,10 @@ export const createSpotifyClient = (store: SpotifySessionStore) => {
     });
     if (response.status === 204) {
       return {} as T;
+    }
+    if (response.status === 429 && attempt < 5) {
+      await sleep(parseRetryAfterMs(response.headers.get("Retry-After"), attempt));
+      return spotifyFetch<T>(path, init, attempt + 1);
     }
     if (!response.ok) {
       const payload = (await response.json().catch(() => ({}))) as { error?: { message?: string } };
@@ -270,9 +289,20 @@ export const createSpotifyClient = (store: SpotifySessionStore) => {
     while (path) {
       const payload = await spotifyFetch<T>(path);
       items.push(...collect(payload));
-      path = nextPath(payload) ?? "";
+      const next = nextPath(payload);
+      path = next ?? "";
+      if (path) {
+        await sleep(75);
+      }
     }
     return items;
+  };
+
+  const verifyContributorId = async (contributorId: string): Promise<void> => {
+    const profile = await spotifyFetch<{ id: string }>("/me");
+    if (profile.id !== contributorId) {
+      throw new Error("Contributor id does not match connected Spotify account.");
+    }
   };
 
   const exchangeAuthCode = async (code: string, codeVerifier: string): Promise<void> => {
@@ -371,6 +401,7 @@ export const createSpotifyClient = (store: SpotifySessionStore) => {
       } catch {
         // Skip playlists we cannot read (followed playlists, revoked access, etc.).
       }
+      await sleep(100);
     }
 
     const artistIds = [...trackById.values()].flatMap((track) => track.artists.map((artist) => artist.id));
@@ -575,6 +606,7 @@ export const createSpotifyClient = (store: SpotifySessionStore) => {
     buildAuthorizeUrl,
     exchangeAuthCode,
     fetchLibrary,
+    verifyContributorId,
     createPlaylist,
     playCue,
     getPlaybackState,

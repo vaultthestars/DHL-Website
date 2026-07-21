@@ -106,8 +106,21 @@ var SPOTIFY_SCOPES = [
   "user-modify-playback-state"
 ].join(" ");
 var NO_DEVICES_MESSAGE = "No Spotify devices found. Open the Spotify app, play any song once, then try Play again.";
+var sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+var parseRetryAfterMs = (retryAfterHeader, attempt) => {
+  if (retryAfterHeader) {
+    const seconds = Number.parseInt(retryAfterHeader, 10);
+    if (Number.isFinite(seconds) && seconds > 0) {
+      return seconds * 1e3;
+    }
+  }
+  return Math.min(1e3 * 2 ** attempt, 1e4);
+};
 var formatSpotifyApiError = (status, path2, spotifyMessage) => {
   const normalizedMessage = spotifyMessage?.toLowerCase() ?? "";
+  if (status === 429) {
+    return "Spotify rate limit reached. Wait a minute, then try Load & share again.";
+  }
   if (status === 403 && (normalizedMessage.includes("not registered") || normalizedMessage.includes("developer dashboard") || normalizedMessage.includes("check settings on developer.spotify.com"))) {
     return "This Spotify account is not allowlisted for this app yet. The site owner must add your Spotify email in the Spotify Developer Dashboard (User Management), then you can disconnect and connect again.";
   }
@@ -212,7 +225,7 @@ var createSpotifyClient = (store) => {
     const refreshed = await refreshAccessToken(tokens.refreshToken);
     return refreshed.accessToken;
   };
-  const spotifyFetch = async (path2, init) => {
+  const spotifyFetch = async (path2, init, attempt = 0) => {
     const accessToken = await getAccessToken();
     const response = await fetch(`${SPOTIFY_API_URL}${path2}`, {
       ...init,
@@ -224,6 +237,10 @@ var createSpotifyClient = (store) => {
     });
     if (response.status === 204) {
       return {};
+    }
+    if (response.status === 429 && attempt < 5) {
+      await sleep(parseRetryAfterMs(response.headers.get("Retry-After"), attempt));
+      return spotifyFetch(path2, init, attempt + 1);
     }
     if (!response.ok) {
       const payload = await response.json().catch(() => ({}));
@@ -237,9 +254,19 @@ var createSpotifyClient = (store) => {
     while (path2) {
       const payload = await spotifyFetch(path2);
       items.push(...collect(payload));
-      path2 = nextPath(payload) ?? "";
+      const next = nextPath(payload);
+      path2 = next ?? "";
+      if (path2) {
+        await sleep(75);
+      }
     }
     return items;
+  };
+  const verifyContributorId = async (contributorId) => {
+    const profile = await spotifyFetch("/me");
+    if (profile.id !== contributorId) {
+      throw new Error("Contributor id does not match connected Spotify account.");
+    }
   };
   const exchangeAuthCode = async (code, codeVerifier) => {
     const clientId = process.env.SPOTIFY_CLIENT_ID;
@@ -324,6 +351,7 @@ var createSpotifyClient = (store) => {
         });
       } catch {
       }
+      await sleep(100);
     }
     const artistIds = [...trackById.values()].flatMap((track) => track.artists.map((artist) => artist.id));
     const genresByArtist = /* @__PURE__ */ new Map();
@@ -486,11 +514,12 @@ var createSpotifyClient = (store) => {
       };
     }
     try {
-      await spotifyFetch("/me");
+      const profile = await spotifyFetch("/me");
       return {
         connected: true,
         configured: true,
-        message: "Connected to Spotify."
+        message: "Connected to Spotify.",
+        displayName: profile.display_name?.trim() || "Spotify user"
       };
     } catch (error) {
       const message = error instanceof Error ? error.message : "Spotify connection could not be verified.";
@@ -506,6 +535,7 @@ var createSpotifyClient = (store) => {
     buildAuthorizeUrl,
     exchangeAuthCode,
     fetchLibrary,
+    verifyContributorId,
     createPlaylist,
     playCue,
     getPlaybackState,
@@ -615,6 +645,13 @@ var saveSharedLibrarySnapshot = async (snapshot) => {
 };
 
 // api/lib/spotify/spotifyHandlers.ts
+var isPublishedLibraryPayload = (body) => {
+  if (!body || typeof body !== "object") {
+    return false;
+  }
+  const candidate = body;
+  return Boolean(candidate.contributor?.id && candidate.contributor?.name) && Array.isArray(candidate.songs) && Boolean(candidate.stats);
+};
 var handleSpotifyRoute = async (route, req, res) => {
   const cookiesToSet = [];
   const store = createCookieSessionStore(req.headers?.cookie, (cookie) => {
@@ -669,7 +706,14 @@ var handleSpotifyRoute = async (route, req, res) => {
       return;
     }
     if (route === "publish-shared-library" && req.method === "POST") {
-      const library = await client.fetchLibrary();
+      const body = req.body;
+      let library;
+      if (isPublishedLibraryPayload(body)) {
+        await client.verifyContributorId(body.contributor.id);
+        library = body;
+      } else {
+        library = await client.fetchLibrary();
+      }
       const updatedAt = (/* @__PURE__ */ new Date()).toISOString();
       await saveSharedLibrarySnapshot({
         contributor: library.contributor,
