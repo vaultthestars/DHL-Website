@@ -14,7 +14,6 @@ type SquigglyClusterLayerProps = {
     clusterId: string;
     draftHull: NormalizedPoint[];
   } | null;
-  activeDrawStroke: NormalizedPoint[];
   readOnly?: boolean;
   onClusterPointerDown: (
     event: React.PointerEvent<SVGPathElement>,
@@ -35,7 +34,6 @@ export const SquigglyClusterLayer = ({
   hoveredClusterId,
   selectedClusterIds,
   redrawDraft,
-  activeDrawStroke,
   readOnly = false,
   onClusterPointerDown,
   onClusterDoubleClick,
@@ -44,11 +42,6 @@ export const SquigglyClusterLayer = ({
   onRejectRedraw,
 }: SquigglyClusterLayerProps) => {
   const squigglyClusters = useMemo(() => clusters.filter(isSquigglyCluster), [clusters]);
-
-  const activeStrokePath =
-    activeDrawStroke.length > 1
-      ? polygonToPath(toGraphPoints(activeDrawStroke, dimensions), false)
-      : null;
 
   return (
     <>
@@ -135,14 +128,6 @@ export const SquigglyClusterLayer = ({
           </g>
         );
       })}
-      {activeStrokePath ? (
-        <path
-          d={activeStrokePath}
-          className="music-cue-squiggly-cluster-draft"
-          fill="none"
-          pointerEvents="none"
-        />
-      ) : null}
     </>
   );
 };
