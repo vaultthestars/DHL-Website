@@ -7,7 +7,7 @@
   ],
   "functions": {
     "api/spotify/[...path].js": {
-      "maxDuration": 300
+      "maxDuration": 60
     },
     "api/shared-libraries/index.js": {
       "maxDuration": 60
