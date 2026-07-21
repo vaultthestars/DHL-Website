@@ -110,7 +110,7 @@ const resolveSpotifyPagePath = (
 const formatSpotifyApiError = (status: number, path: string, spotifyMessage?: string): string => {
   const normalizedMessage = spotifyMessage?.toLowerCase() ?? "";
   if (status === 429) {
-    return "Spotify rate limit reached. Wait a minute, then try Load & share again.";
+    return "Spotify rate limit reached. Progress saved — wait a minute, then click Resume load & share.";
   }
   if (status === 504) {
     return "Spotify library import timed out. Try again in a moment.";

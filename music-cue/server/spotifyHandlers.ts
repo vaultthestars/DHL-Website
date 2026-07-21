@@ -245,6 +245,7 @@ export const handleSpotifyRoute = async (
     finish(404, { error: `Unknown Spotify route: ${route}` });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Spotify request failed.";
-    finish(500, { error: message });
+    const rateLimited = message.toLowerCase().includes("rate limit");
+    finish(rateLimited ? 429 : 500, { error: message });
   }
 };

@@ -264,7 +264,7 @@ var resolveSpotifyPagePath = (nextPath, defaultPath, allowedPrefixes) => {
 var formatSpotifyApiError = (status, path2, spotifyMessage) => {
   const normalizedMessage = spotifyMessage?.toLowerCase() ?? "";
   if (status === 429) {
-    return "Spotify rate limit reached. Wait a minute, then try Load & share again.";
+    return "Spotify rate limit reached. Progress saved \u2014 wait a minute, then click Resume load & share.";
   }
   if (status === 504) {
     return "Spotify library import timed out. Try again in a moment.";
@@ -988,7 +988,8 @@ var handleSpotifyRoute = async (route, req, res) => {
     finish(404, { error: `Unknown Spotify route: ${route}` });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Spotify request failed.";
-    finish(500, { error: message });
+    const rateLimited = message.toLowerCase().includes("rate limit");
+    finish(rateLimited ? 429 : 500, { error: message });
   }
 };
 

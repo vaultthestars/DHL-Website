@@ -32,6 +32,7 @@ export type LibraryLoadProgress = {
 
 export type LoadLibraryOptions = {
   onProgress?: (progress: LibraryLoadProgress) => void;
+  fresh?: boolean;
 };
 
 export type ConnectionStatus = {

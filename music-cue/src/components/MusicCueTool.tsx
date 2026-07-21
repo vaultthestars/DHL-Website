@@ -40,6 +40,12 @@ import {
   type CollaborativeViewSettings,
 } from "../lib/collaborativeSession";
 import { getMusicProvider } from "../lib/providers";
+import {
+  clearSpotifyImportSession,
+  getSpotifyImportResumeLabel,
+  hasResumableSpotifyImport,
+  SpotifyImportRateLimitError,
+} from "../lib/providers/spotifyProvider";
 import type { LibraryLoadProgress } from "../lib/musicProvider";
 import {
   DEFAULT_VIEW_TRANSFORM,
@@ -524,6 +530,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
   const [isExportingPlaylist, setIsExportingPlaylist] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
   const [importProgress, setImportProgress] = useState<LibraryLoadProgress | null>(null);
+  const [importResumeRevision, setImportResumeRevision] = useState(0);
   const [isPanning, setIsPanning] = useState(false);
   const [shiftHeld, setShiftHeld] = useState(false);
   const [boxSelectRect, setBoxSelectRect] = useState<BoxSelectRect | null>(null);
@@ -680,6 +687,14 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     }
     setSpotifyUseLocalExport(false);
   }, [spotifyStatus?.connected]);
+
+  const spotifyImportResumeLabel = useMemo(() => {
+    void importResumeRevision;
+    if (musicService !== "spotify" || !spotifyStatus?.connected) {
+      return null;
+    }
+    return hasResumableSpotifyImport() ? getSpotifyImportResumeLabel() : null;
+  }, [importResumeRevision, musicService, spotifyStatus?.connected]);
 
   useEffect(() => {
     songsRef.current = songs;
@@ -2767,18 +2782,33 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     }
   };
 
-  const handleLoadSpotifyLibrary = async () => {
+  const handleLoadSpotifyLibrary = async (options?: { fresh?: boolean }) => {
     if (!musicProvider.loadLibrary) {
       return;
     }
+    if (options?.fresh) {
+      clearSpotifyImportSession();
+      setImportResumeRevision((revision) => revision + 1);
+    }
     setIsImporting(true);
-    setImportProgress({
-      phase: "profile",
-      message: "Starting Spotify import…",
-      percent: 0,
-    });
+    if (!options?.fresh && hasResumableSpotifyImport()) {
+      setImportProgress({
+        phase: "profile",
+        message: "Resuming Spotify import…",
+        percent: 2,
+      });
+      setStatusMessage("Resuming Spotify import…");
+    } else {
+      setImportProgress({
+        phase: "profile",
+        message: "Starting Spotify import…",
+        percent: 0,
+      });
+    }
+    let keepProgress = false;
     try {
       const loaded = await musicProvider.loadLibrary({
+        fresh: options?.fresh,
         onProgress: (progress) => {
           setImportProgress(progress);
           setStatusMessage(progress.message);
@@ -2815,10 +2845,18 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
         }
       }
     } catch (error) {
-      setStatusMessage(error instanceof Error ? error.message : "Could not load Spotify library.");
+      if (error instanceof SpotifyImportRateLimitError) {
+        keepProgress = true;
+        setStatusMessage(error.message);
+      } else {
+        setStatusMessage(error instanceof Error ? error.message : "Could not load Spotify library.");
+      }
     } finally {
       setIsImporting(false);
-      setImportProgress(null);
+      if (!keepProgress) {
+        setImportProgress(null);
+      }
+      setImportResumeRevision((revision) => revision + 1);
     }
   };
 
@@ -3535,8 +3573,22 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
                 onClick={() => void handleLoadSpotifyLibrary()}
                 disabled={isImporting || !spotifyStatus?.connected}
               >
-                {isImporting ? "Loading…" : "Load & share library"}
+                {isImporting
+                  ? "Loading…"
+                  : spotifyImportResumeLabel
+                    ? "Resume load & share"
+                    : "Load & share library"}
               </button>
+              {spotifyImportResumeLabel && !isImporting ? (
+                <button
+                  type="button"
+                  onClick={() => void handleLoadSpotifyLibrary({ fresh: true })}
+                  disabled={!spotifyStatus?.connected}
+                  title={spotifyImportResumeLabel}
+                >
+                  Start fresh
+                </button>
+              ) : null}
               {isWebDeployment && spotifyStatus?.connected ? (
                 <button type="button" onClick={() => void handlePublishSharedLibrary()} disabled={isImporting}>
                   {isImporting ? "Publishing…" : "Re-share library"}
