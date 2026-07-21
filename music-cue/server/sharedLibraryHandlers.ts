@@ -41,7 +41,7 @@ export const handleSharedLibraryRoute = async (
     }
 
     if (route === "storage-status" && req.method === "GET") {
-      res.status(200).json(getSharedLibraryStorageDiagnostics());
+      res.status(200).json(await getSharedLibraryStorageDiagnostics());
       return;
     }
 

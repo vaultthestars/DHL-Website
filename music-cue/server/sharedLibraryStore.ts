@@ -22,21 +22,44 @@ const useBlobStorage = (): boolean => {
   return false;
 };
 
-export const getSharedLibraryStorageDiagnostics = (): {
+export const getSharedLibraryStorageDiagnostics = async (): Promise<{
   vercel: boolean;
   blobConfigured: boolean;
   hasReadWriteToken: boolean;
   hasStoreId: boolean;
-} => ({
-  vercel: isVercelProduction(),
-  blobConfigured: useBlobStorage(),
-  hasReadWriteToken: Boolean(process.env.BLOB_READ_WRITE_TOKEN),
-  hasStoreId: Boolean(process.env.BLOB_STORE_ID),
-});
+  snapshotBlobCount: number;
+  indexContributorCount: number;
+}> => {
+  const base = {
+    vercel: isVercelProduction(),
+    blobConfigured: useBlobStorage(),
+    hasReadWriteToken: Boolean(process.env.BLOB_READ_WRITE_TOKEN),
+    hasStoreId: Boolean(process.env.BLOB_STORE_ID),
+    snapshotBlobCount: 0,
+    indexContributorCount: 0,
+  };
+  if (!useBlobStorage()) {
+    return base;
+  }
+  try {
+    const { list } = await getBlobModule();
+    const { blobs } = await list({ prefix: `${BLOB_PREFIX}/` });
+    base.snapshotBlobCount = blobs.filter(
+      (blob) => blob.pathname !== INDEX_PATH && blob.pathname.endsWith(".json")
+    ).length;
+    const index = await readBlobJson<SharedLibraryIndex>(INDEX_PATH);
+    base.indexContributorCount = index?.contributors?.length ?? 0;
+  } catch {
+    // Leave counts at zero.
+  }
+  return base;
+};
 
 export const isSharedLibraryStorageConfigured = (): boolean => {
-  const diagnostics = getSharedLibraryStorageDiagnostics();
-  return diagnostics.blobConfigured || !diagnostics.vercel;
+  if (!isVercelProduction()) {
+    return true;
+  }
+  return useBlobStorage();
 };
 
 export const assertSharedLibraryStorageConfigured = (): void => {
@@ -98,14 +121,14 @@ const writeLocalIndex = (index: SharedLibraryIndex): void => {
 const getBlobModule = async () => import("@vercel/blob");
 
 const readBlobJson = async <T>(pathname: string): Promise<T | null> => {
-  const { head } = await getBlobModule();
+  const { get } = await getBlobModule();
   try {
-    const metadata = await head(pathname);
-    const response = await fetch(metadata.downloadUrl);
-    if (!response.ok) {
+    const result = await get(pathname, { access: "private", useCache: false });
+    if (!result || result.statusCode !== 200 || !result.stream) {
       return null;
     }
-    return (await response.json()) as T;
+    const text = await new Response(result.stream).text();
+    return JSON.parse(text) as T;
   } catch {
     return null;
   }
@@ -116,6 +139,7 @@ const writeBlobJson = async (pathname: string, payload: unknown): Promise<void> 
   await put(pathname, JSON.stringify(payload), {
     access: "private",
     addRandomSuffix: false,
+    allowOverwrite: true,
     contentType: "application/json",
   });
 };
@@ -156,14 +180,20 @@ const rebuildIndexFromBlobSnapshots = async (): Promise<SharedLibraryIndex> => {
       continue;
     }
     const snapshot = await readBlobJson<SharedLibrarySnapshot>(blob.pathname);
-    if (!snapshot?.contributor?.id) {
+    if (snapshot?.contributor?.id) {
+      contributors.push({
+        id: snapshot.contributor.id,
+        name: snapshot.contributor.name,
+        updatedAt: snapshot.updatedAt,
+        trackCount: snapshot.songs.length,
+      });
       continue;
     }
     contributors.push({
-      id: snapshot.contributor.id,
-      name: snapshot.contributor.name,
-      updatedAt: snapshot.updatedAt,
-      trackCount: snapshot.songs.length,
+      id: contributorId,
+      name: contributorId,
+      updatedAt: blob.uploadedAt.toISOString(),
+      trackCount: 0,
     });
   }
 

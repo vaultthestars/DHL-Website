@@ -753,15 +753,11 @@ var useBlobStorage = () => {
   }
   return false;
 };
-var getSharedLibraryStorageDiagnostics = () => ({
-  vercel: isVercelProduction(),
-  blobConfigured: useBlobStorage(),
-  hasReadWriteToken: Boolean(process.env.BLOB_READ_WRITE_TOKEN),
-  hasStoreId: Boolean(process.env.BLOB_STORE_ID)
-});
 var isSharedLibraryStorageConfigured = () => {
-  const diagnostics = getSharedLibraryStorageDiagnostics();
-  return diagnostics.blobConfigured || !diagnostics.vercel;
+  if (!isVercelProduction()) {
+    return true;
+  }
+  return useBlobStorage();
 };
 var assertSharedLibraryStorageConfigured = () => {
   if (!isSharedLibraryStorageConfigured()) {
@@ -818,14 +814,14 @@ var writeLocalIndex = (index) => {
 };
 var getBlobModule = async () => import("@vercel/blob");
 var readBlobJson = async (pathname) => {
-  const { head } = await getBlobModule();
+  const { get } = await getBlobModule();
   try {
-    const metadata = await head(pathname);
-    const response = await fetch(metadata.downloadUrl);
-    if (!response.ok) {
+    const result = await get(pathname, { access: "private", useCache: false });
+    if (!result || result.statusCode !== 200 || !result.stream) {
       return null;
     }
-    return await response.json();
+    const text = await new Response(result.stream).text();
+    return JSON.parse(text);
   } catch {
     return null;
   }
@@ -835,6 +831,7 @@ var writeBlobJson = async (pathname, payload) => {
   await put(pathname, JSON.stringify(payload), {
     access: "private",
     addRandomSuffix: false,
+    allowOverwrite: true,
     contentType: "application/json"
   });
 };
