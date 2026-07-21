@@ -1020,6 +1020,12 @@ body {
   color: var(--w95-surface-dark);
 }
 
+.music-cue-guest-view-note {
+  margin: 0;
+  font-size: 11px;
+  color: #404040;
+}
+
 .music-cue-remote-cursor-svg {
   cursor: pointer;
   opacity: 0.42;

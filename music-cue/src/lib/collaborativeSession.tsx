@@ -30,10 +30,17 @@ export type CollaborativeViewSettings = {
   viewTransform: ViewTransform;
 };
 
-export type CollaborativePresenceLayout = Omit<CollaborativeViewSettings, "viewTransform">;
+export type CollaborativePresenceLayout = {
+  layoutConfig: LayoutConfig;
+  libraryScopeMode: LibraryScopeMode;
+  songSpaceMode: SongSpaceMode;
+  includeMockUsers: boolean;
+  /** Spotify contributor id when the user is in My song space (for guest follow-view). */
+  viewContributorId?: string | null;
+};
 
 export const presenceLayoutKey = (settings: CollaborativePresenceLayout): string =>
-  `${layoutConfigKey(settings.layoutConfig)}|${settings.libraryScopeMode}|${settings.songSpaceMode}|${settings.includeMockUsers}`;
+  `${layoutConfigKey(settings.layoutConfig)}|${settings.libraryScopeMode}|${settings.songSpaceMode}|${settings.includeMockUsers}|${settings.songSpaceMode === "mine" ? settings.viewContributorId ?? "" : ""}`;
 
 export type SessionPresenceData = {
   displayName: string;
@@ -89,6 +96,7 @@ const noopSessionContext: CollaborativeSessionContextValue = {
     libraryScopeMode: "isolate",
     songSpaceMode: "shared",
     includeMockUsers: false,
+    viewContributorId: null,
   },
   syncWithParticipant: () => {},
   setGraphCursor: () => {},

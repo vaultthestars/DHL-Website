@@ -422,6 +422,9 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
   const [spotifyUseLocalExport, setSpotifyUseLocalExport] = useState(false);
   const [sharedContributors, setSharedContributors] = useState<LibraryContributor[]>([]);
   const [songSpaceMode, setSongSpaceMode] = useState<SongSpaceMode>(() => loadSongSpaceMode());
+  const [guestViewContributorId, setGuestViewContributorId] = useState<string | null>(null);
+  const [clusterLayoutSyncRevision, setClusterLayoutSyncRevision] = useState(0);
+  const publishedRoomClusterRef = useRef(false);
   const [libraryScopeMode, setLibraryScopeMode] = useState<LibraryScopeMode>(() => loadLibraryScopeMode());
   const includeMockUsers = areMockUsersEnabled();
   const localContributorId = useMemo(
@@ -431,21 +434,29 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
   const isSpotifyGuest =
     isWebDeployment && musicService === "spotify" && spotifyStatus !== null && !spotifyStatus.connected;
   const isGuestViewOnly = isSpotifyGuest;
-  const effectiveSongSpaceMode = useMemo(
-    (): SongSpaceMode => (isSpotifyGuest ? "shared" : songSpaceMode),
-    [isSpotifyGuest, songSpaceMode]
-  );
+  const songSpaceContributorId = useMemo(() => {
+    if (isSpotifyGuest && songSpaceMode === "mine") {
+      return guestViewContributorId;
+    }
+    return localContributorId;
+  }, [guestViewContributorId, isSpotifyGuest, localContributorId, songSpaceMode]);
   const activeLayoutScope = useMemo(
-    () => getActiveClusterLayoutScope(effectiveSongSpaceMode, libraryScopeMode),
-    [effectiveSongSpaceMode, libraryScopeMode]
+    () => getActiveClusterLayoutScope(songSpaceMode, libraryScopeMode),
+    [libraryScopeMode, songSpaceMode]
   );
   const effectiveLibraryScopeMode = useMemo(
-    () => getEffectiveLibraryScopeMode(effectiveSongSpaceMode, libraryScopeMode),
-    [effectiveSongSpaceMode, libraryScopeMode]
+    () => getEffectiveLibraryScopeMode(songSpaceMode, libraryScopeMode),
+    [libraryScopeMode, songSpaceMode]
   );
   const activeContributorIds = useMemo(
-    () => resolveActiveContributorIds(effectiveSongSpaceMode, localContributorId, sharedContributors),
-    [effectiveSongSpaceMode, localContributorId, sharedContributors]
+    () =>
+      resolveActiveContributorIds(
+        songSpaceMode,
+        localContributorId,
+        sharedContributors,
+        songSpaceContributorId
+      ),
+    [localContributorId, sharedContributors, songSpaceContributorId, songSpaceMode]
   );
   const [sharedTrackCount, setSharedTrackCount] = useState(0);
   const [isLoadingSharedLibrary, setIsLoadingSharedLibrary] = useState(false);
@@ -480,27 +491,28 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     if (activeLayoutScope === "conglomerate") {
       return customClusterCatalogState.conglomerate;
     }
-    if (!localContributorId) {
+    const ownerId = songSpaceContributorId ?? localContributorId;
+    if (!ownerId) {
       return defaultCustomClusterCatalog();
     }
-    return customClusterCatalogState.isolateByOwner[localContributorId] ?? defaultCustomClusterCatalog();
-  }, [activeLayoutScope, customClusterCatalogState, localContributorId]);
+    return customClusterCatalogState.isolateByOwner[ownerId] ?? defaultCustomClusterCatalog();
+  }, [activeLayoutScope, customClusterCatalogState, localContributorId, songSpaceContributorId]);
 
   const layoutClusterOverrides = useMemo(() => {
-    if (songSpaceMode === "mine" && localContributorId) {
-      return getClusterOverridesForOwner(clusterOverrides, localContributorId, layoutConfig);
+    if (songSpaceMode === "mine" && songSpaceContributorId) {
+      return getClusterOverridesForOwner(clusterOverrides, songSpaceContributorId, layoutConfig);
     }
     return clusterOverrides;
-  }, [clusterOverrides, layoutConfig, localContributorId, songSpaceMode]);
+  }, [clusterOverrides, layoutConfig, songSpaceContributorId, songSpaceMode]);
 
   const resolveLayoutClusterOverrides = useCallback(
     (overrides: ClusterCenterOverrides = clusterOverridesRef.current): ClusterCenterOverrides => {
-      if (songSpaceMode === "mine" && localContributorId) {
-        return getClusterOverridesForOwner(overrides, localContributorId, layoutConfig);
+      if (songSpaceMode === "mine" && songSpaceContributorId) {
+        return getClusterOverridesForOwner(overrides, songSpaceContributorId, layoutConfig);
       }
       return overrides;
     },
-    [layoutConfig, localContributorId, songSpaceMode]
+    [layoutConfig, songSpaceContributorId, songSpaceMode]
   );
 
   const scheduleClusterDragPreview = useCallback(() => {
@@ -971,8 +983,8 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
   }, [musicProvider, musicService, songs, spotifyStatus?.connected, spotifyUseLocalExport]);
 
   const songSpaceSongs = useMemo(
-    () => filterSongsForSongSpace(songs, effectiveSongSpaceMode, localContributorId),
-    [effectiveSongSpaceMode, localContributorId, songs]
+    () => filterSongsForSongSpace(songs, songSpaceMode, localContributorId, songSpaceContributorId),
+    [localContributorId, songSpaceContributorId, songSpaceMode, songs]
   );
 
   const visibleSongs = useMemo(() => {
@@ -1254,7 +1266,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     [computeLayoutPosition, layoutConfig]
   );
 
-  const layoutTransitionKey = `${effectiveSongSpaceMode}:${libraryScopeMode}`;
+  const layoutTransitionKey = `${songSpaceMode}:${libraryScopeMode}`;
 
   const { getDisplayPosition, transition } = useLayoutTransition(
     layoutConfig,
@@ -2949,27 +2961,21 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
   }, [musicService]);
 
   useEffect(() => {
-    if (
-      !isWebDeployment ||
-      musicService !== "spotify" ||
-      spotifyStatus === null ||
-      spotifyStatus.connected
-    ) {
+    if (!isSpotifyGuest || guestViewContributorId) {
       return;
     }
     if (songSpaceMode !== "shared") {
       clearFrozenIsolateBounds();
       setSongSpaceMode("shared");
-      saveSongSpaceMode("shared");
       reloadLayoutCaches(getActiveClusterLayoutScope("shared", libraryScopeMode));
     }
   }, [
     clearFrozenIsolateBounds,
+    guestViewContributorId,
+    isSpotifyGuest,
     libraryScopeMode,
-    musicService,
     reloadLayoutCaches,
     songSpaceMode,
-    spotifyStatus,
   ]);
 
   useEffect(() => {
@@ -2984,6 +2990,25 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
       // refreshSharedContributors already surfaces errors in the status line.
     });
   }, [musicService, refreshSharedContributors, songSpaceMode, spotifyStatus?.connected]);
+
+  useEffect(() => {
+    if (!isWebDeployment || musicService !== "spotify" || !spotifyStatus?.connected || isSpotifyGuest) {
+      publishedRoomClusterRef.current = false;
+      return;
+    }
+    if (songs.length === 0 || publishedRoomClusterRef.current) {
+      return;
+    }
+    publishedRoomClusterRef.current = true;
+    publishClusterLayoutRef.current(clusterOverridesRef.current);
+  }, [isSpotifyGuest, musicService, songs.length, spotifyStatus?.connected]);
+
+  useEffect(() => {
+    if (!isWebDeployment || isSpotifyGuest || !spotifyStatus?.connected) {
+      return;
+    }
+    publishClusterLayoutRef.current(clusterOverridesRef.current);
+  }, [activeLayoutScope, clusterOverrides, isSpotifyGuest, spotifyStatus?.connected]);
 
   const handleSongSpaceChange = (mode: SongSpaceMode) => {
     if (mode === songSpaceMode) {
@@ -3610,38 +3635,52 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
       libraryScopeMode,
       songSpaceMode,
       includeMockUsers,
+      viewContributorId:
+        songSpaceMode === "mine" && spotifyStatus?.userId ? spotifyStatus.userId : null,
     }),
-    [includeMockUsers, layoutConfig, libraryScopeMode, songSpaceMode]
+    [includeMockUsers, layoutConfig, libraryScopeMode, songSpaceMode, spotifyStatus?.userId]
   );
 
   const applySyncPresenceLayout = useCallback(
     (layout: CollaborativePresenceLayout) => {
-      const isSpotifyGuest =
+      const isGuest =
         isWebDeployment && musicService === "spotify" && spotifyStatus !== null && !spotifyStatus.connected;
-      const resolvedSongSpaceMode =
-        isSpotifyGuest && layout.songSpaceMode !== "shared" ? "shared" : layout.songSpaceMode;
       const nextLayoutConfig = normalizeLayoutConfigForService(layout.layoutConfig, musicService);
+      const nextViewContributorId =
+        layout.songSpaceMode === "mine" ? layout.viewContributorId ?? null : null;
 
       startTransition(() => {
         setLayoutConfig(nextLayoutConfig);
         saveLayoutConfig(nextLayoutConfig);
 
-        if (resolvedSongSpaceMode !== songSpaceMode) {
+        if (layout.songSpaceMode !== songSpaceMode) {
           clearFrozenIsolateBounds();
-          setSongSpaceMode(resolvedSongSpaceMode);
-          saveSongSpaceMode(resolvedSongSpaceMode);
+          setSongSpaceMode(layout.songSpaceMode);
+          if (!isGuest) {
+            saveSongSpaceMode(layout.songSpaceMode);
+          }
         }
         if (layout.libraryScopeMode !== libraryScopeMode) {
           clearFrozenIsolateBounds();
           setLibraryScopeMode(layout.libraryScopeMode);
-          saveLibraryScopeMode(layout.libraryScopeMode);
+          if (!isGuest) {
+            saveLibraryScopeMode(layout.libraryScopeMode);
+          }
+        }
+        if (isGuest) {
+          setGuestViewContributorId(nextViewContributorId);
+          setClusterLayoutSyncRevision((value) => value + 1);
         }
         reloadLayoutCaches(
-          getActiveClusterLayoutScope(resolvedSongSpaceMode, layout.libraryScopeMode)
+          getActiveClusterLayoutScope(layout.songSpaceMode, layout.libraryScopeMode)
         );
       });
 
-      setStatusMessage("Synced view with collaborator.");
+      const syncedName =
+        layout.songSpaceMode === "mine" && nextViewContributorId
+          ? "Synced view — viewing their song space."
+          : "Synced view with collaborator.";
+      setStatusMessage(syncedName);
     },
     [
       clearFrozenIsolateBounds,
@@ -3974,6 +4013,17 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
 
           {isWebDeployment && musicService === "spotify" ? (
             <div className="music-cue-shared-controls">
+              {isSpotifyGuest ? (
+                <p className="music-cue-guest-view-note">
+                  {songSpaceMode === "mine" && guestViewContributorId
+                    ? `Viewing ${
+                        sharedContributors.find((contributor) => contributor.id === guestViewContributorId)
+                          ?.name ?? "collaborator"
+                      }'s song space`
+                    : "Shared song space — use Sync view on a participant to follow them"}
+                </p>
+              ) : (
+                <>
               <div className="music-cue-layout-toggle music-cue-scope-toggle" role="group" aria-label="Song space">
                 {showMySongSpace ? (
                   <button
@@ -4002,6 +4052,8 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
                   <span>Isolate contributors</span>
                 </label>
               ) : null}
+                </>
+              )}
             </div>
           ) : null}
 
@@ -4605,6 +4657,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
           clusterLayoutSyncMode={clusterLayoutSyncMode}
           enableRemoteClusterPublish={!isSpotifyGuest}
           publishRef={publishClusterLayoutRef}
+          clusterLayoutSyncRevision={clusterLayoutSyncRevision}
         >
           <CollaborativeSessionProvider
             displayName={collaboratorDisplayName}

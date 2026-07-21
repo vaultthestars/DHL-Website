@@ -277,10 +277,12 @@ export const resolveLocalContributorId = (
 export const resolveActiveContributorIds = (
   songSpaceMode: SongSpaceMode,
   localContributorId: string | null,
-  contributors: LibraryContributor[]
+  contributors: LibraryContributor[],
+  viewContributorId: string | null = null
 ): string[] => {
   if (songSpaceMode === "mine") {
-    return localContributorId && !isMockContributorId(localContributorId) ? [localContributorId] : [];
+    const contributorId = viewContributorId ?? localContributorId;
+    return contributorId && !isMockContributorId(contributorId) ? [contributorId] : [];
   }
   return contributors
     .map((contributor) => contributor.id)
@@ -290,12 +292,14 @@ export const resolveActiveContributorIds = (
 export const filterSongsForSongSpace = (
   songs: Array<{ id: string; owners?: Array<{ id: string }> }>,
   songSpaceMode: SongSpaceMode,
-  localContributorId: string | null
+  localContributorId: string | null,
+  viewContributorId: string | null = null
 ): typeof songs => {
   if (songSpaceMode !== "mine") {
     return songs;
   }
-  if (!localContributorId) {
+  const contributorId = viewContributorId ?? localContributorId;
+  if (!contributorId) {
     return songs.filter((song) => (song.owners ?? []).length === 0);
   }
   return songs.filter((song) => {
@@ -303,7 +307,7 @@ export const filterSongsForSongSpace = (
     if (owners.length === 0) {
       return true;
     }
-    return owners.some((owner) => owner.id === localContributorId);
+    return owners.some((owner) => owner.id === contributorId);
   });
 };
 
