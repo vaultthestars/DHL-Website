@@ -153,6 +153,9 @@ export const resolveLocalContributorId = (
     return MOCK_CONTRIBUTOR_IDS.august;
   }
   const stored = loadLocalContributorId();
+  if (stored && isMockContributorId(stored)) {
+    return null;
+  }
   if (stored && contributors.some((contributor) => contributor.id === stored)) {
     return stored;
   }
@@ -165,9 +168,11 @@ export const resolveActiveContributorIds = (
   contributors: LibraryContributor[]
 ): string[] => {
   if (songSpaceMode === "mine") {
-    return localContributorId ? [localContributorId] : [];
+    return localContributorId && !isMockContributorId(localContributorId) ? [localContributorId] : [];
   }
-  return contributors.map((contributor) => contributor.id);
+  return contributors
+    .map((contributor) => contributor.id)
+    .filter((contributorId) => !isMockContributorId(contributorId));
 };
 
 export const saveEnabledContributorIds = (contributorIds: string[]): void => {
@@ -185,8 +190,13 @@ export const loadIncludeMockUsers = (): boolean => {
   }
 };
 
+/** Persist mock-user preference (desktop/dev only; web deployment ignores mocks). */
 export const saveIncludeMockUsers = (includeMockUsers: boolean): void => {
   localStorage.setItem(INCLUDE_MOCK_USERS_KEY, includeMockUsers ? "true" : "false");
+};
+
+export const disableMockUsersForWeb = (): void => {
+  saveIncludeMockUsers(false);
 };
 
 export type LibraryScopeMode = "conglomerate" | "isolate";

@@ -21,7 +21,7 @@ import {
   CueTrack,
 } from "../lib/appleMusicScript";
 import { MusicServiceId } from "../lib/musicProvider";
-import { isWebDeployment } from "../lib/runtime";
+import { isWebDeployment, areMockUsersEnabled } from "../lib/runtime";
 import {
   ClusterLayoutPublisher,
   CollaborativeLayoutProvider,
@@ -93,14 +93,13 @@ import {
 } from "../lib/layoutMetrics";
 import {
   listSharedContributors,
-  loadIncludeMockUsers,
+  disableMockUsersForWeb,
   loadMergedSharedLibrary,
   loadSongSpaceMode,
   loadLibraryScopeMode,
   publishSharedLibrary,
   resolveActiveContributorIds,
   resolveLocalContributorId,
-  saveIncludeMockUsers,
   saveLocalContributorId,
   saveLibraryScopeMode,
   saveSongSpaceMode,
@@ -288,7 +287,11 @@ const normalizeSong = (song: Song, stats: LibraryStats | null): Song => {
 const normalizeSongs = (librarySongs: Song[], stats: LibraryStats | null): Song[] =>
   librarySongs.map((song) => normalizeSong(song, stats));
 
-export const MusicCueTool = () => {
+export type MusicCueToolProps = {
+  onWelcomeNameChange?: (name: string | null) => void;
+};
+
+export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) => {
   const graphPanelRef = useRef<HTMLDivElement | null>(null);
   const svgRef = useRef<SVGSVGElement | null>(null);
   const contentGroupRef = useRef<SVGGElement | null>(null);
@@ -367,17 +370,7 @@ export const MusicCueTool = () => {
     () => getEffectiveLibraryScopeMode(songSpaceMode, libraryScopeMode),
     [libraryScopeMode, songSpaceMode]
   );
-  const [includeMockUsers, setIncludeMockUsers] = useState(() => {
-    try {
-      const stored = localStorage.getItem("music-cue-include-mock-users");
-      if (stored === null && isWebDeployment) {
-        return true;
-      }
-      return stored === "true";
-    } catch {
-      return false;
-    }
-  });
+  const includeMockUsers = areMockUsersEnabled();
   const localContributorId = useMemo(
     () => resolveLocalContributorId(includeMockUsers, sharedContributors),
     [includeMockUsers, sharedContributors]
@@ -632,6 +625,24 @@ export const MusicCueTool = () => {
       void musicProvider.getConnectionStatus().then(setSpotifyStatus);
     }
   }, [musicProvider, musicService]);
+
+  useEffect(() => {
+    if (!isWebDeployment) {
+      return;
+    }
+    disableMockUsersForWeb();
+  }, []);
+
+  useEffect(() => {
+    if (!onWelcomeNameChange) {
+      return;
+    }
+    if (musicService === "spotify" && spotifyStatus?.connected) {
+      onWelcomeNameChange(spotifyStatus.displayName?.trim() || null);
+      return;
+    }
+    onWelcomeNameChange(null);
+  }, [musicService, onWelcomeNameChange, spotifyStatus]);
 
   useEffect(() => {
     songsRef.current = songs;
@@ -2540,13 +2551,6 @@ export const MusicCueTool = () => {
     );
   };
 
-  const handleIncludeMockUsersToggle = () => {
-    const nextValue = !includeMockUsers;
-    setIncludeMockUsers(nextValue);
-    saveIncludeMockUsers(nextValue);
-    void refreshSharedContributors();
-  };
-
   const handleRefreshSharedLibrary = () => {
     void refreshSharedContributors();
   };
@@ -2965,14 +2969,12 @@ export const MusicCueTool = () => {
         setLibraryScopeMode(settings.libraryScopeMode);
         saveLibraryScopeMode(settings.libraryScopeMode);
       }
-      setIncludeMockUsers(settings.includeMockUsers);
-      saveIncludeMockUsers(settings.includeMockUsers);
       reloadLayoutCaches(
         getActiveClusterLayoutScope(settings.songSpaceMode, settings.libraryScopeMode)
       );
       const contributorIds = resolveActiveContributorIds(
         settings.songSpaceMode,
-        resolveLocalContributorId(settings.includeMockUsers, sharedContributors),
+        resolveLocalContributorId(includeMockUsers, sharedContributors),
         sharedContributors
       );
       void applyMergedSharedLibrary(contributorIds, sharedContributors);
@@ -2986,6 +2988,7 @@ export const MusicCueTool = () => {
       reloadLayoutCaches,
       sharedContributors,
       songSpaceMode,
+      includeMockUsers,
     ]
   );
 
@@ -3220,10 +3223,6 @@ export const MusicCueTool = () => {
 
           {isWebDeployment && musicService === "spotify" ? (
             <div className="music-cue-shared-controls">
-              <label className="music-cue-contributor-option">
-                <input type="checkbox" checked={includeMockUsers} onChange={handleIncludeMockUsersToggle} />
-                <span>Demo users (August, Riley, Sam)</span>
-              </label>
               <div className="music-cue-layout-toggle music-cue-scope-toggle" role="group" aria-label="Song space">
                 <button
                   type="button"

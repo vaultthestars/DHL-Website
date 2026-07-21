@@ -134,6 +134,10 @@ body {
   white-space: nowrap;
 }
 
+.win95-titlebar-welcome {
+  font-weight: 400;
+}
+
 .win95-titlebar-buttons {
   display: flex;
   gap: 2px;

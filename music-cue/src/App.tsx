@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { MusicCueTool } from "./components/MusicCueTool";
 import { SpotifyCallback } from "./components/SpotifyCallback";
 import { Win95Taskbar } from "./components/Win95Taskbar";
@@ -24,7 +25,13 @@ const goToSiteHome = (): void => {
   window.location.href = "/";
 };
 
-const TitleBar = ({ showHomeButton }: { showHomeButton: boolean }) => (
+const TitleBar = ({
+  showHomeButton,
+  welcomeName,
+}: {
+  showHomeButton: boolean;
+  welcomeName: string | null;
+}) => (
   <div className="win95-titlebar">
     <div className="win95-titlebar-leading">
       {showHomeButton ? (
@@ -32,7 +39,12 @@ const TitleBar = ({ showHomeButton }: { showHomeButton: boolean }) => (
           ← Home
         </button>
       ) : null}
-      <span className="win95-titlebar-text">{WINDOW_TITLE}</span>
+      <span className="win95-titlebar-text">
+        {WINDOW_TITLE}
+        {welcomeName ? (
+          <span className="win95-titlebar-welcome"> · Welcome, {welcomeName}?</span>
+        ) : null}
+      </span>
     </div>
     <div className="win95-titlebar-buttons" aria-hidden>
       <button type="button" className="win95-chrome-btn" tabIndex={-1}>
@@ -51,13 +63,14 @@ const TitleBar = ({ showHomeButton }: { showHomeButton: boolean }) => (
 export const App = () => {
   const embeddedClass = isEmbeddedApp() ? "win95-embedded" : "";
   const showHomeButton = isEmbeddedApp();
+  const [welcomeName, setWelcomeName] = useState<string | null>(null);
 
   if (window.location.pathname.endsWith("/spotify/callback")) {
     return (
       <div className={`win95-app ${embeddedClass}`}>
         <div className="win95-workspace">
           <div className="win95-shell">
-            <TitleBar showHomeButton={showHomeButton} />
+            <TitleBar showHomeButton={showHomeButton} welcomeName={welcomeName} />
             <div className="win95-client">
               <SpotifyCallback />
             </div>
@@ -71,9 +84,9 @@ export const App = () => {
     <div className={`win95-app ${embeddedClass}`}>
       <div className="win95-workspace">
         <div className="win95-shell">
-          <TitleBar showHomeButton={showHomeButton} />
+          <TitleBar showHomeButton={showHomeButton} welcomeName={welcomeName} />
           <div className="win95-client">
-            <MusicCueTool />
+            <MusicCueTool onWelcomeNameChange={setWelcomeName} />
           </div>
         </div>
       </div>

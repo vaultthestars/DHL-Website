@@ -80,7 +80,7 @@ const noopSessionContext: CollaborativeSessionContextValue = {
     layoutConfig: { viewMode: "cluster", clusterMode: "playlist", axisX: "year", axisY: "year" },
     libraryScopeMode: "isolate",
     songSpaceMode: "shared",
-    includeMockUsers: true,
+    includeMockUsers: false,
     viewTransform: { scale: 1, panX: 0, panY: 0 },
   },
   syncWithParticipant: () => {},
