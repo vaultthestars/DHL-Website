@@ -396,6 +396,60 @@ body {
   background: var(--w95-window-bg);
 }
 
+.music-cue-graph-tools-overlay {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 12;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  pointer-events: none;
+}
+
+.music-cue-graph-tool-btn {
+  width: 28px;
+  height: 28px;
+  padding: 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid;
+  border-color: var(--w95-highlight) var(--w95-shadow) var(--w95-shadow) var(--w95-highlight);
+  background: var(--w95-surface);
+  color: var(--w95-text);
+  cursor: pointer;
+  pointer-events: auto;
+  box-shadow: 1px 1px 0 rgba(0, 0, 0, 0.2);
+}
+
+.music-cue-graph-tool-btn svg {
+  width: 16px;
+  height: 16px;
+  display: block;
+}
+
+.music-cue-graph-tool-btn.is-active {
+  border-color: var(--w95-shadow) var(--w95-highlight) var(--w95-highlight) var(--w95-shadow);
+  background: #d8e8ff;
+  padding: 5px 3px 3px 5px;
+}
+
+.music-cue-graph-tool-btn:active {
+  border-color: var(--w95-shadow) var(--w95-highlight) var(--w95-highlight) var(--w95-shadow);
+  padding: 5px 3px 3px 5px;
+}
+
+.music-cue-graph-tool-btn-clear {
+  color: #800000;
+}
+
+.music-cue-cue-path-slider-sidebar {
+  margin-bottom: 8px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--w95-shadow);
+}
+
 .music-cue-graph {
   display: block;
   width: 100%;

@@ -4,6 +4,7 @@ import { syncClusterLayoutToServer } from "../lib/clusterLayoutSync";
 import {
   getLayoutAxisLabels,
   GraphDimensions,
+  fromNormalizedPosition,
   layoutSongPosition,
   toNormalizedPosition,
 } from "../lib/graphLayout";
@@ -246,8 +247,8 @@ export const MusicCueTool = () => {
   const svgRef = useRef<SVGSVGElement | null>(null);
   const contentGroupRef = useRef<SVGGElement | null>(null);
   const bgRectRef = useRef<SVGRectElement | null>(null);
-  const strokeRef = useRef<GraphPoint[]>([]);
-  const completedStrokesRef = useRef<GraphPoint[][]>([]);
+  const strokeRef = useRef<NormalizedPoint[]>([]);
+  const completedStrokesRef = useRef<NormalizedPoint[][]>([]);
   const pointerPositionsRef = useRef(new Map<number, { x: number; y: number }>());
   const pinchSessionRef = useRef<{
     startDistance: number;
@@ -328,9 +329,8 @@ export const MusicCueTool = () => {
   );
   const clusterOverridesRef = useRef(clusterOverrides);
   const [pathThreshold, setPathThreshold] = useState(() => loadPathThreshold());
-  const [stroke, setStroke] = useState<GraphPoint[]>([]);
-  const [completedStrokes, setCompletedStrokes] = useState<GraphPoint[][]>([]);
-  const [activeStroke, setActiveStroke] = useState<GraphPoint[]>([]);
+  const [completedStrokes, setCompletedStrokes] = useState<NormalizedPoint[][]>([]);
+  const [activeStroke, setActiveStroke] = useState<NormalizedPoint[]>([]);
   const [strokeLayoutConfig, setStrokeLayoutConfig] = useState<LayoutConfig | null>(null);
   const [isDrawingNewPath, setIsDrawingNewPath] = useState(false);
   const [cue, setCue] = useState<GeneratedCue | null>(null);
@@ -794,13 +794,16 @@ export const MusicCueTool = () => {
   );
 
   const regenerateCueFromStrokes = useCallback(
-    (strokes: GraphPoint[][], threshold: number) => {
+    (strokes: NormalizedPoint[][], threshold: number) => {
       if (strokes.length === 0) {
         return null;
       }
-      return generateCueFromStrokes(visibleSongs, strokes, getPosition, threshold, layoutConfig);
+      const graphStrokes = strokes.map((segment) =>
+        segment.map((point) => fromNormalizedPosition(point, dimensions))
+      );
+      return generateCueFromStrokes(visibleSongs, graphStrokes, getPosition, threshold, layoutConfig);
     },
-    [getPosition, layoutConfig, visibleSongs]
+    [dimensions, getPosition, layoutConfig, visibleSongs]
   );
 
   const selectedSong = useMemo(
@@ -812,12 +815,12 @@ export const MusicCueTool = () => {
     (initialSongs: Song[] = []): GeneratedCue => ({
       seed: initialSongs[0]?.id.charCodeAt(0) ?? 0,
       songs: initialSongs,
-      stroke: strokeRef.current,
+      stroke: strokeRef.current.map((point) => fromNormalizedPosition(point, dimensions)),
       layoutConfig,
       pathThreshold,
       buildMode,
     }),
-    [buildMode, layoutConfig, pathThreshold]
+    [buildMode, dimensions, layoutConfig, pathThreshold]
   );
 
   const snapshotCue = (value: GeneratedCue | null): GeneratedCue | null =>
@@ -1063,24 +1066,24 @@ export const MusicCueTool = () => {
   };
 
   const beginNewStroke = (point: GraphPoint) => {
+    const normalized = toNormalizedPosition(point, dimensions);
     isDrawingRef.current = true;
     setIsDrawingNewPath(true);
     setStrokeLayoutConfig(layoutConfig);
-    strokeRef.current = [point];
-    setActiveStroke([point]);
-    setStroke([point]);
+    strokeRef.current = [normalized];
+    setActiveStroke([normalized]);
     setStatusMessage("Drawing path… release to finish this segment.");
   };
 
   const appendStrokePoint = (point: GraphPoint) => {
+    const normalized = toNormalizedPosition(point, dimensions);
     setActiveStroke((current) => {
       const last = current[current.length - 1];
-      if (!last || Math.hypot(point.x - last.x, point.y - last.y) < 4) {
+      if (!last || Math.hypot(normalized.x - last.x, normalized.y - last.y) < 0.004) {
         return current;
       }
-      const next = [...current, point];
+      const next = [...current, normalized];
       strokeRef.current = next;
-      setStroke(next);
       return next;
     });
   };
@@ -1093,7 +1096,6 @@ export const MusicCueTool = () => {
     if (currentStroke.length < 2) {
       strokeRef.current = [];
       setActiveStroke([]);
-      setStroke([]);
       setStatusMessage("Draw a longer path to generate a cue.");
       return;
     }
@@ -1103,7 +1105,6 @@ export const MusicCueTool = () => {
     setCompletedStrokes(nextCompleted);
     strokeRef.current = [];
     setActiveStroke([]);
-    setStroke([]);
 
     const generated = regenerateCueFromStrokes(nextCompleted, pathThreshold);
 
@@ -1127,7 +1128,7 @@ export const MusicCueTool = () => {
     clusterId: string,
     label: string
   ) => {
-    if (!isClusterLayout || graphTool !== "navigate") {
+    if (!isClusterLayout) {
       return;
     }
     event.stopPropagation();
@@ -1428,7 +1429,6 @@ export const MusicCueTool = () => {
     setStats(normalizeStats(loadedStats, normalized));
     saveLibrary(musicService, loadedSongs, loadedStats);
     setCue(null);
-    setStroke([]);
     setCompletedStrokes([]);
     completedStrokesRef.current = [];
     setActiveStroke([]);
@@ -1562,7 +1562,6 @@ export const MusicCueTool = () => {
     setSongs(nextSongs);
     setStats(normalizeStats(library.stats, nextSongs));
     setCue(null);
-    setStroke([]);
     setCompletedStrokes([]);
     completedStrokesRef.current = [];
     setActiveStroke([]);
@@ -1647,12 +1646,19 @@ export const MusicCueTool = () => {
   const clearDrawnPath = () => {
     strokeRef.current = [];
     completedStrokesRef.current = [];
-    setStroke([]);
     setCompletedStrokes([]);
     setActiveStroke([]);
     setStrokeLayoutConfig(null);
     setIsDrawingNewPath(false);
     isDrawingRef.current = false;
+  };
+
+  const handleClearPaths = () => {
+    clearDrawnPath();
+    setCue(null);
+    setSelectedSongId(null);
+    clearUndo();
+    setStatusMessage("Cleared drawn paths.");
   };
 
   const updateLayoutConfig = (nextConfig: LayoutConfig, message?: string) => {
@@ -1833,10 +1839,7 @@ export const MusicCueTool = () => {
   };
 
   const handleClear = () => {
-    clearDrawnPath();
-    setCue(null);
-    setSelectedSongId(null);
-    clearUndo();
+    handleClearPaths();
     setActivePlaylistName(null);
     setActivePersistentId(null);
     setPlaybackTrackingEnabled(false);
@@ -1853,10 +1856,13 @@ export const MusicCueTool = () => {
       .filter((segment) => segment.length >= 1)
       .map((segment) =>
         segment
-          .map((point, index) => `${index === 0 ? "M" : "L"} ${point.x.toFixed(1)} ${point.y.toFixed(1)}`)
+          .map((point, index) => {
+            const graphPoint = fromNormalizedPosition(point, dimensions);
+            return `${index === 0 ? "M" : "L"} ${graphPoint.x.toFixed(1)} ${graphPoint.y.toFixed(1)}`;
+          })
           .join(" ")
       );
-  }, [activeStroke, completedStrokes]);
+  }, [activeStroke, completedStrokes, dimensions]);
 
   const hoveredSong = hoveredSongId ? songs.find((song) => song.id === hoveredSongId) : undefined;
 
@@ -2266,6 +2272,57 @@ export const MusicCueTool = () => {
 
       <div className="music-cue-workspace">
         <div className="music-cue-graph-panel" ref={graphPanelRef}>
+          <div className="music-cue-graph-tools-overlay" role="toolbar" aria-label="Graph tools">
+            <button
+              type="button"
+              className={`music-cue-graph-tool-btn ${graphTool === "navigate" ? "is-active" : ""}`}
+              onClick={() => handleGraphToolChange("navigate")}
+              title="Navigate"
+              aria-label="Navigate"
+              aria-pressed={graphTool === "navigate"}
+            >
+              <svg viewBox="0 0 16 16" aria-hidden>
+                <path
+                  d="M5.5 7.5V4.8c0-.7.6-1.3 1.3-1.3.4 0 .8.2 1 .5.2-.3.6-.5 1-.5.7 0 1.3.6 1.3 1.3V7.5M8.5 7.5V4.3c0-.7.6-1.3 1.3-1.3.7 0 1.3.6 1.3 1.3v4.2c0 2.2-1.8 4-4 4s-4-1.8-4-4V6.8c0-.7.6-1.3 1.3-1.3.7 0 1.3.6 1.3 1.3v.7"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.1"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+            </button>
+            <button
+              type="button"
+              className={`music-cue-graph-tool-btn ${graphTool === "draw" ? "is-active" : ""}`}
+              onClick={() => handleGraphToolChange("draw")}
+              title="Draw path"
+              aria-label="Draw path"
+              aria-pressed={graphTool === "draw"}
+            >
+              <svg viewBox="0 0 16 16" aria-hidden>
+                <path
+                  d="M11.8 2.2 13.8 4.2 5.6 12.4 2.4 13.6 3.6 10.4 11.8 2.2z"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.2"
+                  strokeLinejoin="round"
+                />
+                <path d="M10.6 3.4 12.6 5.4" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+              </svg>
+            </button>
+            <button
+              type="button"
+              className="music-cue-graph-tool-btn music-cue-graph-tool-btn-clear"
+              onClick={handleClearPaths}
+              title="Clear paths"
+              aria-label="Clear paths"
+            >
+              <svg viewBox="0 0 16 16" aria-hidden>
+                <path d="M4 4 12 12M12 4 4 12" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+              </svg>
+            </button>
+          </div>
           <CollaborativeCursorsOverlay
             graphPanelRef={graphPanelRef}
             svgRef={svgRef}
@@ -2439,37 +2496,19 @@ export const MusicCueTool = () => {
         </div>
 
         <aside className="music-cue-cue-sidebar">
-          <div className="music-cue-cue-build-panel">
-            <div className="music-cue-build-mode-toggle" role="group" aria-label="Graph tools">
-              <button
-                type="button"
-                className={graphTool === "navigate" ? "music-cue-layout-active" : ""}
-                onClick={() => handleGraphToolChange("navigate")}
-              >
-                Navigate
-              </button>
-              <button
-                type="button"
-                className={graphTool === "draw" ? "music-cue-layout-active" : ""}
-                onClick={() => handleGraphToolChange("draw")}
-              >
-                Draw path
-              </button>
-            </div>
-            {graphTool === "draw" && (
-              <label className="music-cue-slider-label music-cue-cue-path-slider">
-                Path threshold ({pathThreshold}px)
-                <input
-                  type="range"
-                  min={20}
-                  max={150}
-                  step={5}
-                  value={pathThreshold}
-                  onChange={(event) => handlePathThresholdChange(Number(event.target.value))}
-                />
-              </label>
-            )}
-          </div>
+          {graphTool === "draw" && (
+            <label className="music-cue-slider-label music-cue-cue-path-slider music-cue-cue-path-slider-sidebar">
+              Path threshold ({pathThreshold}px)
+              <input
+                type="range"
+                min={20}
+                max={150}
+                step={5}
+                value={pathThreshold}
+                onChange={(event) => handlePathThresholdChange(Number(event.target.value))}
+              />
+            </label>
+          )}
 
           <div className="music-cue-cue-header">
             <h2 className="music-cue-cue-title">Cue</h2>
@@ -2483,9 +2522,6 @@ export const MusicCueTool = () => {
               </button>
               <button type="button" onClick={handleOpenExportDialog} disabled={!cue}>
                 {isWebAppleMusic ? "Copy playlist command" : "Export playlist"}
-              </button>
-              <button type="button" onClick={handleClear}>
-                Clear
               </button>
               {buildMode === "manual" && (
                 <button type="button" onClick={handleUndo} disabled={!canUndo}>
