@@ -22,6 +22,13 @@ type SpotifyPage<T> = {
   next: string | null;
 };
 
+const PAGE_REQUEST_DELAY_MS = 320;
+const PAGE_BURST_DELAY_MS = 900;
+const PAGE_BURST_INTERVAL = 8;
+const PLAYLIST_FETCH_CONCURRENCY = 2;
+
+const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
+
 const reportProgress = (
   onProgress: LoadLibraryOptions["onProgress"],
   progress: LibraryLoadProgress
@@ -29,29 +36,48 @@ const reportProgress = (
   onProgress?.(progress);
 };
 
-const fetchJson = async <T>(url: string, init?: RequestInit): Promise<T> => {
+const paginatedPhasePercent = (pageNumber: number, startPercent: number, endPercent: number): number => {
+  const span = endPercent - startPercent;
+  const progress = 1 - 1 / (1 + pageNumber / 12);
+  return Math.min(endPercent - 1, startPercent + span * progress);
+};
+
+const fetchJson = async <T>(url: string, init?: RequestInit, attempt = 0): Promise<T> => {
   const response = await fetch(url, {
     credentials: "include",
     ...init,
   });
+  const payload = (await response.json().catch(() => ({}))) as T & { error?: string };
+
   if (!response.ok) {
-    const payload = (await response.json().catch(() => ({}))) as { error?: string };
-    if (response.status === 504) {
-      throw new Error("Spotify import timed out. Try again in a moment.");
+    const errorMessage = typeof payload.error === "string" ? payload.error : "";
+    const isRateLimited = errorMessage.toLowerCase().includes("rate limit");
+    const isRetryable = response.status === 429 || response.status === 504 || isRateLimited;
+
+    if (isRetryable && attempt < 8) {
+      const waitMs = Math.min(1_500 * 2 ** attempt, 12_000);
+      await sleep(waitMs);
+      return fetchJson<T>(url, init, attempt + 1);
     }
-    throw new Error(payload.error ?? `Request failed (${response.status}).`);
+
+    if (response.status === 504) {
+      throw new Error("Spotify import timed out. Wait a minute and try again.");
+    }
+    throw new Error(errorMessage || `Request failed (${response.status}).`);
   }
-  return (await response.json()) as T;
+
+  return payload;
 };
 
 const fetchSpotifyPages = async <T>(
   endpoint: string,
-  onPage: (pageNumber: number) => void,
+  onPage: (pageNumber: number, itemCount: number) => void,
   bodyFields?: Record<string, string>
 ): Promise<T[]> => {
   const items: T[] = [];
   let next: string | null = null;
   let pageNumber = 0;
+
   while (true) {
     const payload = await fetchJson<SpotifyPage<T>>(
       endpoint,
@@ -68,12 +94,18 @@ const fetchSpotifyPages = async <T>(
     );
     items.push(...payload.items);
     pageNumber += 1;
-    onPage(pageNumber);
+    onPage(pageNumber, items.length);
     next = payload.next;
     if (!next) {
       break;
     }
+    if (pageNumber % PAGE_BURST_INTERVAL === 0) {
+      await sleep(PAGE_BURST_DELAY_MS);
+    } else {
+      await sleep(PAGE_REQUEST_DELAY_MS);
+    }
   }
+
   return items;
 };
 
@@ -107,22 +139,22 @@ const loadLibraryInChunks = async (options?: LoadLibraryOptions): Promise<Loaded
 
   const savedItems = await fetchSpotifyPages<SpotifySavedTrackItem>(
     "/api/spotify/saved-tracks-page",
-    (pageNumber) => {
+    (pageNumber, itemCount) => {
       reportProgress(onProgress, {
         phase: "saved-tracks",
-        message: `Loading saved tracks (page ${pageNumber})…`,
-        percent: Math.min(22, 3 + pageNumber * 2),
+        message: `Loading saved tracks (page ${pageNumber}, ${itemCount.toLocaleString()} so far)…`,
+        percent: paginatedPhasePercent(pageNumber, 3, 25),
       });
     }
   );
 
   const playlists = await fetchSpotifyPages<SpotifyPlaylistSummary>(
     "/api/spotify/playlists-page",
-    (pageNumber) => {
+    (pageNumber, itemCount) => {
       reportProgress(onProgress, {
         phase: "playlists",
-        message: `Loading playlist list (page ${pageNumber})…`,
-        percent: Math.min(28, 23 + pageNumber * 2),
+        message: `Loading playlist list (page ${pageNumber}, ${itemCount.toLocaleString()} playlists)…`,
+        percent: paginatedPhasePercent(pageNumber, 25, 30),
       });
     }
   );
@@ -131,17 +163,17 @@ const loadLibraryInChunks = async (options?: LoadLibraryOptions): Promise<Loaded
   const playlistItemsByPlaylistId: Record<string, SpotifyPlaylistItem[]> = {};
   let completedPlaylists = 0;
 
-  await mapWithConcurrency(readablePlaylists, 3, async (playlist) => {
+  await mapWithConcurrency(readablePlaylists, PLAYLIST_FETCH_CONCURRENCY, async (playlist) => {
     const items = await fetchSpotifyPages<SpotifyPlaylistItem>(
       "/api/spotify/playlist-tracks-page",
-      () => {
+      (pageNumber, itemCount) => {
         reportProgress(onProgress, {
           phase: "playlist-tracks",
-          message: `Loading playlist ${completedPlaylists + 1} of ${readablePlaylists.length}: ${playlist.name}`,
+          message: `Playlist ${completedPlaylists + 1}/${readablePlaylists.length}: ${playlist.name} (page ${pageNumber}, ${itemCount} tracks)`,
           percent:
             readablePlaylists.length === 0
               ? 90
-              : 28 + ((completedPlaylists + 0.35) / readablePlaylists.length) * 62,
+              : 30 + ((completedPlaylists + pageNumber / 20) / readablePlaylists.length) * 58,
         });
       },
       { playlistId: playlist.id }
@@ -154,7 +186,7 @@ const loadLibraryInChunks = async (options?: LoadLibraryOptions): Promise<Loaded
       percent:
         readablePlaylists.length === 0
           ? 90
-          : 28 + (completedPlaylists / readablePlaylists.length) * 62,
+          : 30 + (completedPlaylists / readablePlaylists.length) * 58,
     });
   });
 
@@ -167,7 +199,7 @@ const loadLibraryInChunks = async (options?: LoadLibraryOptions): Promise<Loaded
       reportProgress(onProgress, {
         phase: "genres",
         message: `Looking up genres (batch ${batchIndex} of ${genreBatchCount})…`,
-        percent: 90 + (batchIndex / genreBatchCount) * 8,
+        percent: 88 + (batchIndex / genreBatchCount) * 10,
       });
       try {
         const genresPayload = await fetchJson<{ genresByArtistId: Record<string, string[]> }>(
@@ -181,6 +213,9 @@ const loadLibraryInChunks = async (options?: LoadLibraryOptions): Promise<Loaded
         genresByArtistId = { ...genresByArtistId, ...(genresPayload.genresByArtistId ?? {}) };
       } catch {
         // Genre lookup is optional.
+      }
+      if (batchIndex < genreBatchCount) {
+        await sleep(PAGE_REQUEST_DELAY_MS);
       }
     }
   }
@@ -201,7 +236,7 @@ const loadLibraryInChunks = async (options?: LoadLibraryOptions): Promise<Loaded
 
   reportProgress(onProgress, {
     phase: "assembling",
-    message: `Loaded ${library.songs.length} tracks.`,
+    message: `Loaded ${library.songs.length.toLocaleString()} tracks.`,
     percent: 100,
   });
 

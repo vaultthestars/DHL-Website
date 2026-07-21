@@ -243,7 +243,12 @@ export const createSpotifyClient = (store: SpotifySessionStore) => {
     return refreshed.accessToken;
   };
 
-  const spotifyFetch = async <T>(path: string, init?: RequestInit, attempt = 0): Promise<T> => {
+  const spotifyFetch = async <T>(
+    path: string,
+    init?: RequestInit,
+    attempt = 0,
+    startedAt = Date.now()
+  ): Promise<T> => {
     const accessToken = await getAccessToken();
     const response = await fetch(`${SPOTIFY_API_URL}${path}`, {
       ...init,
@@ -256,9 +261,9 @@ export const createSpotifyClient = (store: SpotifySessionStore) => {
     if (response.status === 204) {
       return {} as T;
     }
-    if (response.status === 429 && attempt < 5) {
-      await sleep(parseRetryAfterMs(response.headers.get("Retry-After"), attempt));
-      return spotifyFetch<T>(path, init, attempt + 1);
+    if (response.status === 429 && attempt < 2 && Date.now() - startedAt < 20_000) {
+      await sleep(Math.min(parseRetryAfterMs(response.headers.get("Retry-After"), attempt), 4_000));
+      return spotifyFetch<T>(path, init, attempt + 1, startedAt);
     }
     if (!response.ok) {
       const payload = (await response.json().catch(() => ({}))) as { error?: { message?: string } };
