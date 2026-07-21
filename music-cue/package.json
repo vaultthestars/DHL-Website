@@ -13,6 +13,8 @@
     "export:cluster-layout": "node scripts/export-cluster-layout.mjs"
   },
   "dependencies": {
+    "@playhtml/common": "^0.8.1",
+    "@playhtml/react": "^2.0.1",
     "@vercel/blob": "^0.27.3",
     "cors": "^2.8.5",
     "express": "^4.21.2",

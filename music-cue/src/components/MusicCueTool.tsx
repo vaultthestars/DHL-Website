@@ -20,6 +20,13 @@ import {
 } from "../lib/appleMusicScript";
 import { MusicServiceId } from "../lib/musicProvider";
 import { isWebDeployment } from "../lib/runtime";
+import {
+  ClusterLayoutPublisher,
+  CollaborativeLayoutProvider,
+  GRAPH_CURSOR_ZONE_ID,
+  GraphCursorZone,
+  LiveCollaborationBadge,
+} from "../lib/collaborativeLayout";
 import { getMusicProvider } from "../lib/providers";
 import {
   DEFAULT_VIEW_TRANSFORM,
@@ -234,6 +241,7 @@ export const MusicCueTool = () => {
   const isDrawingRef = useRef(false);
   const savedStrokeRef = useRef<GraphPoint[]>([]);
   const draggingClusterIdRef = useRef<string | null>(null);
+  const publishClusterLayoutRef = useRef<(overrides: ClusterCenterOverrides) => void>(() => {});
   const clusterDragSessionRef = useRef<{
     clusterIds: string[];
     startPositions: Record<string, NormalizedPoint>;
@@ -1228,7 +1236,9 @@ export const MusicCueTool = () => {
       draggingClusterIdRef.current = null;
       clusterDragSessionRef.current = null;
       setStatusMessage("Cluster position saved.");
-      if (!isWebDeployment) {
+      if (isWebDeployment) {
+        publishClusterLayoutRef.current(clusterOverridesRef.current);
+      } else {
         void syncClusterLayoutToServer(clusterOverridesRef.current);
       }
       return;
@@ -1703,7 +1713,13 @@ export const MusicCueTool = () => {
   const hoveredSong = hoveredSongId ? songs.find((song) => song.id === hoveredSongId) : undefined;
 
   return (
-    <div className="music-cue-layout">
+    <CollaborativeLayoutProvider
+      clusterOverrides={clusterOverrides}
+      setClusterOverrides={setClusterOverrides}
+      draggingClusterIdRef={draggingClusterIdRef}
+    >
+      <ClusterLayoutPublisher publishRef={publishClusterLayoutRef} />
+      <div className="music-cue-layout">
       {exportDialogOpen && (
         <div className="music-cue-modal-backdrop" onClick={handleCloseExportDialog}>
           <div
@@ -1818,7 +1834,10 @@ export const MusicCueTool = () => {
       <div className="music-cue-toolbar">
         <div className="music-cue-toolbar-row">
           <div className="music-cue-toolbar-primary">
-            <p className="music-cue-status">{statusMessage}</p>
+            <p className="music-cue-status">
+              {statusMessage}
+              <LiveCollaborationBadge />
+            </p>
             <p className="music-cue-meta">
               Showing {visibleSongs.length} of {songs.length} tracks
               {isValidatingLibrary
@@ -2053,7 +2072,8 @@ export const MusicCueTool = () => {
       </div>
 
       <div className="music-cue-workspace">
-        <div className="music-cue-graph-panel" ref={graphPanelRef}>
+        <div className="music-cue-graph-panel" ref={graphPanelRef} id={GRAPH_CURSOR_ZONE_ID}>
+          <GraphCursorZone panelRef={graphPanelRef} />
           <svg
             ref={svgRef}
             className={`music-cue-graph ${isPanning ? "music-cue-graph-panning" : ""} ${
@@ -2342,5 +2362,6 @@ export const MusicCueTool = () => {
         </aside>
       </div>
     </div>
+    </CollaborativeLayoutProvider>
   );
 };
