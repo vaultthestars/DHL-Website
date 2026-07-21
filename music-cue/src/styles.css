@@ -670,11 +670,11 @@ body {
   background: var(--w95-window-bg);
 }
 
-@media (hover: none) and (pointer: coarse) {
-  .music-cue-graph-navigate .music-cue-node-hit {
-    pointer-events: none;
-  }
+.music-cue-graph-navigate .music-cue-node-hit {
+  pointer-events: none;
+}
 
+@media (hover: none) and (pointer: coarse) {
   .music-cue-graph-navigate .music-cue-cluster-label-draggable {
     pointer-events: none;
   }

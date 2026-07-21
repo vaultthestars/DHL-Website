@@ -375,7 +375,6 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     mode: "pending" | "pan" | "draw" | "draw-cluster" | "box-select";
   } | null>(null);
   const viewTransformRef = useRef<ViewTransform>(DEFAULT_VIEW_TRANSFORM);
-  const viewTransformRafRef = useRef(0);
 
   const applyViewTransformLive = useCallback((transform: ViewTransform) => {
     viewTransformRef.current = transform;
@@ -385,19 +384,9 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     }
   }, []);
 
-  const flushViewTransformState = useCallback(() => {
-    setViewTransform({ ...viewTransformRef.current });
+  const setGraphPanningClass = useCallback((active: boolean) => {
+    svgRef.current?.classList.toggle("music-cue-graph-panning", active);
   }, []);
-
-  const scheduleViewTransformStateFlush = useCallback(() => {
-    if (viewTransformRafRef.current) {
-      return;
-    }
-    viewTransformRafRef.current = requestAnimationFrame(() => {
-      viewTransformRafRef.current = 0;
-      flushViewTransformState();
-    });
-  }, [flushViewTransformState]);
   const undoStackRef = useRef<
     Array<{
       cue: GeneratedCue | null;
@@ -460,7 +449,6 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
   const [sharedTrackCount, setSharedTrackCount] = useState(0);
   const [isLoadingSharedLibrary, setIsLoadingSharedLibrary] = useState(false);
   const [dimensions, setDimensions] = useState<GraphDimensions>(() => getGraphDimensions(null));
-  const [viewTransform, setViewTransform] = useState<ViewTransform>(DEFAULT_VIEW_TRANSFORM);
   const [buildMode, setBuildMode] = useState<CueBuildMode>(() => loadBuildMode());
   const [graphTool, setGraphTool] = useState<GraphToolMode>(() => loadGraphTool());
   const [canUndo, setCanUndo] = useState(false);
@@ -578,7 +566,6 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
   const isImportingRef = useRef(false);
   const [importProgress, setImportProgress] = useState<LibraryLoadProgress | null>(null);
   const [importResumeRevision, setImportResumeRevision] = useState(0);
-  const [isPanning, setIsPanning] = useState(false);
   const [shiftHeld, setShiftHeld] = useState(false);
   const [boxSelectRect, setBoxSelectRect] = useState<BoxSelectRect | null>(null);
   const [selectedClusterIds, setSelectedClusterIds] = useState<Set<string>>(() => new Set());
@@ -821,9 +808,9 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     };
   }, [buildMode, graphTool]);
 
-  useEffect(() => {
-    viewTransformRef.current = viewTransform;
-  }, [viewTransform]);
+  useLayoutEffect(() => {
+    applyViewTransformLive(viewTransformRef.current);
+  }, [applyViewTransformLive, dimensions.width, dimensions.height]);
 
   useEffect(() => {
     const panel = graphPanelRef.current;
@@ -1718,7 +1705,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
 
   const resetPanSession = () => {
     panSessionRef.current = null;
-    setIsPanning(false);
+    setGraphPanningClass(false);
   };
 
   const trackPointer = (event: React.PointerEvent<Element>) => {
@@ -1778,7 +1765,6 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
       panX: screenMidX - graphX * nextScale,
       panY: screenMidY - graphY * nextScale,
     });
-    scheduleViewTransformStateFlush();
   };
 
   const beginNewStroke = (point: GraphPoint) => {
@@ -2301,7 +2287,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
       mode: startPanImmediately ? "pan" : "pending",
     };
     if (startPanImmediately) {
-      setIsPanning(true);
+      setGraphPanningClass(true);
     }
     svgRef.current.setPointerCapture(event.pointerId);
   };
@@ -2325,7 +2311,15 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
       return;
     }
 
-    if (isWebDeployment && !draggingClusterIdRef.current && !draggingSquigglyClusterRef.current && !draggingSongRef.current) {
+    if (
+      isWebDeployment &&
+      graphTool !== "navigate" &&
+      !pinchSessionRef.current &&
+      panSessionRef.current?.mode !== "pan" &&
+      !draggingClusterIdRef.current &&
+      !draggingSquigglyClusterRef.current &&
+      !draggingSongRef.current
+    ) {
       const point = getLocalPoint(event, svgRef.current, contentGroupRef.current);
       setGraphCursorRef.current(toNormalizedPosition(point, dimensions));
     }
@@ -2501,7 +2495,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
         appendStrokePoint(getLocalPoint(event, svgRef.current, contentGroupRef.current));
       } else if (graphTool === "navigate") {
         session.mode = "pan";
-        setIsPanning(true);
+        setGraphPanningClass(true);
       } else {
         session.mode = "pan";
       }
@@ -2649,10 +2643,6 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
 
     if (session.mode === "draw-cluster") {
       finishClusterDrawing();
-    }
-
-    if (session.mode === "pan") {
-      flushViewTransformState();
     }
 
     resetPanSession();
@@ -4172,7 +4162,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
           ) : null}
           <svg
             ref={svgRef}
-            className={`music-cue-graph music-cue-graph-${graphTool} ${isPanning ? "music-cue-graph-panning" : ""}`}
+            className={`music-cue-graph music-cue-graph-${graphTool}`}
             width={dimensions.width}
             height={dimensions.height}
             onPointerDown={handleGraphPointerDown}
@@ -4185,7 +4175,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
               }
             }}
           >
-            <g ref={contentGroupRef} transform={toViewTransformString(viewTransform)}>
+            <g ref={contentGroupRef}>
               <rect
                 ref={bgRectRef}
                 width={dimensions.width}
