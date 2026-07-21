@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useRef, type MutableRefObject, type ReactNode, type RefObject } from "react";
+import { useCallback, useEffect, useRef, type MutableRefObject, type ReactNode, type RefObject } from "react";
 import { PlayProvider, usePageData, usePlayContext } from "@playhtml/react";
 import { isWebDeployment } from "./runtime";
 import { loadClusterCenterOverrides, normalizeClusterCenterOverrides, type ClusterLayoutScope } from "./storage";
@@ -8,52 +8,20 @@ export const PLAYHTML_ROOM = "dhl-music-cue-v1";
 
 export const clusterLayoutPageDataKey = (scope: ClusterLayoutScope): string => `cluster-layout-${scope}`;
 
-type CollaborativeLayoutContextValue = {
-  publishClusterLayout: (overrides: ClusterCenterOverrides) => void;
-  isLiveSyncReady: boolean;
-};
-
-const noopContext: CollaborativeLayoutContextValue = {
-  publishClusterLayout: () => {},
-  isLiveSyncReady: false,
-};
-
-const CollaborativeLayoutContext = createContext<CollaborativeLayoutContextValue>(noopContext);
-
-export const CollaborativePlayProvider = ({ children }: { children: ReactNode }) => {
-  if (!isWebDeployment) {
-    return <>{children}</>;
-  }
-
-  return (
-    <PlayProvider
-      pathname="/music-cue/"
-      initOptions={{
-        room: PLAYHTML_ROOM,
-        cursors: {
-          enabled: true,
-          shouldRenderCursor: () => false,
-        },
-      }}
-    >
-      {children}
-    </PlayProvider>
-  );
-};
+export type ClusterLayoutSyncMode = "snapshot" | "off";
 
 const areClusterOverridesEqual = (left: ClusterCenterOverrides, right: ClusterCenterOverrides): boolean =>
   JSON.stringify(left) === JSON.stringify(right);
 
-export type ClusterLayoutSyncMode = "live" | "snapshot" | "off";
-
-const CollaborativeLayoutBridge = ({
+/** Isolated sync layer — re-renders alone; never wraps the graph. */
+const CollaborativeLayoutSync = ({
   clusterOverrides,
   setClusterOverrides,
   draggingClusterIdRef,
   layoutScope,
   clusterLayoutSyncMode,
   enableRemoteClusterPublish,
-  children,
+  publishRef,
 }: {
   clusterOverrides: ClusterCenterOverrides;
   setClusterOverrides: (overrides: ClusterCenterOverrides) => void;
@@ -61,7 +29,7 @@ const CollaborativeLayoutBridge = ({
   layoutScope: ClusterLayoutScope;
   clusterLayoutSyncMode: ClusterLayoutSyncMode;
   enableRemoteClusterPublish: boolean;
-  children: ReactNode;
+  publishRef: MutableRefObject<(overrides: ClusterCenterOverrides) => void>;
 }) => {
   const pageDataKey = clusterLayoutPageDataKey(layoutScope);
   const [remoteOverrides, setRemoteOverrides] = usePageData<ClusterCenterOverrides>(
@@ -71,34 +39,23 @@ const CollaborativeLayoutBridge = ({
   const { isLoading } = usePlayContext();
   const localRef = useRef(clusterOverrides);
   const remoteRef = useRef(remoteOverrides);
-  const lastAppliedRemoteRef = useRef<string | null>(null);
   const snapshotAppliedRef = useRef(false);
 
   localRef.current = clusterOverrides;
   remoteRef.current = remoteOverrides;
 
   useEffect(() => {
-    if (clusterLayoutSyncMode === "off" || isLoading || draggingClusterIdRef.current) {
+    if (clusterLayoutSyncMode !== "snapshot" || isLoading || draggingClusterIdRef.current) {
       return;
     }
-
-    const remoteKey = JSON.stringify(remoteOverrides);
-    if (remoteKey === lastAppliedRemoteRef.current) {
+    if (snapshotAppliedRef.current) {
       return;
     }
     if (areClusterOverridesEqual(remoteOverrides, localRef.current)) {
-      lastAppliedRemoteRef.current = remoteKey;
+      snapshotAppliedRef.current = true;
       return;
     }
-
-    if (clusterLayoutSyncMode === "snapshot") {
-      if (snapshotAppliedRef.current) {
-        return;
-      }
-      snapshotAppliedRef.current = true;
-    }
-
-    lastAppliedRemoteRef.current = remoteKey;
+    snapshotAppliedRef.current = true;
     setClusterOverrides(normalizeClusterCenterOverrides(remoteOverrides));
   }, [
     clusterLayoutSyncMode,
@@ -121,12 +78,32 @@ const CollaborativeLayoutBridge = ({
     [enableRemoteClusterPublish, setRemoteOverrides]
   );
 
-  const value: CollaborativeLayoutContextValue = {
-    publishClusterLayout,
-    isLiveSyncReady: !isLoading,
-  };
+  useEffect(() => {
+    publishRef.current = publishClusterLayout;
+  }, [publishClusterLayout, publishRef]);
 
-  return <CollaborativeLayoutContext.Provider value={value}>{children}</CollaborativeLayoutContext.Provider>;
+  return null;
+};
+
+export const CollaborativePlayProvider = ({ children }: { children: ReactNode }) => {
+  if (!isWebDeployment) {
+    return <>{children}</>;
+  }
+
+  return (
+    <PlayProvider
+      pathname="/music-cue/"
+      initOptions={{
+        room: PLAYHTML_ROOM,
+        cursors: {
+          enabled: true,
+          shouldRenderCursor: () => false,
+        },
+      }}
+    >
+      {children}
+    </PlayProvider>
+  );
 };
 
 export const CollaborativeLayoutProvider = ({
@@ -134,8 +111,9 @@ export const CollaborativeLayoutProvider = ({
   setClusterOverrides,
   draggingClusterIdRef,
   layoutScope,
-  clusterLayoutSyncMode = "live",
+  clusterLayoutSyncMode = "off",
   enableRemoteClusterPublish = true,
+  publishRef,
   children,
 }: {
   clusterOverrides: ClusterCenterOverrides;
@@ -144,6 +122,7 @@ export const CollaborativeLayoutProvider = ({
   layoutScope: ClusterLayoutScope;
   clusterLayoutSyncMode?: ClusterLayoutSyncMode;
   enableRemoteClusterPublish?: boolean;
+  publishRef: MutableRefObject<(overrides: ClusterCenterOverrides) => void>;
   children: ReactNode;
 }) => {
   if (!isWebDeployment) {
@@ -151,37 +130,18 @@ export const CollaborativeLayoutProvider = ({
   }
 
   return (
-    <CollaborativeLayoutBridge
-      key={layoutScope}
-      clusterOverrides={clusterOverrides}
-      setClusterOverrides={setClusterOverrides}
-      draggingClusterIdRef={draggingClusterIdRef}
-      layoutScope={layoutScope}
-      clusterLayoutSyncMode={clusterLayoutSyncMode}
-      enableRemoteClusterPublish={enableRemoteClusterPublish}
-    >
+    <>
       {children}
-    </CollaborativeLayoutBridge>
+      <CollaborativeLayoutSync
+        key={layoutScope}
+        clusterOverrides={clusterOverrides}
+        setClusterOverrides={setClusterOverrides}
+        draggingClusterIdRef={draggingClusterIdRef}
+        layoutScope={layoutScope}
+        clusterLayoutSyncMode={clusterLayoutSyncMode}
+        enableRemoteClusterPublish={enableRemoteClusterPublish}
+        publishRef={publishRef}
+      />
+    </>
   );
-};
-
-export const useCollaborativeLayout = (): CollaborativeLayoutContextValue =>
-  useContext(CollaborativeLayoutContext);
-
-export const ClusterLayoutPublisher = ({
-  publishRef,
-}: {
-  publishRef: MutableRefObject<(overrides: ClusterCenterOverrides) => void>;
-}) => {
-  if (!isWebDeployment) {
-    return null;
-  }
-
-  const { publishClusterLayout } = useCollaborativeLayout();
-
-  useEffect(() => {
-    publishRef.current = publishClusterLayout;
-  }, [publishClusterLayout, publishRef]);
-
-  return null;
 };

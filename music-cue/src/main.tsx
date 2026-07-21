@@ -1,13 +1,10 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { App } from "./App";
-import { CollaborativePlayProvider } from "./lib/collaborativeLayout";
 import "./styles.css";
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
-    <CollaborativePlayProvider>
-      <App />
-    </CollaborativePlayProvider>
+    <App />
   </StrictMode>
 );

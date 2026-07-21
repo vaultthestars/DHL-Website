@@ -238,7 +238,7 @@ export const loadSongSpaceMode = (): SongSpaceMode => {
   if (stored === "mine" || stored === "shared") {
     return stored;
   }
-  return "shared";
+  return "mine";
 };
 
 export const saveSongSpaceMode = (mode: SongSpaceMode): void => {
