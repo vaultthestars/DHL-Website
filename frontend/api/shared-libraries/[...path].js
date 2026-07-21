@@ -220,7 +220,7 @@ var readBlobJson = async (pathname) => {
   const { head } = await getBlobModule();
   try {
     const metadata = await head(pathname);
-    const response = await fetch(metadata.url);
+    const response = await fetch(metadata.downloadUrl);
     if (!response.ok) {
       return null;
     }
@@ -232,7 +232,7 @@ var readBlobJson = async (pathname) => {
 var writeBlobJson = async (pathname, payload) => {
   const { put } = await getBlobModule();
   await put(pathname, JSON.stringify(payload), {
-    access: "public",
+    access: "private",
     addRandomSuffix: false,
     contentType: "application/json"
   });

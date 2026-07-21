@@ -101,7 +101,7 @@ const readBlobJson = async <T>(pathname: string): Promise<T | null> => {
   const { head } = await getBlobModule();
   try {
     const metadata = await head(pathname);
-    const response = await fetch(metadata.url);
+    const response = await fetch(metadata.downloadUrl);
     if (!response.ok) {
       return null;
     }
@@ -114,7 +114,7 @@ const readBlobJson = async <T>(pathname: string): Promise<T | null> => {
 const writeBlobJson = async (pathname: string, payload: unknown): Promise<void> => {
   const { put } = await getBlobModule();
   await put(pathname, JSON.stringify(payload), {
-    access: "public",
+    access: "private",
     addRandomSuffix: false,
     contentType: "application/json",
   });
