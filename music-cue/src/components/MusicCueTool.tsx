@@ -143,7 +143,11 @@ import {
   Song,
   ViewMode,
 } from "../lib/types";
-import { isClusterLayoutConfig, useLayoutTransition } from "../lib/useLayoutTransition";
+import {
+  isClusterLayoutConfig,
+  LARGE_LIBRARY_LAYOUT_SNAP_THRESHOLD,
+  useLayoutTransition,
+} from "../lib/useLayoutTransition";
 import { useMetaClusterCenterTransition } from "../lib/useMetaClusterCenterTransition";
 import {
   canonicalizeGeneratedCue,
@@ -1205,6 +1209,10 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     return fills;
   }, [activeCustomCatalog, layoutConfig, renderGraphSongs, stats, visibleSongs]);
 
+  const useAnimatedClusterPositions =
+    isLayoutTransitioning && visibleSongs.length < LARGE_LIBRARY_LAYOUT_SNAP_THRESHOLD;
+  const positionForClusterRegions = useAnimatedClusterPositions ? getRenderablePosition : getPosition;
+
   const clusterRegions = useMemo(() => {
     const ownerRegions =
       effectiveLibraryScopeMode === "isolate"
@@ -1213,7 +1221,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
             dimensions,
             effectiveLibraryScopeMode,
             activeContributorIds,
-            getRenderablePosition,
+            positionForClusterRegions,
             layoutConfig,
             isolateOwnerBounds
           )
@@ -1236,7 +1244,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
             graphSongs,
             layoutConfig.clusterMode,
             layoutConfig,
-            getRenderablePosition,
+            positionForClusterRegions,
             dimensions,
             clusterOverrides,
             activeContributorIds,
@@ -1247,7 +1255,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
         : buildClusterRegions(
             layoutConfig.clusterMode,
             graphSongs,
-            getRenderablePosition,
+            positionForClusterRegions,
             stats,
             dimensions,
             layoutClusterOverrides,
@@ -1263,10 +1271,9 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     dimensions,
     activeContributorIds,
     effectiveLibraryScopeMode,
-    getRenderablePosition,
+    positionForClusterRegions,
     graphSongs,
     isolateOwnerBounds,
-    isLayoutTransitioning,
     layoutConfig,
     stats,
   ]);
@@ -1279,25 +1286,32 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     }
 
     const previousLayout = transition.fromLayout;
-    const { computeLayoutPosition: computePosition, libraryScopeMode: scopeMode } =
-      clusterSnapshotInputsRef.current;
-    clusterFadeOutIdRef.current += 1;
-    setFadingClusterSnapshot({
-      id: clusterFadeOutIdRef.current,
-      regions: buildRegionSnapshot(scopeMode, previousLayout, (song) =>
-        computePosition(song, previousLayout, scopeMode)
-      ),
-      opacity: 1,
-    });
+    const skipClusterFade = visibleSongs.length >= LARGE_LIBRARY_LAYOUT_SNAP_THRESHOLD;
 
-    if (isClusterView(layoutConfig) && !isClusterView(previousLayout)) {
-      clusterRevealFadeIdRef.current += 1;
-      setClusterRevealOpacity(0);
-      setClusterRevealFadeTrigger(clusterRevealFadeIdRef.current);
+    if (skipClusterFade) {
+      setFadingClusterSnapshot(null);
+      setClusterRevealOpacity(isClusterView(layoutConfig) ? 1 : 0);
+    } else {
+      const { computeLayoutPosition: computePosition, libraryScopeMode: scopeMode } =
+        clusterSnapshotInputsRef.current;
+      clusterFadeOutIdRef.current += 1;
+      setFadingClusterSnapshot({
+        id: clusterFadeOutIdRef.current,
+        regions: buildRegionSnapshot(scopeMode, previousLayout, (song) =>
+          computePosition(song, previousLayout, scopeMode)
+        ),
+        opacity: 1,
+      });
+
+      if (isClusterView(layoutConfig) && !isClusterView(previousLayout)) {
+        clusterRevealFadeIdRef.current += 1;
+        setClusterRevealOpacity(0);
+        setClusterRevealFadeTrigger(clusterRevealFadeIdRef.current);
+      }
     }
 
     prevLayoutForClustersRef.current = currentKey;
-  }, [buildRegionSnapshot, layoutConfig, transition.fromLayout]);
+  }, [buildRegionSnapshot, layoutConfig, transition.fromLayout, visibleSongs.length]);
 
   useEffect(() => {
     if (clusterRevealFadeTrigger === 0) {
@@ -1350,6 +1364,8 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
   }, [fadingClusterSnapshot?.id]);
 
   const isClusterLayout = isClusterLayoutConfig(layoutConfig);
+  const showClusterDecorations =
+    isClusterLayout || Boolean(fadingClusterSnapshot && fadingClusterSnapshot.opacity > 0);
   const activePathLayoutConfig =
     (cue ? resolveCueLayoutConfig(cue, musicService) : null) ?? strokeLayoutConfig;
   const showPathOverlays =
@@ -3554,7 +3570,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
       setClusterOverrides={setClusterOverrides}
       draggingClusterIdRef={draggingClusterIdRef}
       layoutScope={activeLayoutScope === "custom" ? "isolate" : activeLayoutScope}
-      enableRemoteSync={!isSpotifyGuest}
+      enableRemoteClusterPublish={!isSpotifyGuest}
     >
       <CollaborativeSessionProvider
         displayName={collaboratorDisplayName}
@@ -4179,7 +4195,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
                 />
               )}
 
-              {fadingClusterSnapshot?.regions.map((region) => (
+              {showClusterDecorations && fadingClusterSnapshot?.regions.map((region) => (
                 <path
                   key={`fading-region-${region.id}`}
                   d={region.hullPath}
@@ -4191,17 +4207,18 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
                 />
               ))}
 
-              {clusterRegions.map((region) => (
-                <path
-                  key={`region-${region.id}`}
-                  d={region.hullPath}
-                  className="music-cue-cluster-region"
-                  fill={region.fill}
-                  stroke={region.stroke}
-                  opacity={effectiveClusterRevealOpacity}
-                  pointerEvents="none"
-                />
-              ))}
+              {isClusterLayout &&
+                clusterRegions.map((region) => (
+                  <path
+                    key={`region-${region.id}`}
+                    d={region.hullPath}
+                    className="music-cue-cluster-region"
+                    fill={region.fill}
+                    stroke={region.stroke}
+                    opacity={effectiveClusterRevealOpacity}
+                    pointerEvents="none"
+                  />
+                ))}
 
               {strokePaths.map((path, index) => (
                 <path
@@ -4277,20 +4294,22 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
                 );
               })}
 
-              {fadingClusterSnapshot?.regions.map((region) => (
-                <text
-                  key={`fading-label-${region.id}`}
-                  x={region.center.x}
-                  y={region.center.y}
-                  className="music-cue-cluster-label"
-                  opacity={fadingClusterSnapshot.opacity}
-                  pointerEvents="none"
-                >
-                  {region.label}
-                </text>
-              ))}
+              {showClusterDecorations &&
+                fadingClusterSnapshot?.regions.map((region) => (
+                  <text
+                    key={`fading-label-${region.id}`}
+                    x={region.center.x}
+                    y={region.center.y}
+                    className="music-cue-cluster-label"
+                    opacity={fadingClusterSnapshot.opacity}
+                    pointerEvents="none"
+                  >
+                    {region.label}
+                  </text>
+                ))}
 
-              {!isSquigglyCustomMode &&
+              {isClusterLayout &&
+                !isSquigglyCustomMode &&
                 clusterRegions.map((region) => (
                   <text
                     key={`label-${region.id}`}
