@@ -18,6 +18,7 @@ export type ConnectionStatus = {
   connected: boolean;
   configured: boolean;
   message?: string;
+  displayName?: string;
 };
 
 export interface MusicProvider {

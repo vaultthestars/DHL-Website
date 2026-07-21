@@ -23,10 +23,14 @@ import { isWebDeployment } from "../lib/runtime";
 import {
   ClusterLayoutPublisher,
   CollaborativeLayoutProvider,
-  GRAPH_CURSOR_ZONE_ID,
-  GraphCursorZone,
-  LiveCollaborationBadge,
 } from "../lib/collaborativeLayout";
+import {
+  CollaborativeCursorsOverlay,
+  CollaborativeParticipantsPanel,
+  CollaborativeSessionProvider,
+  GraphCursorPublisherBridge,
+  type CollaborativeViewSettings,
+} from "../lib/collaborativeSession";
 import { getMusicProvider } from "../lib/providers";
 import {
   DEFAULT_VIEW_TRANSFORM,
@@ -43,6 +47,7 @@ import {
   loadMusicService,
   loadPathThreshold,
   saveBuildMode,
+  saveClusterCenterOverridesForScope,
   saveGenreClusterCenterOverrides,
   saveLayoutConfig,
   saveLibrary,
@@ -242,6 +247,7 @@ export const MusicCueTool = () => {
   const savedStrokeRef = useRef<GraphPoint[]>([]);
   const draggingClusterIdRef = useRef<string | null>(null);
   const publishClusterLayoutRef = useRef<(overrides: ClusterCenterOverrides) => void>(() => {});
+  const setGraphCursorRef = useRef<(cursor: NormalizedPoint | null) => void>(() => {});
   const clusterDragSessionRef = useRef<{
     clusterIds: string[];
     startPositions: Record<string, NormalizedPoint>;
@@ -275,9 +281,12 @@ export const MusicCueTool = () => {
   const initialSongs = normalizeSongs(initialLibrary.songs, initialLibrary.stats);
   const [musicService, setMusicService] = useState<MusicServiceId>(initialMusicService);
   const musicProvider = useMemo(() => getMusicProvider(musicService), [musicService]);
-  const [spotifyStatus, setSpotifyStatus] = useState<{ connected: boolean; configured: boolean; message?: string } | null>(
-    null
-  );
+  const [spotifyStatus, setSpotifyStatus] = useState<{
+    connected: boolean;
+    configured: boolean;
+    message?: string;
+    displayName?: string;
+  } | null>(null);
   const [sharedContributors, setSharedContributors] = useState<LibraryContributor[]>([]);
   const [enabledContributorIds, setEnabledContributorIds] = useState<string[]>(() => loadEnabledContributorIds());
   const [includeMockUsers, setIncludeMockUsers] = useState(() => {
@@ -301,7 +310,9 @@ export const MusicCueTool = () => {
   const [songs, setSongs] = useState<Song[]>(() => initialSongs);
   const [stats, setStats] = useState<LibraryStats>(() => normalizeStats(initialLibrary.stats, initialSongs));
   const [layoutConfig, setLayoutConfig] = useState<LayoutConfig>(() => loadLayoutConfig(initialMusicService));
-  const [clusterOverrides, setClusterOverrides] = useState<ClusterCenterOverrides>(() => loadClusterCenterOverrides());
+  const [clusterOverrides, setClusterOverrides] = useState<ClusterCenterOverrides>(() =>
+    loadClusterCenterOverrides(loadLibraryScopeMode())
+  );
   const clusterOverridesRef = useRef(clusterOverrides);
   const [pathThreshold, setPathThreshold] = useState(() => loadPathThreshold());
   const [stroke, setStroke] = useState<GraphPoint[]>([]);
@@ -1135,6 +1146,11 @@ export const MusicCueTool = () => {
       return;
     }
 
+    if (isWebDeployment && !draggingClusterIdRef.current) {
+      const point = getLocalPoint(event, svgRef.current, contentGroupRef.current);
+      setGraphCursorRef.current(toNormalizedPosition(point, dimensions));
+    }
+
     if (draggingClusterIdRef.current) {
       const point = getLocalPoint(event, svgRef.current, contentGroupRef.current);
       const normalized = toNormalizedPosition(point, dimensions);
@@ -1155,7 +1171,7 @@ export const MusicCueTool = () => {
         });
         if (layoutConfig.viewMode === "cluster" && layoutConfig.clusterMode === "genre") {
           const next = { ...current, genre: { ...current.genre, ...updates } };
-          saveGenreClusterCenterOverrides(next.genre);
+          saveGenreClusterCenterOverrides(next.genre, libraryScopeMode);
           clusterOverridesRef.current = next;
           return next;
         }
@@ -1164,7 +1180,7 @@ export const MusicCueTool = () => {
             ...current,
             playlist: { ...current.playlist, ...updates },
           };
-          savePlaylistClusterCenterOverrides(next.playlist);
+          savePlaylistClusterCenterOverrides(next.playlist, libraryScopeMode);
           invalidatePlaylistOverlapLayoutCache();
           clusterOverridesRef.current = next;
           return next;
@@ -1236,6 +1252,7 @@ export const MusicCueTool = () => {
       draggingClusterIdRef.current = null;
       clusterDragSessionRef.current = null;
       setStatusMessage("Cluster position saved.");
+      saveClusterCenterOverridesForScope(libraryScopeMode, clusterOverridesRef.current);
       if (isWebDeployment) {
         publishClusterLayoutRef.current(clusterOverridesRef.current);
       } else {
@@ -1386,6 +1403,10 @@ export const MusicCueTool = () => {
   };
 
   const handleLibraryScopeChange = (mode: LibraryScopeMode) => {
+    saveClusterCenterOverridesForScope(libraryScopeMode, clusterOverridesRef.current);
+    const nextOverrides = loadClusterCenterOverrides(mode);
+    setClusterOverrides(nextOverrides);
+    clusterOverridesRef.current = nextOverrides;
     setLibraryScopeMode(mode);
     saveLibraryScopeMode(mode);
     setStatusMessage(
@@ -1712,13 +1733,58 @@ export const MusicCueTool = () => {
 
   const hoveredSong = hoveredSongId ? songs.find((song) => song.id === hoveredSongId) : undefined;
 
+  const collaboratorDisplayName = spotifyStatus?.displayName?.trim() || "Guest";
+
+  const collaborativeViewSettings = useMemo<CollaborativeViewSettings>(
+    () => ({
+      layoutConfig,
+      libraryScopeMode,
+      enabledContributorIds,
+      includeMockUsers,
+      viewTransform,
+    }),
+    [enabledContributorIds, includeMockUsers, layoutConfig, libraryScopeMode, viewTransform]
+  );
+
+  const applySyncViewSettings = useCallback(
+    (settings: CollaborativeViewSettings) => {
+      if (settings.libraryScopeMode !== libraryScopeMode) {
+        saveClusterCenterOverridesForScope(libraryScopeMode, clusterOverridesRef.current);
+        const nextOverrides = loadClusterCenterOverrides(settings.libraryScopeMode);
+        setClusterOverrides(nextOverrides);
+        clusterOverridesRef.current = nextOverrides;
+        setLibraryScopeMode(settings.libraryScopeMode);
+        saveLibraryScopeMode(settings.libraryScopeMode);
+      }
+
+      const nextLayoutConfig = normalizeLayoutConfigForService(settings.layoutConfig, musicService);
+      setLayoutConfig(nextLayoutConfig);
+      saveLayoutConfig(nextLayoutConfig);
+      setEnabledContributorIds(settings.enabledContributorIds);
+      saveEnabledContributorIds(settings.enabledContributorIds);
+      setIncludeMockUsers(settings.includeMockUsers);
+      saveIncludeMockUsers(settings.includeMockUsers);
+      setViewTransform(settings.viewTransform);
+      void applyMergedSharedLibrary(settings.enabledContributorIds, sharedContributors);
+      setStatusMessage("Synced view with collaborator.");
+    },
+    [applyMergedSharedLibrary, libraryScopeMode, musicService, sharedContributors]
+  );
+
   return (
     <CollaborativeLayoutProvider
       clusterOverrides={clusterOverrides}
       setClusterOverrides={setClusterOverrides}
       draggingClusterIdRef={draggingClusterIdRef}
+      layoutScope={libraryScopeMode}
     >
+      <CollaborativeSessionProvider
+        displayName={collaboratorDisplayName}
+        viewSettings={collaborativeViewSettings}
+        onSyncViewSettings={applySyncViewSettings}
+      >
       <ClusterLayoutPublisher publishRef={publishClusterLayoutRef} />
+      <GraphCursorPublisherBridge publishRef={setGraphCursorRef} />
       <div className="music-cue-layout">
       {exportDialogOpen && (
         <div className="music-cue-modal-backdrop" onClick={handleCloseExportDialog}>
@@ -1836,7 +1902,7 @@ export const MusicCueTool = () => {
           <div className="music-cue-toolbar-primary">
             <p className="music-cue-status">
               {statusMessage}
-              <LiveCollaborationBadge />
+              <CollaborativeParticipantsPanel />
             </p>
             <p className="music-cue-meta">
               Showing {visibleSongs.length} of {songs.length} tracks
@@ -2072,8 +2138,13 @@ export const MusicCueTool = () => {
       </div>
 
       <div className="music-cue-workspace">
-        <div className="music-cue-graph-panel" ref={graphPanelRef} id={GRAPH_CURSOR_ZONE_ID}>
-          <GraphCursorZone panelRef={graphPanelRef} />
+        <div className="music-cue-graph-panel" ref={graphPanelRef}>
+          <CollaborativeCursorsOverlay
+            graphPanelRef={graphPanelRef}
+            svgRef={svgRef}
+            dimensions={dimensions}
+            viewTransform={viewTransform}
+          />
           <svg
             ref={svgRef}
             className={`music-cue-graph ${isPanning ? "music-cue-graph-panning" : ""} ${
@@ -2085,6 +2156,9 @@ export const MusicCueTool = () => {
             onPointerMove={handlePointerMove}
             onPointerUp={finishPointerInteraction}
             onPointerLeave={(event) => {
+              if (isWebDeployment) {
+                setGraphCursorRef.current(null);
+              }
               if (event.buttons === 0) {
                 finishPointerInteraction();
               }
@@ -2362,6 +2436,7 @@ export const MusicCueTool = () => {
         </aside>
       </div>
     </div>
+      </CollaborativeSessionProvider>
     </CollaborativeLayoutProvider>
   );
 };

@@ -39,6 +39,18 @@ export const screenToGraphPoint = (
   return { x: transformed.x, y: transformed.y };
 };
 
+export const graphPointToPanelPosition = (
+  point: GraphPoint,
+  viewTransform: ViewTransform,
+  svg: SVGSVGElement
+): GraphPoint => {
+  const rect = svg.getBoundingClientRect();
+  return {
+    x: rect.left + viewTransform.panX + point.x * viewTransform.scale,
+    y: rect.top + viewTransform.panY + point.y * viewTransform.scale,
+  };
+};
+
 export const zoomAtPoint = (
   transform: ViewTransform,
   clientX: number,

@@ -1,4 +1,7 @@
 import bundledClusterLayout from "../data/cluster-layout.json";
+import type { LibraryScopeMode } from "./libraryScope";
+
+export type ClusterLayoutScope = LibraryScopeMode | "custom";
 import { MusicServiceId } from "./musicProvider";
 import {
   ClusterCenterOverrides,
@@ -17,6 +20,11 @@ const statsKey = (serviceId: MusicServiceId): string => `music-cue-library-stats
 const CUSTOM_LAYOUT_KEY = "music-cue-custom-layout";
 const GENRE_CLUSTER_LAYOUT_KEY = "music-cue-genre-cluster-layout";
 const PLAYLIST_CLUSTER_LAYOUT_KEY = "music-cue-playlist-cluster-layout";
+
+const genreClusterLayoutKey = (scope: ClusterLayoutScope): string =>
+  `${GENRE_CLUSTER_LAYOUT_KEY}-${scope}`;
+const playlistClusterLayoutKey = (scope: ClusterLayoutScope): string =>
+  `${PLAYLIST_CLUSTER_LAYOUT_KEY}-${scope}`;
 const LAYOUT_CONFIG_KEY = "music-cue-layout-config";
 const LAYOUT_MODE_KEY = "music-cue-layout-mode";
 const PATH_THRESHOLD_KEY = "music-cue-path-threshold";
@@ -106,10 +114,22 @@ const bundledClusterDefaults = (): ClusterCenterOverrides =>
       }
     : { genre: {}, playlist: {} };
 
-export const loadClusterCenterOverrides = (): ClusterCenterOverrides => {
+export const loadClusterCenterOverrides = (scope: ClusterLayoutScope = "conglomerate"): ClusterCenterOverrides => {
+  let genreStored = loadClusterCenterMap(genreClusterLayoutKey(scope));
+  let playlistStored = loadClusterCenterMap(playlistClusterLayoutKey(scope));
+
+  if (scope === "conglomerate") {
+    if (Object.keys(genreStored).length === 0) {
+      genreStored = loadClusterCenterMap(GENRE_CLUSTER_LAYOUT_KEY);
+    }
+    if (Object.keys(playlistStored).length === 0) {
+      playlistStored = loadClusterCenterMap(PLAYLIST_CLUSTER_LAYOUT_KEY);
+    }
+  }
+
   const stored: ClusterCenterOverrides = {
-    genre: loadClusterCenterMap(GENRE_CLUSTER_LAYOUT_KEY),
-    playlist: loadClusterCenterMap(PLAYLIST_CLUSTER_LAYOUT_KEY),
+    genre: genreStored,
+    playlist: playlistStored,
   };
   const defaults = bundledClusterDefaults();
   return {
@@ -118,12 +138,26 @@ export const loadClusterCenterOverrides = (): ClusterCenterOverrides => {
   };
 };
 
-export const saveGenreClusterCenterOverrides = (positions: Record<string, NormalizedPoint>): void => {
-  localStorage.setItem(GENRE_CLUSTER_LAYOUT_KEY, JSON.stringify(positions));
+export const saveClusterCenterOverridesForScope = (
+  scope: ClusterLayoutScope,
+  overrides: ClusterCenterOverrides
+): void => {
+  localStorage.setItem(genreClusterLayoutKey(scope), JSON.stringify(overrides.genre));
+  localStorage.setItem(playlistClusterLayoutKey(scope), JSON.stringify(overrides.playlist));
 };
 
-export const savePlaylistClusterCenterOverrides = (positions: Record<string, NormalizedPoint>): void => {
-  localStorage.setItem(PLAYLIST_CLUSTER_LAYOUT_KEY, JSON.stringify(positions));
+export const saveGenreClusterCenterOverrides = (
+  positions: Record<string, NormalizedPoint>,
+  scope: ClusterLayoutScope = "conglomerate"
+): void => {
+  localStorage.setItem(genreClusterLayoutKey(scope), JSON.stringify(positions));
+};
+
+export const savePlaylistClusterCenterOverrides = (
+  positions: Record<string, NormalizedPoint>,
+  scope: ClusterLayoutScope = "conglomerate"
+): void => {
+  localStorage.setItem(playlistClusterLayoutKey(scope), JSON.stringify(positions));
 };
 
 export const saveLibrary = (serviceId: MusicServiceId, songs: Song[], stats: LibraryStats): void => {

@@ -553,11 +553,12 @@ export const createSpotifyClient = (store: SpotifySessionStore) => {
       };
     }
     try {
-      await spotifyFetch<{ id: string }>("/me");
+      const profile = await spotifyFetch<{ id: string; display_name?: string }>("/me");
       return {
         connected: true,
         configured: true,
         message: "Connected to Spotify.",
+        displayName: profile.display_name?.trim() || "Spotify user",
       };
     } catch (error) {
       const message = error instanceof Error ? error.message : "Spotify connection could not be verified.";
