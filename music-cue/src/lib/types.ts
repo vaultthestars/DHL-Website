@@ -59,6 +59,7 @@ export type LayoutConfig = {
 };
 
 export type CueBuildMode = "path" | "manual";
+export type GraphToolMode = "navigate" | "draw";
 export type PositionResolver = (song: Song) => GraphPoint;
 
 export type GeneratedCue = {

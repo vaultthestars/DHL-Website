@@ -140,3 +140,43 @@ export const generateCueFromStroke = (
     pathThreshold: proximityThreshold,
   };
 };
+
+export const generateCueFromStrokes = (
+  songs: Song[],
+  strokes: GraphPoint[][],
+  getPosition: PositionResolver,
+  proximityThreshold: number,
+  layoutConfig: LayoutConfig
+): GeneratedCue | null => {
+  const mergedSongs: Song[] = [];
+  const seen = new Set<string>();
+
+  strokes.forEach((stroke) => {
+    const cue = generateCueFromStroke(songs, stroke, getPosition, proximityThreshold, layoutConfig);
+    if (!cue) {
+      return;
+    }
+    cue.songs.forEach((song) => {
+      if (seen.has(song.id)) {
+        return;
+      }
+      seen.add(song.id);
+      mergedSongs.push(song);
+    });
+  });
+
+  if (mergedSongs.length === 0) {
+    return null;
+  }
+
+  const flatStroke = strokes.flat();
+  const seed = mergedSongs.reduce((sum, song, index) => sum + song.id.charCodeAt(0) * (index + 1), 0);
+
+  return {
+    seed,
+    songs: mergedSongs,
+    stroke: flatStroke,
+    layoutConfig,
+    pathThreshold: proximityThreshold,
+  };
+};

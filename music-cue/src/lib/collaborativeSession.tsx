@@ -45,10 +45,7 @@ export const viewSettingsMatch = (
   layoutConfigKey(left.layoutConfig) === layoutConfigKey(right.layoutConfig) &&
   left.libraryScopeMode === right.libraryScopeMode &&
   left.includeMockUsers === right.includeMockUsers &&
-  arraysEqual([...left.enabledContributorIds].sort(), [...right.enabledContributorIds].sort()) &&
-  Math.abs(left.viewTransform.scale - right.viewTransform.scale) < 0.001 &&
-  Math.abs(left.viewTransform.panX - right.viewTransform.panX) < 1 &&
-  Math.abs(left.viewTransform.panY - right.viewTransform.panY) < 1;
+  arraysEqual([...left.enabledContributorIds].sort(), [...right.enabledContributorIds].sort());
 
 const getSessionData = (presence: Record<string, unknown>): SessionPresenceData | null => {
   const direct = presence as SessionPresenceData;

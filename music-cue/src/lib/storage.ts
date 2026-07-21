@@ -6,6 +6,7 @@ import { MusicServiceId } from "./musicProvider";
 import {
   ClusterCenterOverrides,
   CueBuildMode,
+  GraphToolMode,
   LayoutConfig,
   LibraryStats,
   NormalizedPoint,
@@ -29,6 +30,7 @@ const LAYOUT_CONFIG_KEY = "music-cue-layout-config";
 const LAYOUT_MODE_KEY = "music-cue-layout-mode";
 const PATH_THRESHOLD_KEY = "music-cue-path-threshold";
 const BUILD_MODE_KEY = "music-cue-build-mode";
+const GRAPH_TOOL_KEY = "music-cue-graph-tool";
 export const DEFAULT_PATH_THRESHOLD = 60;
 
 export const loadMusicService = (): MusicServiceId => {
@@ -74,6 +76,15 @@ export const loadBuildMode = (): CueBuildMode => {
 
 export const saveBuildMode = (mode: CueBuildMode): void => {
   localStorage.setItem(BUILD_MODE_KEY, mode);
+};
+
+export const loadGraphTool = (): GraphToolMode => {
+  const stored = localStorage.getItem(GRAPH_TOOL_KEY);
+  return stored === "draw" ? "draw" : "navigate";
+};
+
+export const saveGraphTool = (tool: GraphToolMode): void => {
+  localStorage.setItem(GRAPH_TOOL_KEY, tool);
 };
 
 export const loadCustomPositions = (): Record<string, NormalizedPoint> => {

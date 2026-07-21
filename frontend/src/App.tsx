@@ -122,6 +122,25 @@ function App() {
   }, []);
 
   useEffect(() => {
+    const onMessage = (event: MessageEvent) => {
+      if (event.origin !== window.location.origin) {
+        return;
+      }
+      if (event.data?.type !== "dhl-music-cue-go-home") {
+        return;
+      }
+      setCurrpage(0);
+      const url = new URL(window.location.href);
+      url.searchParams.delete("open");
+      url.searchParams.delete("spotify");
+      window.history.replaceState({}, "", `${url.pathname}${url.search}`);
+    };
+
+    window.addEventListener("message", onMessage);
+    return () => window.removeEventListener("message", onMessage);
+  }, []);
+
+  useEffect(() => {
     currtabRef.current = currtab;
   }, [currtab]);
 
