@@ -33,10 +33,25 @@ export type NormalizedPoint = { x: number; y: number };
 export type ClusterCenterOverrides = {
   genre: Record<string, NormalizedPoint>;
   playlist: Record<string, NormalizedPoint>;
+  custom: Record<string, NormalizedPoint>;
 };
 
 export type ViewMode = "cluster" | "axis";
-export type ClusterMode = "genre" | "playlist";
+export type ClusterMode = "genre" | "playlist" | "custom";
+
+export type CustomClusterDefinition = {
+  id: string;
+  label: string;
+  songIds: string[];
+  kind?: "label" | "squiggly";
+  hull?: NormalizedPoint[];
+  color?: string;
+  labelPosition?: NormalizedPoint;
+};
+
+export type CustomClusterCatalog = {
+  clusters: CustomClusterDefinition[];
+};
 export type AxisMetric =
   | "year"
   | "plays"
@@ -59,7 +74,7 @@ export type LayoutConfig = {
 };
 
 export type CueBuildMode = "path" | "manual";
-export type GraphToolMode = "navigate" | "draw";
+export type GraphToolMode = "navigate" | "draw" | "draw-cluster";
 export type PositionResolver = (song: Song) => GraphPoint;
 
 export type GeneratedCue = {

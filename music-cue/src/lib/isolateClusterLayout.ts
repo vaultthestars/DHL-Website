@@ -1,5 +1,6 @@
 import { isClusterView } from "./layoutMetrics";
 import { getSongScopeClusterId, songsForOwnerScope } from "./libraryScope";
+import { normalizeClusterCenterOverrides } from "./storage";
 import {
   ClusterCenterOverrides,
   ClusterMode,
@@ -72,12 +73,18 @@ export const getClusterOverridesForOwner = (
   ownerId: string,
   layoutConfig: LayoutConfig
 ): ClusterCenterOverrides => {
+  const normalized = normalizeClusterCenterOverrides(clusterOverrides);
   const clusterMode = clusterModeForLayout(layoutConfig);
   if (!clusterMode) {
-    return clusterOverrides;
+    return normalized;
   }
 
-  const sourceMap = clusterMode === "genre" ? clusterOverrides.genre : clusterOverrides.playlist;
+  const sourceMap =
+    clusterMode === "genre"
+      ? normalized.genre
+      : clusterMode === "playlist"
+        ? normalized.playlist
+        : normalized.custom;
   const scopedMap: Record<string, GraphPoint> = {};
 
   Object.entries(sourceMap).forEach(([key, value]) => {
@@ -92,9 +99,12 @@ export const getClusterOverridesForOwner = (
   });
 
   if (clusterMode === "genre") {
-    return { ...clusterOverrides, genre: scopedMap };
+    return { ...normalized, genre: scopedMap };
   }
-  return { ...clusterOverrides, playlist: scopedMap };
+  if (clusterMode === "playlist") {
+    return { ...normalized, playlist: scopedMap };
+  }
+  return { ...normalized, custom: scopedMap };
 };
 
 export const toOwnerScopedOverrideUpdates = (
