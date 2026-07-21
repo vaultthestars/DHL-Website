@@ -155,7 +155,15 @@ var import_node_path = __toESM(require("node:path"));
 var LOCAL_LIBRARY_DIR = import_node_path.default.resolve(process.cwd(), ".data/shared-libraries");
 var BLOB_PREFIX = "music-cue/libraries";
 var INDEX_PATH = `${BLOB_PREFIX}/index.json`;
+var SHARED_LIBRARY_STORAGE_ERROR = "Shared library storage is not configured. In the Vercel project, open Storage \u2192 Create Blob store \u2192 connect it to this project, then redeploy.";
+var isVercelProduction = () => process.env.VERCEL === "1";
 var useBlobStorage = () => Boolean(process.env.BLOB_READ_WRITE_TOKEN);
+var isSharedLibraryStorageConfigured = () => useBlobStorage() || !isVercelProduction();
+var assertSharedLibraryStorageConfigured = () => {
+  if (!isSharedLibraryStorageConfigured()) {
+    throw new Error(SHARED_LIBRARY_STORAGE_ERROR);
+  }
+};
 var readLocalSnapshot = (contributorId) => {
   const filePath = import_node_path.default.join(LOCAL_LIBRARY_DIR, `${contributorId}.json`);
   if (!(0, import_node_fs.existsSync)(filePath)) {
@@ -173,7 +181,7 @@ var readLocalIndex = () => {
     return { contributors };
   }
   for (const fileName of (0, import_node_fs.readdirSync)(LOCAL_LIBRARY_DIR)) {
-    if (!fileName.endsWith(".json")) {
+    if (!fileName.endsWith(".json") || fileName === "index.json") {
       continue;
     }
     const snapshot = readLocalSnapshot(fileName.replace(/\.json$/, ""));
@@ -204,15 +212,60 @@ var readBlobJson = async (pathname) => {
     return null;
   }
 };
+var writeBlobJson = async (pathname, payload) => {
+  const { put } = await getBlobModule();
+  await put(pathname, JSON.stringify(payload), {
+    access: "public",
+    addRandomSuffix: false,
+    contentType: "application/json"
+  });
+};
 var isMockContributorId = (contributorId) => contributorId.startsWith("mock-user-");
 var filterMockContributors = (index) => ({
   contributors: index.contributors.filter((contributor) => !isMockContributorId(contributor.id))
 });
+var rebuildIndexFromBlobSnapshots = async () => {
+  const { list } = await getBlobModule();
+  const { blobs } = await list({ prefix: `${BLOB_PREFIX}/` });
+  const contributors = [];
+  for (const blob of blobs) {
+    if (blob.pathname === INDEX_PATH) {
+      continue;
+    }
+    if (!blob.pathname.startsWith(`${BLOB_PREFIX}/`) || !blob.pathname.endsWith(".json")) {
+      continue;
+    }
+    const contributorId = blob.pathname.slice(`${BLOB_PREFIX}/`.length, -".json".length);
+    if (!contributorId) {
+      continue;
+    }
+    const snapshot = await readBlobJson(blob.pathname);
+    if (!snapshot?.contributor?.id) {
+      continue;
+    }
+    contributors.push({
+      id: snapshot.contributor.id,
+      name: snapshot.contributor.name,
+      updatedAt: snapshot.updatedAt,
+      trackCount: snapshot.songs.length
+    });
+  }
+  contributors.sort((left, right) => left.name.localeCompare(right.name));
+  return { contributors };
+};
 var listSharedLibraryContributors = async () => {
+  assertSharedLibraryStorageConfigured();
   if (!useBlobStorage()) {
     return filterMockContributors(readLocalIndex());
   }
-  const index = await readBlobJson(INDEX_PATH);
+  let index = await readBlobJson(INDEX_PATH);
+  if (!index?.contributors?.length) {
+    const rebuilt = await rebuildIndexFromBlobSnapshots();
+    if (rebuilt.contributors.length > 0) {
+      await writeBlobJson(INDEX_PATH, rebuilt);
+      index = rebuilt;
+    }
+  }
   return filterMockContributors(index ?? { contributors: [] });
 };
 var getSharedLibrarySnapshot = async (contributorId) => {
@@ -239,6 +292,10 @@ var getQueryValue = (query, key) => {
 };
 var handleSharedLibraryRoute = async (route, req, res) => {
   try {
+    if (!isSharedLibraryStorageConfigured()) {
+      res.status(503).json({ error: SHARED_LIBRARY_STORAGE_ERROR, contributors: [] });
+      return;
+    }
     if (route === "" && req.method === "GET") {
       res.status(200).json(await listSharedLibraryContributors());
       return;

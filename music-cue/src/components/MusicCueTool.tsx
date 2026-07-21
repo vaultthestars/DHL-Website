@@ -2791,9 +2791,24 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
   };
 
   const handlePublishSharedLibrary = async () => {
+    if (songs.length === 0) {
+      setStatusMessage("Load your library before sharing.");
+      return;
+    }
+    const contributor = spotifyStatus?.userId
+      ? { id: spotifyStatus.userId, name: spotifyStatus.displayName || "Spotify user" }
+      : null;
+    if (!contributor) {
+      setStatusMessage("Connect Spotify before sharing your library.");
+      return;
+    }
     setIsImporting(true);
     try {
-      const published = await publishSharedLibrary();
+      const published = await publishSharedLibrary({
+        contributor,
+        songs,
+        stats,
+      });
       saveLocalContributorId(published.contributor.id);
       await refreshSharedContributors({ loadLibrary: songSpaceMode === "shared" });
       setStatusMessage(

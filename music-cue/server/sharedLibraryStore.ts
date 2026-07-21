@@ -6,7 +6,21 @@ const LOCAL_LIBRARY_DIR = path.resolve(process.cwd(), ".data/shared-libraries");
 const BLOB_PREFIX = "music-cue/libraries";
 const INDEX_PATH = `${BLOB_PREFIX}/index.json`;
 
+export const SHARED_LIBRARY_STORAGE_ERROR =
+  "Shared library storage is not configured. In the Vercel project, open Storage → Create Blob store → connect it to this project, then redeploy.";
+
+const isVercelProduction = (): boolean => process.env.VERCEL === "1";
+
 const useBlobStorage = (): boolean => Boolean(process.env.BLOB_READ_WRITE_TOKEN);
+
+export const isSharedLibraryStorageConfigured = (): boolean =>
+  useBlobStorage() || !isVercelProduction();
+
+export const assertSharedLibraryStorageConfigured = (): void => {
+  if (!isSharedLibraryStorageConfigured()) {
+    throw new Error(SHARED_LIBRARY_STORAGE_ERROR);
+  }
+};
 
 const readLocalSnapshot = (contributorId: string): SharedLibrarySnapshot | null => {
   const filePath = path.join(LOCAL_LIBRARY_DIR, `${contributorId}.json`);
@@ -35,7 +49,7 @@ const readLocalIndex = (): SharedLibraryIndex => {
     return { contributors };
   }
   for (const fileName of readdirSync(LOCAL_LIBRARY_DIR)) {
-    if (!fileName.endsWith(".json")) {
+    if (!fileName.endsWith(".json") || fileName === "index.json") {
       continue;
     }
     const snapshot = readLocalSnapshot(fileName.replace(/\.json$/, ""));
@@ -102,11 +116,54 @@ const filterMockContributors = (index: SharedLibraryIndex): SharedLibraryIndex =
   contributors: index.contributors.filter((contributor) => !isMockContributorId(contributor.id)),
 });
 
+const rebuildIndexFromBlobSnapshots = async (): Promise<SharedLibraryIndex> => {
+  const { list } = await getBlobModule();
+  const { blobs } = await list({ prefix: `${BLOB_PREFIX}/` });
+  const contributors: LibraryContributor[] = [];
+
+  for (const blob of blobs) {
+    if (blob.pathname === INDEX_PATH) {
+      continue;
+    }
+    if (!blob.pathname.startsWith(`${BLOB_PREFIX}/`) || !blob.pathname.endsWith(".json")) {
+      continue;
+    }
+    const contributorId = blob.pathname.slice(`${BLOB_PREFIX}/`.length, -".json".length);
+    if (!contributorId) {
+      continue;
+    }
+    const snapshot = await readBlobJson<SharedLibrarySnapshot>(blob.pathname);
+    if (!snapshot?.contributor?.id) {
+      continue;
+    }
+    contributors.push({
+      id: snapshot.contributor.id,
+      name: snapshot.contributor.name,
+      updatedAt: snapshot.updatedAt,
+      trackCount: snapshot.songs.length,
+    });
+  }
+
+  contributors.sort((left, right) => left.name.localeCompare(right.name));
+  return { contributors };
+};
+
 export const listSharedLibraryContributors = async (): Promise<SharedLibraryIndex> => {
+  assertSharedLibraryStorageConfigured();
+
   if (!useBlobStorage()) {
     return filterMockContributors(readLocalIndex());
   }
-  const index = await readBlobJson<SharedLibraryIndex>(INDEX_PATH);
+
+  let index = await readBlobJson<SharedLibraryIndex>(INDEX_PATH);
+  if (!index?.contributors?.length) {
+    const rebuilt = await rebuildIndexFromBlobSnapshots();
+    if (rebuilt.contributors.length > 0) {
+      await writeBlobJson(INDEX_PATH, rebuilt);
+      index = rebuilt;
+    }
+  }
+
   return filterMockContributors(index ?? { contributors: [] });
 };
 
@@ -126,6 +183,8 @@ export const getSharedLibrarySnapshots = async (contributorIds: string[]): Promi
 };
 
 export const saveSharedLibrarySnapshot = async (snapshot: SharedLibrarySnapshot): Promise<void> => {
+  assertSharedLibraryStorageConfigured();
+
   if (!useBlobStorage()) {
     writeLocalSnapshot(snapshot);
     const index = readLocalIndex();

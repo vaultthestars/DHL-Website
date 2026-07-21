@@ -742,7 +742,15 @@ var import_node_path = __toESM(require("node:path"));
 var LOCAL_LIBRARY_DIR = import_node_path.default.resolve(process.cwd(), ".data/shared-libraries");
 var BLOB_PREFIX = "music-cue/libraries";
 var INDEX_PATH = `${BLOB_PREFIX}/index.json`;
+var SHARED_LIBRARY_STORAGE_ERROR = "Shared library storage is not configured. In the Vercel project, open Storage \u2192 Create Blob store \u2192 connect it to this project, then redeploy.";
+var isVercelProduction = () => process.env.VERCEL === "1";
 var useBlobStorage = () => Boolean(process.env.BLOB_READ_WRITE_TOKEN);
+var isSharedLibraryStorageConfigured = () => useBlobStorage() || !isVercelProduction();
+var assertSharedLibraryStorageConfigured = () => {
+  if (!isSharedLibraryStorageConfigured()) {
+    throw new Error(SHARED_LIBRARY_STORAGE_ERROR);
+  }
+};
 var readLocalSnapshot = (contributorId) => {
   const filePath = import_node_path.default.join(LOCAL_LIBRARY_DIR, `${contributorId}.json`);
   if (!(0, import_node_fs.existsSync)(filePath)) {
@@ -769,7 +777,7 @@ var readLocalIndex = () => {
     return { contributors };
   }
   for (const fileName of (0, import_node_fs.readdirSync)(LOCAL_LIBRARY_DIR)) {
-    if (!fileName.endsWith(".json")) {
+    if (!fileName.endsWith(".json") || fileName === "index.json") {
       continue;
     }
     const snapshot = readLocalSnapshot(fileName.replace(/\.json$/, ""));
@@ -826,6 +834,7 @@ var upsertContributor = (index, snapshot) => {
   return { contributors };
 };
 var saveSharedLibrarySnapshot = async (snapshot) => {
+  assertSharedLibraryStorageConfigured();
   if (!useBlobStorage()) {
     writeLocalSnapshot(snapshot);
     const index = readLocalIndex();
