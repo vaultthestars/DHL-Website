@@ -666,6 +666,13 @@ var createSpotifyClient = (store) => {
       };
     } catch (error) {
       const message = error instanceof Error ? error.message : "Spotify connection could not be verified.";
+      if (message.toLowerCase().includes("rate limit")) {
+        return {
+          connected: true,
+          configured: true,
+          message: "Spotify rate limited \u2014 you can resume your import."
+        };
+      }
       return {
         connected: false,
         configured: true,

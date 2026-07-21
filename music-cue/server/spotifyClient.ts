@@ -606,6 +606,13 @@ export const createSpotifyClient = (store: SpotifySessionStore) => {
       };
     } catch (error) {
       const message = error instanceof Error ? error.message : "Spotify connection could not be verified.";
+      if (message.toLowerCase().includes("rate limit")) {
+        return {
+          connected: true,
+          configured: true,
+          message: "Spotify rate limited — you can resume your import.",
+        };
+      }
       return {
         connected: false,
         configured: true,

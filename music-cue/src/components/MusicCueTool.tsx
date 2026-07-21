@@ -651,7 +651,16 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
       return;
     }
 
-    void musicProvider.getConnectionStatus().then(setSpotifyStatus);
+    void musicProvider
+      .getConnectionStatus()
+      .then(setSpotifyStatus)
+      .catch(() => {
+        setSpotifyStatus({
+          connected: false,
+          configured: true,
+          message: "Could not verify Spotify connection.",
+        });
+      });
   }, [musicProvider, musicService]);
 
   useEffect(() => {
@@ -688,13 +697,16 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     setSpotifyUseLocalExport(false);
   }, [spotifyStatus?.connected]);
 
+  const spotifyStatusLoading = musicService === "spotify" && spotifyStatus === null;
+  const spotifyDisconnected = spotifyStatus?.connected === false;
+
   const spotifyImportResumeLabel = useMemo(() => {
     void importResumeRevision;
-    if (musicService !== "spotify" || !spotifyStatus?.connected) {
+    if (musicService !== "spotify") {
       return null;
     }
     return hasResumableSpotifyImport() ? getSpotifyImportResumeLabel() : null;
-  }, [importResumeRevision, musicService, spotifyStatus?.connected]);
+  }, [importResumeRevision, musicService]);
 
   useEffect(() => {
     songsRef.current = songs;
@@ -3571,19 +3583,26 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
               <button
                 type="button"
                 onClick={() => void handleLoadSpotifyLibrary()}
-                disabled={isImporting || !spotifyStatus?.connected}
+                disabled={isImporting || spotifyDisconnected}
+                title={
+                  spotifyStatusLoading
+                    ? "Checking Spotify connection…"
+                    : spotifyImportResumeLabel ?? undefined
+                }
               >
                 {isImporting
                   ? "Loading…"
-                  : spotifyImportResumeLabel
-                    ? "Resume load & share"
-                    : "Load & share library"}
+                  : spotifyStatusLoading
+                    ? "Checking Spotify…"
+                    : spotifyImportResumeLabel
+                      ? "Resume load & share"
+                      : "Load & share library"}
               </button>
-              {spotifyImportResumeLabel && !isImporting ? (
+              {spotifyImportResumeLabel && !isImporting && !spotifyStatusLoading ? (
                 <button
                   type="button"
                   onClick={() => void handleLoadSpotifyLibrary({ fresh: true })}
-                  disabled={!spotifyStatus?.connected}
+                  disabled={spotifyDisconnected}
                   title={spotifyImportResumeLabel}
                 >
                   Start fresh

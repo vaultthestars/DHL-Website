@@ -5,6 +5,7 @@ import type {
 } from "../../shared/spotifyLibraryAssembly";
 
 const SESSION_KEY = "music-cue-spotify-import-session";
+const HINT_KEY = "music-cue-spotify-import-hint";
 
 export type SpotifyImportPhase = "saved-tracks" | "playlists" | "playlist-tracks" | "genres";
 
@@ -25,6 +26,12 @@ export type SpotifyImportSession = {
   activePlaylistId: string | null;
   activePlaylistItems: SpotifyPlaylistItem[];
   activePlaylistNext: string | null;
+};
+
+type SpotifyImportHint = {
+  contributorId: string;
+  resumable: boolean;
+  label: string;
 };
 
 export const createSpotifyImportSession = (contributor: {
@@ -49,6 +56,55 @@ export const createSpotifyImportSession = (contributor: {
   activePlaylistNext: null,
 });
 
+const isSessionResumable = (session: SpotifyImportSession): boolean => {
+  if (!session.savedTracksComplete) {
+    return true;
+  }
+  if (!session.playlistsListLoaded) {
+    return true;
+  }
+  return session.completedPlaylistIds.length < session.readablePlaylistIds.length;
+};
+
+const buildResumeLabel = (session: SpotifyImportSession): string => {
+  const trackEstimate = session.savedItems.length;
+  if (session.phase === "saved-tracks") {
+    return `Resume saved tracks (${trackEstimate.toLocaleString()} loaded)`;
+  }
+  if (session.phase === "playlists") {
+    return `Resume playlist list (${session.playlists.length} playlists, ${trackEstimate.toLocaleString()} tracks)`;
+  }
+  if (session.phase === "playlist-tracks") {
+    return `Resume playlists (${session.completedPlaylistIds.length}/${session.readablePlaylistIds.length} done)`;
+  }
+  return "Resume library import";
+};
+
+const saveSpotifyImportHint = (session: SpotifyImportSession): void => {
+  const hint: SpotifyImportHint = {
+    contributorId: session.contributor.id,
+    resumable: isSessionResumable(session),
+    label: buildResumeLabel(session),
+  };
+  localStorage.setItem(HINT_KEY, JSON.stringify(hint));
+};
+
+const loadSpotifyImportHint = (): SpotifyImportHint | null => {
+  try {
+    const raw = localStorage.getItem(HINT_KEY);
+    if (!raw) {
+      return null;
+    }
+    const parsed = JSON.parse(raw) as SpotifyImportHint;
+    if (!parsed?.contributorId) {
+      return null;
+    }
+    return parsed;
+  } catch {
+    return null;
+  }
+};
+
 export const loadSpotifyImportSession = (): SpotifyImportSession | null => {
   try {
     const raw = localStorage.getItem(SESSION_KEY);
@@ -59,7 +115,9 @@ export const loadSpotifyImportSession = (): SpotifyImportSession | null => {
     if (parsed?.version !== 1 || !parsed.contributor?.id) {
       return null;
     }
-    return normalizeSpotifyImportSession(parsed);
+    const session = normalizeSpotifyImportSession(parsed);
+    saveSpotifyImportHint(session);
+    return session;
   } catch {
     return null;
   }
@@ -97,52 +155,44 @@ const normalizeSpotifyImportSession = (session: SpotifyImportSession): SpotifyIm
 };
 
 export const saveSpotifyImportSession = (session: SpotifyImportSession): void => {
-  localStorage.setItem(
-    SESSION_KEY,
-    JSON.stringify({
-      ...session,
-      updatedAt: new Date().toISOString(),
-    })
-  );
+  const payload = {
+    ...session,
+    updatedAt: new Date().toISOString(),
+  };
+  try {
+    localStorage.setItem(SESSION_KEY, JSON.stringify(payload));
+  } catch {
+    // Full session can exceed localStorage quota on very large libraries.
+    // Keep the lightweight hint so resume UI still works.
+  }
+  saveSpotifyImportHint(payload);
 };
 
 export const clearSpotifyImportSession = (): void => {
   localStorage.removeItem(SESSION_KEY);
+  localStorage.removeItem(HINT_KEY);
 };
 
 export const hasResumableSpotifyImport = (contributorId?: string): boolean => {
-  const session = loadSpotifyImportSession();
-  if (!session) {
-    return false;
+  const hint = loadSpotifyImportHint();
+  if (hint) {
+    if (contributorId && hint.contributorId !== contributorId) {
+      return false;
+    }
+    return hint.resumable;
   }
-  if (contributorId && session.contributor.id !== contributorId) {
-    return false;
-  }
-  if (!session.savedTracksComplete) {
-    return true;
-  }
-  if (!session.playlistsListLoaded) {
-    return true;
-  }
-  return session.completedPlaylistIds.length < session.readablePlaylistIds.length;
+  return Boolean(localStorage.getItem(SESSION_KEY));
 };
 
 export const getSpotifyImportResumeLabel = (): string | null => {
-  const session = loadSpotifyImportSession();
-  if (!session) {
-    return null;
+  const hint = loadSpotifyImportHint();
+  if (hint?.resumable) {
+    return hint.label;
   }
-  const trackEstimate = session.savedItems.length;
-  if (session.phase === "saved-tracks") {
-    return `Resume saved tracks (${trackEstimate.toLocaleString()} loaded)`;
+  if (localStorage.getItem(SESSION_KEY)) {
+    return "Resume library import";
   }
-  if (session.phase === "playlists") {
-    return `Resume playlist list (${session.playlists.length} playlists, ${trackEstimate.toLocaleString()} tracks)`;
-  }
-  if (session.phase === "playlist-tracks") {
-    return `Resume playlists (${session.completedPlaylistIds.length}/${session.readablePlaylistIds.length} done)`;
-  }
-  return "Resume library import";
+  return null;
 };
 
 export class SpotifyImportRateLimitError extends Error {
