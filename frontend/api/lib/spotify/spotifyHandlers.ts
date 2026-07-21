@@ -32,7 +32,7 @@ export const handleSpotifyRoute = async (
 
   try {
     if (route === "status" && req.method === "GET") {
-      finish(200, client.getConnectionStatus());
+      finish(200, await client.getConnectionStatus());
       return;
     }
 

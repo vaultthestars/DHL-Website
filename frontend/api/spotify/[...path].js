@@ -96,6 +96,16 @@ var SPOTIFY_SCOPES = [
   "user-modify-playback-state"
 ].join(" ");
 var NO_DEVICES_MESSAGE = "No Spotify devices found. Open the Spotify app, play any song once, then try Play again.";
+var formatSpotifyApiError = (status, path, spotifyMessage) => {
+  const normalizedMessage = spotifyMessage?.toLowerCase() ?? "";
+  if (status === 403 && (normalizedMessage.includes("not registered") || normalizedMessage.includes("developer dashboard") || normalizedMessage.includes("check settings on developer.spotify.com"))) {
+    return "This Spotify account is not allowlisted for this app yet. The site owner must add your Spotify email in the Spotify Developer Dashboard (User Management), then you can disconnect and connect again.";
+  }
+  if (spotifyMessage) {
+    return `${spotifyMessage} (${path})`;
+  }
+  return `Spotify API error (${status}) (${path})`;
+};
 var pickPlaybackDevice = (devices) => {
   const available = devices.filter((device) => device.id && !device.is_restricted);
   if (available.length === 0) {
@@ -134,21 +144,6 @@ var createCookieSessionStore = (cookieHeader, setCookie) => {
   };
 };
 var createSpotifyClient = (store) => {
-  const getConnectionStatus = () => {
-    if (!isSpotifyConfigured()) {
-      return {
-        connected: false,
-        configured: false,
-        message: "Spotify credentials are not configured on the server."
-      };
-    }
-    const tokens = store.getTokens();
-    return {
-      connected: Boolean(tokens?.refreshToken),
-      configured: true,
-      message: tokens?.refreshToken ? "Connected to Spotify." : "Not connected to Spotify."
-    };
-  };
   const buildAuthorizeUrl = (codeChallenge, state) => {
     const clientId = process.env.SPOTIFY_CLIENT_ID;
     if (!clientId) {
@@ -222,8 +217,7 @@ var createSpotifyClient = (store) => {
     }
     if (!response.ok) {
       const payload = await response.json().catch(() => ({}));
-      const message = payload.error?.message ?? `Spotify API error (${response.status}).`;
-      throw new Error(`${message} (${path})`);
+      throw new Error(formatSpotifyApiError(response.status, path, payload.error?.message));
     }
     return await response.json();
   };
@@ -460,6 +454,38 @@ var createSpotifyClient = (store) => {
       return null;
     }
   };
+  const getConnectionStatus = async () => {
+    if (!isSpotifyConfigured()) {
+      return {
+        connected: false,
+        configured: false,
+        message: "Spotify credentials are not configured on the server."
+      };
+    }
+    const tokens = store.getTokens();
+    if (!tokens?.refreshToken) {
+      return {
+        connected: false,
+        configured: true,
+        message: "Not connected to Spotify."
+      };
+    }
+    try {
+      await spotifyFetch("/me");
+      return {
+        connected: true,
+        configured: true,
+        message: "Connected to Spotify."
+      };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Spotify connection could not be verified.";
+      return {
+        connected: false,
+        configured: true,
+        message
+      };
+    }
+  };
   return {
     getConnectionStatus,
     buildAuthorizeUrl,
@@ -487,7 +513,7 @@ var handleSpotifyRoute = async (route, req, res) => {
   };
   try {
     if (route === "status" && req.method === "GET") {
-      finish(200, client.getConnectionStatus());
+      finish(200, await client.getConnectionStatus());
       return;
     }
     if (route === "auth-url" && req.method === "POST") {

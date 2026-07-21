@@ -54,6 +54,25 @@ type SpotifyDevice = {
 const NO_DEVICES_MESSAGE =
   "No Spotify devices found. Open the Spotify app, play any song once, then try Play again.";
 
+const formatSpotifyApiError = (status: number, path: string, spotifyMessage?: string): string => {
+  const normalizedMessage = spotifyMessage?.toLowerCase() ?? "";
+  if (
+    status === 403 &&
+    (normalizedMessage.includes("not registered") ||
+      normalizedMessage.includes("developer dashboard") ||
+      normalizedMessage.includes("check settings on developer.spotify.com"))
+  ) {
+    return (
+      "This Spotify account is not allowlisted for this app yet. The site owner must add your Spotify " +
+      "email in the Spotify Developer Dashboard (User Management), then you can disconnect and connect again."
+    );
+  }
+  if (spotifyMessage) {
+    return `${spotifyMessage} (${path})`;
+  }
+  return `Spotify API error (${status}) (${path})`;
+};
+
 const pickPlaybackDevice = (devices: SpotifyDevice[]): SpotifyDevice | null => {
   const available = devices.filter((device) => device.id && !device.is_restricted);
   if (available.length === 0) {
@@ -151,22 +170,6 @@ export const createCookieSessionStore = (
 };
 
 export const createSpotifyClient = (store: SpotifySessionStore) => {
-  const getConnectionStatus = () => {
-    if (!isSpotifyConfigured()) {
-      return {
-        connected: false,
-        configured: false,
-        message: "Spotify credentials are not configured on the server.",
-      };
-    }
-    const tokens = store.getTokens();
-    return {
-      connected: Boolean(tokens?.refreshToken),
-      configured: true,
-      message: tokens?.refreshToken ? "Connected to Spotify." : "Not connected to Spotify.",
-    };
-  };
-
   const buildAuthorizeUrl = (codeChallenge: string, state: string): string => {
     const clientId = process.env.SPOTIFY_CLIENT_ID;
     if (!clientId) {
@@ -248,8 +251,7 @@ export const createSpotifyClient = (store: SpotifySessionStore) => {
     }
     if (!response.ok) {
       const payload = (await response.json().catch(() => ({}))) as { error?: { message?: string } };
-      const message = payload.error?.message ?? `Spotify API error (${response.status}).`;
-      throw new Error(`${message} (${path})`);
+      throw new Error(formatSpotifyApiError(response.status, path, payload.error?.message));
     }
     return (await response.json()) as T;
   };
@@ -522,6 +524,39 @@ export const createSpotifyClient = (store: SpotifySessionStore) => {
       };
     } catch {
       return null;
+    }
+  };
+
+  const getConnectionStatus = async () => {
+    if (!isSpotifyConfigured()) {
+      return {
+        connected: false,
+        configured: false,
+        message: "Spotify credentials are not configured on the server.",
+      };
+    }
+    const tokens = store.getTokens();
+    if (!tokens?.refreshToken) {
+      return {
+        connected: false,
+        configured: true,
+        message: "Not connected to Spotify.",
+      };
+    }
+    try {
+      await spotifyFetch<{ id: string }>("/me");
+      return {
+        connected: true,
+        configured: true,
+        message: "Connected to Spotify.",
+      };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Spotify connection could not be verified.";
+      return {
+        connected: false,
+        configured: true,
+        message,
+      };
     }
   };
 
