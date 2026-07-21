@@ -9,7 +9,32 @@ import {
   saveImportSessionToIndexedDb,
 } from "./spotifyImportStorage";
 
-const SESSION_KEY = "music-cue-spotify-import-session";
+const CONNECTED_USER_KEY = "music-cue-spotify-connected-user";
+
+export const saveConnectedSpotifyUser = (contributor: { id: string; name: string }): void => {
+  localStorage.setItem(CONNECTED_USER_KEY, JSON.stringify(contributor));
+};
+
+export const loadConnectedSpotifyUser = (): { id: string; name: string } | null => {
+  try {
+    const raw = localStorage.getItem(CONNECTED_USER_KEY);
+    if (!raw) {
+      return null;
+    }
+    const parsed = JSON.parse(raw) as { id?: string; name?: string };
+    if (!parsed?.id) {
+      return null;
+    }
+    return { id: parsed.id, name: parsed.name?.trim() || "Spotify user" };
+  } catch {
+    return null;
+  }
+};
+
+export const clearConnectedSpotifyUser = (): void => {
+  localStorage.removeItem(CONNECTED_USER_KEY);
+};
+
 const HINT_KEY = "music-cue-spotify-import-hint";
 
 export type SpotifyImportPhase = "saved-tracks" | "playlists" | "playlist-tracks" | "genres";
@@ -201,7 +226,7 @@ export const loadSpotifyImportSession = async (): Promise<SpotifyImportSession |
   try {
     const fromIndexedDb = await loadImportSessionFromIndexedDb();
     if (fromIndexedDb?.version === 1 && fromIndexedDb.contributor?.id) {
-      const session = normalizeSpotifyImportSession(fromIndexedDb);
+      const session = repairImportSession(normalizeSpotifyImportSession(fromIndexedDb));
       saveSpotifyImportHint(session);
       return session;
     }
@@ -211,12 +236,14 @@ export const loadSpotifyImportSession = async (): Promise<SpotifyImportSession |
 
   const legacy = loadLegacyLocalStorageSession();
   if (legacy) {
-    saveSpotifyImportHint(legacy);
+    const session = repairImportSession(legacy);
+    saveSpotifyImportHint(session);
     try {
-      await saveImportSessionToIndexedDb(legacy);
+      await saveImportSessionToIndexedDb(session);
     } catch {
       // IndexedDB may be unavailable; legacy session still works for this run.
     }
+    return session;
   }
   return legacy;
 };
@@ -247,6 +274,31 @@ export const clearSpotifyImportSession = async (): Promise<void> => {
   } catch {
     // Ignore IndexedDB cleanup failures.
   }
+};
+
+const repairImportSession = (session: SpotifyImportSession): SpotifyImportSession => {
+  if (session.savedTracksComplete && session.savedItems.length === 0) {
+    return {
+      ...session,
+      savedTracksComplete: false,
+      savedTracksNext: null,
+      phase: "saved-tracks",
+    };
+  }
+  if (
+    session.playlistsListLoaded &&
+    session.playlists.length === 0 &&
+    session.readablePlaylistIds.length === 0 &&
+    session.completedPlaylistIds.length === 0
+  ) {
+    return {
+      ...session,
+      playlistsListLoaded: false,
+      playlistsNext: null,
+      phase: session.savedTracksComplete ? "playlists" : "saved-tracks",
+    };
+  }
+  return session;
 };
 
 export const hasResumableSpotifyImport = (contributorId?: string): boolean => {

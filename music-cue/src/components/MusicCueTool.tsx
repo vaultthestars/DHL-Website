@@ -45,6 +45,7 @@ import {
   getSpotifyImportContributorHint,
   getSpotifyImportResumeLabel,
   hasResumableSpotifyImport,
+  saveConnectedSpotifyUser,
   SpotifyImportRateLimitError,
 } from "../lib/providers/spotifyProvider";
 import type { LibraryLoadProgress } from "../lib/musicProvider";
@@ -531,6 +532,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
   const [exportPlaylistName, setExportPlaylistName] = useState(() => defaultExportPlaylistName());
   const [isExportingPlaylist, setIsExportingPlaylist] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
+  const isImportingRef = useRef(false);
   const [importProgress, setImportProgress] = useState<LibraryLoadProgress | null>(null);
   const [importResumeRevision, setImportResumeRevision] = useState(0);
   const [isPanning, setIsPanning] = useState(false);
@@ -707,6 +709,16 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     }
     setSpotifyUseLocalExport(false);
   }, [spotifyStatus?.connected]);
+
+  useEffect(() => {
+    if (musicService !== "spotify" || !spotifyStatus?.connected || !spotifyStatus.userId) {
+      return;
+    }
+    saveConnectedSpotifyUser({
+      id: spotifyStatus.userId,
+      name: spotifyStatus.displayName || "Spotify user",
+    });
+  }, [musicService, spotifyStatus]);
 
   const spotifyStatusLoading = musicService === "spotify" && spotifyStatus === null;
   const spotifyCanLoadLibrary = spotifyStatus?.connected === true;
@@ -2614,13 +2626,16 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
           isWebDeployment &&
           musicService === "spotify" &&
           shouldLoadLibrary &&
-          contributorIds.length === 0
+          contributorIds.length === 0 &&
+          !isImportingRef.current
         ) {
           setSharedTrackCount(0);
           setStatusMessage(
             isGuest
               ? "No shared libraries published yet."
-              : "No shared libraries published yet. Connect Spotify and use Load & share library."
+              : spotifyStatus?.connected
+                ? "No shared libraries published yet. Click Load & share library to publish yours."
+                : "No shared libraries published yet. Connect Spotify and use Load & share library."
           );
         } else if (
           isWebDeployment &&
@@ -2818,6 +2833,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
       setImportResumeRevision((revision) => revision + 1);
     }
     setIsImporting(true);
+    isImportingRef.current = true;
     if (!options?.fresh && hasResumableSpotifyImport()) {
       setImportProgress({
         phase: "saved-tracks",
@@ -2883,6 +2899,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
         setStatusMessage(error instanceof Error ? error.message : "Could not load Spotify library.");
       }
     } finally {
+      isImportingRef.current = false;
       setIsImporting(false);
       if (!keepProgress) {
         setImportProgress(null);

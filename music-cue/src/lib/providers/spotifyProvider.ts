@@ -12,6 +12,7 @@ import {
   createSpotifyImportSession,
   getSpotifyImportContributorHint,
   getSpotifyImportRateLimitCooldownMs,
+  loadConnectedSpotifyUser,
   loadSpotifyImportSession,
   markSpotifyImportRateLimited,
   saveSpotifyImportSession,
@@ -130,10 +131,10 @@ const persistSession = (session: SpotifyImportSession): void => {
   void saveSpotifyImportSession(session);
 };
 
-const resolveImportContributor = (
+const resolveImportContributor = async (
   session: SpotifyImportSession | null,
   options?: LoadLibraryOptions
-): { id: string; name: string } => {
+): Promise<{ id: string; name: string }> => {
   if (session?.contributor?.id) {
     return session.contributor;
   }
@@ -144,7 +145,11 @@ const resolveImportContributor = (
   if (hintContributor?.id) {
     return hintContributor;
   }
-  throw new Error("Connect Spotify before loading your library.");
+  const connectedContributor = loadConnectedSpotifyUser();
+  if (connectedContributor?.id) {
+    return connectedContributor;
+  }
+  return fetchJson<{ id: string; name: string }>("/api/spotify/profile");
 };
 
 const waitBetweenPages = async (): Promise<void> => {
@@ -409,7 +414,7 @@ const loadLibraryInChunks = async (options?: LoadLibraryOptions): Promise<Loaded
   }
 
   let session = options?.fresh ? null : await loadSpotifyImportSession();
-  const profile = resolveImportContributor(session, options);
+  const profile = await resolveImportContributor(session, options);
 
   if (session && session.contributor.id !== profile.id) {
     await clearSpotifyImportSession();
@@ -560,5 +565,6 @@ export {
   getSpotifyImportContributorHint,
   getSpotifyImportResumeLabel,
   hasResumableSpotifyImport,
+  saveConnectedSpotifyUser,
   SpotifyImportRateLimitError,
 } from "../spotifyImportSession";
