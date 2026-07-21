@@ -4,7 +4,9 @@ import {
   getMetricRange,
   getMetricValue,
   isClusterView,
+  layoutConfigKey,
   normalizeMetricValue,
+  type AxisMetric,
 } from "./layoutMetrics";
 import {
   getPlaylistOverlapLayoutContext,
@@ -266,7 +268,8 @@ const axisMetricPosition = (
   layoutConfig: LayoutConfig,
   stats: LibraryStats,
   dimensions: GraphDimensions,
-  songs: Song[]
+  xRange: { min: number; max: number },
+  yRange: { min: number; max: number }
 ): { x: number; y: number } => {
   if (layoutConfig.axisX === "year" && layoutConfig.axisY === "year") {
     return yearTimelinePosition(song, stats, dimensions);
@@ -274,8 +277,6 @@ const axisMetricPosition = (
 
   const usableWidth = dimensions.width - GRAPH_PADDING * 2;
   const usableHeight = dimensions.height - GRAPH_PADDING * 2;
-  const xRange = getMetricRange(songs, layoutConfig.axisX, stats);
-  const yRange = getMetricRange(songs, layoutConfig.axisY, stats);
   const rawX = getMetricValue(song, layoutConfig.axisX);
   const rawY = getMetricValue(song, layoutConfig.axisY);
   const normalizedX =
@@ -287,6 +288,120 @@ const axisMetricPosition = (
     x: GRAPH_PADDING + normalizedX * usableWidth + jitter(song.id, usableWidth * jitterScale),
     y: GRAPH_PADDING + (1 - normalizedY) * usableHeight + jitter(`${song.id}-y`, usableHeight * jitterScale),
   };
+};
+
+type AxisRangeCache = {
+  cacheKey: string;
+  xRange: { min: number; max: number };
+  yRange: { min: number; max: number };
+};
+
+let axisRangeCache: AxisRangeCache | null = null;
+
+const getAxisRanges = (
+  songs: Song[],
+  layoutConfig: LayoutConfig,
+  stats: LibraryStats
+): AxisRangeCache => {
+  const cacheKey = `${songs.length}|${layoutConfigKey(layoutConfig)}|${stats.maxYear}|${stats.maxPlayCount}`;
+  if (axisRangeCache?.cacheKey === cacheKey) {
+    return axisRangeCache;
+  }
+  axisRangeCache = {
+    cacheKey,
+    xRange: getMetricRange(songs, layoutConfig.axisX, stats),
+    yRange: getMetricRange(songs, layoutConfig.axisY, stats),
+  };
+  return axisRangeCache;
+};
+
+type IsolateLayoutCache = {
+  cacheKey: string;
+  ownerBounds: Map<string, { centroid: GraphPoint; radius: number }>;
+  metaClusters: ReturnType<typeof getEnabledOwnerMetaClusters>;
+  radialMetricRanges: Map<string, { min: number; max: number }>;
+};
+
+let isolateLayoutCache: IsolateLayoutCache | null = null;
+
+const buildIsolateLayoutCacheKey = (
+  songs: Song[],
+  dimensions: GraphDimensions,
+  layoutConfig: LayoutConfig,
+  enabledOwnerIds: string[] | undefined,
+  hasOwnerBounds: boolean
+): string =>
+  `${songs.length}|${layoutConfigKey(layoutConfig)}|${dimensions.width}x${dimensions.height}|${enabledOwnerIds?.join(",") ?? ""}|${hasOwnerBounds ? "bounds" : "live"}`;
+
+const getIsolateLayoutCache = (
+  allSongs: Song[],
+  dimensions: GraphDimensions,
+  layoutConfig: LayoutConfig,
+  stats: LibraryStats,
+  clusterOverrides: ClusterCenterOverrides,
+  layoutContext: LayoutContext,
+  layoutSongPositionConglomerate: (
+    song: Song,
+    ownerSongs: Song[],
+    ownerOverrides: ClusterCenterOverrides,
+    customCatalog?: CustomClusterCatalog
+  ) => GraphPoint
+): IsolateLayoutCache => {
+  const cacheKey = buildIsolateLayoutCacheKey(
+    allSongs,
+    dimensions,
+    layoutConfig,
+    layoutContext.enabledOwnerIds,
+    Boolean(layoutContext.isolateOwnerBounds)
+  );
+  if (isolateLayoutCache?.cacheKey === cacheKey) {
+    return isolateLayoutCache;
+  }
+
+  const ownerBounds =
+    layoutContext.isolateOwnerBounds ??
+    computeAllIsolateOwnerBounds(
+      allSongs,
+      dimensions,
+      layoutConfig,
+      stats,
+      clusterOverrides,
+      layoutContext.enabledOwnerIds,
+      (soloSong, ownerSongs, ownerOverrides) =>
+        layoutSongPositionConglomerate(
+          soloSong,
+          ownerSongs,
+          ownerOverrides,
+          layoutContext.customCatalogForOwner?.(getSongScopeClusterId(soloSong)) ??
+            layoutContext.customClusterCatalog
+        )
+    );
+  const metaClusters = getEnabledOwnerMetaClusters(allSongs, dimensions, layoutContext.enabledOwnerIds, {
+    isAxisView: !isClusterView(layoutConfig),
+    ownerBounds,
+  });
+  isolateLayoutCache = {
+    cacheKey,
+    ownerBounds,
+    metaClusters,
+    radialMetricRanges: new Map(),
+  };
+  return isolateLayoutCache;
+};
+
+const getIsolateRadialMetricRange = (
+  cache: IsolateLayoutCache,
+  allSongs: Song[],
+  radialMetric: AxisMetric,
+  stats: LibraryStats
+): { min: number; max: number } => {
+  const cached = cache.radialMetricRanges.get(radialMetric);
+  if (cached) {
+    return cached;
+  }
+  const range = getMetricRange(allSongs, radialMetric, stats);
+  cache.radialMetricRanges.set(radialMetric, range);
+  return range;
 };
 
 export const layoutSongPosition = (
@@ -306,32 +421,26 @@ export const layoutSongPosition = (
     const ownerIds = getIsolateOwnerIds(allSongs, layoutContext.enabledOwnerIds);
     if (ownerIds.length > 0) {
       const scopeClusterId = getSongScopeClusterId(song);
-      const ownerBounds =
-        layoutContext.isolateOwnerBounds ??
-        computeAllIsolateOwnerBounds(
-          allSongs,
-          dimensions,
-          layoutConfig,
-          stats,
-          clusterOverrides,
-          layoutContext.enabledOwnerIds,
-          (soloSong, ownerSongs, ownerOverrides) =>
-            layoutSongPositionConglomerate(
-              soloSong,
-              dimensions,
-              layoutConfig,
-              buildLibraryStatsFromSongs(ownerSongs, stats.playlistNames),
-              customPositions,
-              ownerOverrides,
-              ownerSongs,
-              layoutContext.customCatalogForOwner?.(getSongScopeClusterId(soloSong)) ??
-                layoutContext.customClusterCatalog
-            )
-        );
-      const metaClusters = getEnabledOwnerMetaClusters(allSongs, dimensions, layoutContext.enabledOwnerIds, {
-        isAxisView: !isClusterView(layoutConfig),
-        ownerBounds,
-      });
+      const isolateCache = getIsolateLayoutCache(
+        allSongs,
+        dimensions,
+        layoutConfig,
+        stats,
+        clusterOverrides,
+        layoutContext,
+        (soloSong, ownerSongs, ownerOverrides, customCatalog) =>
+          layoutSongPositionConglomerate(
+            soloSong,
+            dimensions,
+            layoutConfig,
+            buildLibraryStatsFromSongs(ownerSongs, stats.playlistNames),
+            customPositions,
+            ownerOverrides,
+            ownerSongs,
+            customCatalog
+          )
+      );
+      const { ownerBounds, metaClusters } = isolateCache;
       const metaCluster = metaClusters.find((cluster) => cluster.id === scopeClusterId);
       if (metaCluster) {
         const metaCenter =
@@ -343,7 +452,7 @@ export const layoutSongPosition = (
         if (!isClusterView(layoutConfig)) {
           const radialMetric = layoutConfig.axisY === "year" ? layoutConfig.axisX : layoutConfig.axisY;
           const metricValue = getMetricValue(song, radialMetric) ?? song.year;
-          const metricRange = getMetricRange(allSongs, radialMetric, stats);
+          const metricRange = getIsolateRadialMetricRange(isolateCache, allSongs, radialMetric, stats);
           return wedgeIsolateAxisPosition(
             song,
             metricValue,
@@ -398,7 +507,8 @@ const layoutSongPositionConglomerate = (
   customClusterCatalog?: CustomClusterCatalog
 ): { x: number; y: number } => {
   if (!isClusterView(layoutConfig)) {
-    return axisMetricPosition(song, layoutConfig, stats, dimensions, songs);
+    const { xRange, yRange } = getAxisRanges(songs, layoutConfig, stats);
+    return axisMetricPosition(song, layoutConfig, stats, dimensions, xRange, yRange);
   }
 
   if (layoutConfig.clusterMode === "playlist") {
@@ -423,6 +533,11 @@ const layoutSongPositionConglomerate = (
   }
 
   return genreClusterPosition(song, stats, dimensions, clusterOverrides);
+};
+
+export const invalidateLayoutPositionCaches = (): void => {
+  isolateLayoutCache = null;
+  axisRangeCache = null;
 };
 
 export const buildInitialCustomPositions = (

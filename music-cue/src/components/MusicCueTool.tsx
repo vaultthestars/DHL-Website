@@ -6,6 +6,7 @@ import {
   getIsolateOwnerBoundsForLayout,
   getLayoutAxisLabels,
   GraphDimensions,
+  invalidateLayoutPositionCaches,
   layoutSongPosition,
   toNormalizedPosition,
 } from "../lib/graphLayout";
@@ -980,7 +981,8 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     [activeContributorIds, graphSongs, effectiveLibraryScopeMode]
   );
   const isolateOwnerCount = isolateOwnerIds.length;
-  const skipIsolateCentroidTranslation = isolateOwnerCount <= 1;
+  const isLargeLibrary = graphSongs.length >= LARGE_LIBRARY_LAYOUT_SNAP_THRESHOLD;
+  const skipIsolateCentroidTranslation = isolateOwnerCount <= 1 || isLargeLibrary;
 
   const clearFrozenIsolateBounds = useCallback(() => {
     frozenIsolateBoundsRef.current = null;
@@ -1213,10 +1215,15 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
   );
   const effectiveClusterRevealOpacity = clusterRevealOpacity;
 
-  const positionedSongs = useMemo(
-    () => renderGraphSongs.map((song) => ({ song, position: getRenderablePosition(song) })),
-    [getRenderablePosition, renderGraphSongs]
-  );
+  const positionedSongs = useMemo(() => {
+    if (isLargeLibrary) {
+      return renderGraphSongs.map((song) => ({
+        song,
+        position: computeLayoutPosition(song, layoutConfig),
+      }));
+    }
+    return renderGraphSongs.map((song) => ({ song, position: getRenderablePosition(song) }));
+  }, [computeLayoutPosition, getRenderablePosition, isLargeLibrary, layoutConfig, renderGraphSongs]);
 
   const songNodeFills = useMemo(() => {
     const fills = new Map<string, string>();
@@ -2670,6 +2677,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     ) => {
     const apply = () => {
       invalidatePlaylistOverlapLayoutCache();
+      invalidateLayoutPositionCaches();
       const normalized = normalizeSongs(loadedSongs, loadedStats);
       setSongs(normalized);
       setPlaylistOwners(owners);

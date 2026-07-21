@@ -31,6 +31,7 @@ export const useLayoutTransition = (
   getDisplayPosition: (song: Song) => GraphPoint;
   transition: LayoutTransitionState;
 } => {
+  const isLargeLibrary = visibleSongs.length >= LARGE_LIBRARY_LAYOUT_SNAP_THRESHOLD;
   const [animatedPositions, setAnimatedPositions] = useState<Map<string, GraphPoint>>(() => new Map());
   const [transition, setTransition] = useState<LayoutTransitionState>({
     progress: 1,
@@ -127,6 +128,10 @@ export const useLayoutTransition = (
   animatedPositionsRef.current = animatedPositions;
 
   useLayoutEffect(() => {
+    if (isLargeLibrary) {
+      return undefined;
+    }
+
     const previousLayout = prevLayoutRef.current;
     const previousTransitionKey = prevTransitionKeyRef.current;
     const toLayout = layoutConfig;
@@ -322,9 +327,13 @@ export const useLayoutTransition = (
       });
       animationRef.current = null;
     };
-  }, [dimensions.height, dimensions.width, extraTransitionKey, layoutConfig, visibleSongs]);
+  }, [dimensions.height, dimensions.width, extraTransitionKey, isLargeLibrary, layoutConfig, visibleSongs]);
 
   const getDisplayPosition = (song: Song): GraphPoint => {
+    if (isLargeLibrary) {
+      return computePositionRef.current(song, layoutConfig);
+    }
+
     if (transition.isAnimating) {
       const animated = animatedPositions.get(song.id);
       if (animated) {
