@@ -96,15 +96,24 @@ const upsertContributor = (index: SharedLibraryIndex, snapshot: SharedLibrarySna
   return { contributors };
 };
 
+const isMockContributorId = (contributorId: string): boolean => contributorId.startsWith("mock-user-");
+
+const filterMockContributors = (index: SharedLibraryIndex): SharedLibraryIndex => ({
+  contributors: index.contributors.filter((contributor) => !isMockContributorId(contributor.id)),
+});
+
 export const listSharedLibraryContributors = async (): Promise<SharedLibraryIndex> => {
   if (!useBlobStorage()) {
-    return readLocalIndex();
+    return filterMockContributors(readLocalIndex());
   }
   const index = await readBlobJson<SharedLibraryIndex>(INDEX_PATH);
-  return index ?? { contributors: [] };
+  return filterMockContributors(index ?? { contributors: [] });
 };
 
 export const getSharedLibrarySnapshot = async (contributorId: string): Promise<SharedLibrarySnapshot | null> => {
+  if (isMockContributorId(contributorId)) {
+    return null;
+  }
   if (!useBlobStorage()) {
     return readLocalSnapshot(contributorId);
   }

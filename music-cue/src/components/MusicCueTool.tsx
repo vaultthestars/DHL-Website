@@ -20,7 +20,13 @@ import {
   buildTerminalSavePlaylistCommand,
   CueTrack,
 } from "../lib/appleMusicScript";
-import { MusicServiceId } from "../lib/musicProvider";
+import {
+  buildSpotifyCueCsv,
+  buildSpotifyCueDownloadText,
+  buildSpotifyCueUrlList,
+  buildTerminalPlaySpotifyCueCommand,
+  toSpotifyCueTracks,
+} from "../lib/spotifyCueExport";
 import { isWebDeployment, areMockUsersEnabled } from "../lib/runtime";
 import {
   ClusterLayoutPublisher,
@@ -203,6 +209,18 @@ const copyTextToClipboard = async (text: string): Promise<void> => {
   document.body.removeChild(textarea);
 };
 
+const downloadTextFile = (filename: string, content: string): void => {
+  const blob = new Blob([content], { type: "text/plain;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = filename;
+  document.body.appendChild(anchor);
+  anchor.click();
+  document.body.removeChild(anchor);
+  URL.revokeObjectURL(url);
+};
+
 const DESKTOP_APP_STEPS = [
   "Download or clone the music-cue folder from this site's repo.",
   "Double-click Start Music Cue.command (macOS only).",
@@ -361,6 +379,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     message?: string;
     displayName?: string;
   } | null>(null);
+  const [spotifyUseLocalExport, setSpotifyUseLocalExport] = useState(false);
   const [sharedContributors, setSharedContributors] = useState<LibraryContributor[]>([]);
   const [songSpaceMode, setSongSpaceMode] = useState<SongSpaceMode>(() => loadSongSpaceMode());
   const [libraryScopeMode, setLibraryScopeMode] = useState<LibraryScopeMode>(() => loadLibraryScopeMode());
@@ -647,6 +666,13 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
   }, [musicService, onWelcomeNameChange, spotifyStatus]);
 
   useEffect(() => {
+    if (spotifyStatus?.connected) {
+      return;
+    }
+    setSpotifyUseLocalExport(false);
+  }, [spotifyStatus?.connected]);
+
+  useEffect(() => {
     songsRef.current = songs;
   }, [songs]);
 
@@ -736,6 +762,16 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
       return undefined;
     }
 
+    if (
+      isWebDeployment &&
+      musicService === "spotify" &&
+      (!spotifyStatus?.connected || spotifyUseLocalExport)
+    ) {
+      setUnavailableSongIds(new Set());
+      setIsValidatingLibrary(false);
+      return undefined;
+    }
+
     let cancelled = false;
 
     const validateLibrary = async () => {
@@ -776,7 +812,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     return () => {
       cancelled = true;
     };
-  }, [musicProvider, songs]);
+  }, [musicProvider, musicService, songs, spotifyStatus?.connected, spotifyUseLocalExport]);
 
   const songSpaceSongs = useMemo(
     () => filterSongsForSongSpace(songs, songSpaceMode, localContributorId),
@@ -2505,33 +2541,67 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     setIsolateBoundsRevision((value) => value + 1);
   }, [clearFrozenIsolateBounds, layoutConfig.clusterMode, layoutConfig.viewMode]);
 
-  const refreshSharedContributors = useCallback(async () => {
-    const contributors = await listSharedContributors(includeMockUsers);
-    setSharedContributors(contributors);
-    const contributorIds = getAllContributorIds(contributors);
-    if (isWebDeployment && musicService === "spotify" && contributorIds.length > 0) {
-      await applyMergedSharedLibrary(contributorIds, contributors);
-    }
-    return contributors;
-  }, [applyMergedSharedLibrary, includeMockUsers, musicService]);
+  const refreshSharedContributors = useCallback(
+    async (options?: { loadLibrary?: boolean }) => {
+      const contributors = await listSharedContributors(includeMockUsers);
+      setSharedContributors(contributors);
+      const contributorIds = getAllContributorIds(contributors);
+      const shouldLoadLibrary = options?.loadLibrary ?? songSpaceMode === "shared";
+      if (
+        isWebDeployment &&
+        musicService === "spotify" &&
+        contributorIds.length > 0 &&
+        shouldLoadLibrary
+      ) {
+        await applyMergedSharedLibrary(contributorIds, contributors);
+      }
+      return contributors;
+    },
+    [applyMergedSharedLibrary, includeMockUsers, musicService, songSpaceMode]
+  );
 
   useEffect(() => {
     if (!isWebDeployment || musicService !== "spotify") {
       return;
     }
-    void refreshSharedContributors().catch(() => {
+    void refreshSharedContributors({ loadLibrary: loadSongSpaceMode() === "shared" }).catch(() => {
       // Shared libraries are optional until someone publishes.
     });
   }, [musicService, refreshSharedContributors]);
 
+  useEffect(() => {
+    if (!isWebDeployment || musicService !== "spotify" || spotifyStatus?.connected || songSpaceMode === "shared") {
+      return;
+    }
+    clearFrozenIsolateBounds();
+    setSongSpaceMode("shared");
+    saveSongSpaceMode("shared");
+    reloadLayoutCaches(getActiveClusterLayoutScope("shared", libraryScopeMode));
+    void refreshSharedContributors({ loadLibrary: true });
+  }, [
+    clearFrozenIsolateBounds,
+    libraryScopeMode,
+    musicService,
+    reloadLayoutCaches,
+    refreshSharedContributors,
+    songSpaceMode,
+    spotifyStatus?.connected,
+  ]);
+
   const handleSongSpaceChange = (mode: SongSpaceMode) => {
     if (mode === songSpaceMode) {
+      return;
+    }
+    if (mode === "mine" && isWebDeployment && musicService === "spotify" && !spotifyStatus?.connected) {
       return;
     }
     clearFrozenIsolateBounds();
     setSongSpaceMode(mode);
     saveSongSpaceMode(mode);
     reloadLayoutCaches(getActiveClusterLayoutScope(mode, libraryScopeMode));
+    if (mode === "shared") {
+      void refreshSharedContributors({ loadLibrary: true });
+    }
     setStatusMessage(
       mode === "mine"
         ? "My song space — your library layout and clusters."
@@ -2553,7 +2623,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
   };
 
   const handleRefreshSharedLibrary = () => {
-    void refreshSharedContributors();
+    void refreshSharedContributors({ loadLibrary: true });
   };
 
   const handlePublishSharedLibrary = async () => {
@@ -2561,7 +2631,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     try {
       const published = await publishSharedLibrary();
       saveLocalContributorId(published.contributor.id);
-      await refreshSharedContributors();
+      await refreshSharedContributors({ loadLibrary: true });
       setStatusMessage(
         `Published ${published.trackCount} tracks as ${published.contributor.name} to the shared library.`
       );
@@ -2631,7 +2701,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
         try {
           const published = await publishSharedLibrary();
           saveLocalContributorId(published.contributor.id);
-          await refreshSharedContributors();
+          await refreshSharedContributors({ loadLibrary: true });
           setStatusMessage(
             `Loaded and shared ${published.trackCount} tracks as ${published.contributor.name}.`
           );
@@ -2776,6 +2846,10 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
   };
 
   const isWebAppleMusic = isWebDeployment && musicService === "apple-music";
+  const isWebSpotify = isWebDeployment && musicService === "spotify";
+  const canUseSpotifyApi = !isWebSpotify || (spotifyStatus?.connected === true && !spotifyUseLocalExport);
+  const useSpotifyLocalExport = isWebSpotify && !canUseSpotifyApi;
+  const showMySongSpace = !isWebSpotify || spotifyStatus?.connected === true;
 
   const exportTerminalCommand = useMemo(() => {
     if (!cue || !isWebAppleMusic) {
@@ -2785,12 +2859,68 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     return buildTerminalSavePlaylistCommand(toCueTracks(cue.songs), playlistName);
   }, [cue, exportPlaylistName, isWebAppleMusic]);
 
+  const exportSpotifyLinksText = useMemo(() => {
+    if (!cue || !useSpotifyLocalExport) {
+      return "";
+    }
+    return buildSpotifyCueUrlList(cue.songs);
+  }, [cue, useSpotifyLocalExport]);
+
+  const exportSpotifyTerminalCommand = useMemo(() => {
+    if (!cue || !useSpotifyLocalExport) {
+      return "";
+    }
+    return buildTerminalPlaySpotifyCueCommand(cue.songs);
+  }, [cue, useSpotifyLocalExport]);
+
   const handleCopyExportCommand = async () => {
+    if (useSpotifyLocalExport) {
+      if (!exportSpotifyLinksText) {
+        return;
+      }
+      await copyTextToClipboard(exportSpotifyLinksText);
+      setStatusMessage("Copied Spotify track links. Import them at tunemymusic.com to play in your account.");
+      return;
+    }
     if (!exportTerminalCommand) {
       return;
     }
     await copyTextToClipboard(exportTerminalCommand);
     setStatusMessage("Copied Music.app playlist command. Paste into Terminal on your Mac.");
+  };
+
+  const handleCopySpotifyPlayCommand = async () => {
+    if (!exportSpotifyTerminalCommand) {
+      return;
+    }
+    await copyTextToClipboard(exportSpotifyTerminalCommand);
+    setStatusMessage("Copied Spotify play command. Paste into Terminal on your Mac (starts the cue in the desktop app).");
+  };
+
+  const handleDownloadSpotifyCue = () => {
+    if (!cue) {
+      return;
+    }
+    const content = buildSpotifyCueDownloadText(cue.songs);
+    if (!content.trim()) {
+      setStatusMessage("No Spotify track IDs in this cue.");
+      return;
+    }
+    downloadTextFile("music-cue-spotify.txt", content);
+    setStatusMessage("Downloaded Spotify cue file with import instructions and track links.");
+  };
+
+  const handleDownloadSpotifyCueCsv = () => {
+    if (!cue) {
+      return;
+    }
+    const content = buildSpotifyCueCsv(cue.songs);
+    if (!content.trim()) {
+      setStatusMessage("No Spotify track IDs in this cue.");
+      return;
+    }
+    downloadTextFile("music-cue-spotify.csv", content);
+    setStatusMessage("Downloaded CSV for playlist import tools (e.g. TuneMyMusic).");
   };
 
   const handleSavePlaylist = async () => {
@@ -2806,6 +2936,19 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     if (isWebAppleMusic) {
       await copyTextToClipboard(exportTerminalCommand);
       setStatusMessage(`Copied terminal command for playlist "${playlistName}". Paste into Terminal on your Mac.`);
+      setExportDialogOpen(false);
+      return;
+    }
+
+    if (useSpotifyLocalExport) {
+      if (!exportSpotifyLinksText) {
+        setStatusMessage("No Spotify track IDs in this cue.");
+        return;
+      }
+      await copyTextToClipboard(exportSpotifyLinksText);
+      setStatusMessage(
+        `Copied ${cue.songs.length} Spotify links for "${playlistName}". Import at tunemymusic.com to add them to your account.`
+      );
       setExportDialogOpen(false);
       return;
     }
@@ -2849,6 +2992,18 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
       }
       return;
     }
+    if (useSpotifyLocalExport) {
+      const links = buildSpotifyCueUrlList(cue.songs);
+      if (!links) {
+        setStatusMessage("No Spotify track IDs in this cue.");
+        return;
+      }
+      await copyTextToClipboard(links);
+      setStatusMessage(
+        `Copied ${cue.songs.length} Spotify links. Paste into TuneMyMusic (tunemymusic.com) to create a playlist in your account, then play it in Spotify.`
+      );
+      return;
+    }
     try {
       const result = await musicProvider.playCue(cue.songs);
       setActivePlaylistName(result.playlistName);
@@ -2876,7 +3031,19 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
         );
       }
     } catch (error) {
-      setStatusMessage(error instanceof Error ? error.message : "Could not play cue.");
+      const message = error instanceof Error ? error.message : "Could not play cue.";
+      if (isWebSpotify && message.toLowerCase().includes("allowlist")) {
+        const links = buildSpotifyCueUrlList(cue.songs);
+        if (links) {
+          await copyTextToClipboard(links);
+          setSpotifyUseLocalExport(true);
+          setStatusMessage(
+            "This Spotify account isn't allowlisted for in-browser playback yet. Copied track links — import at tunemymusic.com or use Export for Spotify."
+          );
+          return;
+        }
+      }
+      setStatusMessage(message);
     }
   };
 
@@ -3017,7 +3184,11 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
           >
             <div className="music-cue-modal-titlebar">
               <span id="music-cue-export-dialog-title" className="music-cue-modal-title">
-                {isWebAppleMusic ? "Copy Music.app command" : "Export playlist"}
+                {isWebAppleMusic
+                  ? "Copy Music.app command"
+                  : useSpotifyLocalExport
+                    ? "Export cue to your Spotify"
+                    : "Export playlist"}
               </span>
             </div>
             <div className="music-cue-modal-body">
@@ -3052,6 +3223,35 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
                   />
                 </>
               )}
+              {useSpotifyLocalExport ? (
+                <>
+                  <p className="music-cue-modal-hint">
+                    Spotify&apos;s developer allowlist blocks in-browser playback for guests. Copy the track
+                    links below and import them at{" "}
+                    <a href="https://www.tunemymusic.com/transfer" target="_blank" rel="noreferrer">
+                      TuneMyMusic
+                    </a>{" "}
+                    to create a playlist in your own Spotify account. On a Mac with the Spotify desktop app,
+                    you can also copy the Terminal play command to start the first track.
+                  </p>
+                  <textarea
+                    className="music-cue-terminal-command"
+                    readOnly
+                    value={exportSpotifyLinksText}
+                    rows={10}
+                    onFocus={(event) => event.currentTarget.select()}
+                  />
+                  {exportSpotifyTerminalCommand ? (
+                    <textarea
+                      className="music-cue-terminal-command"
+                      readOnly
+                      value={exportSpotifyTerminalCommand}
+                      rows={6}
+                      onFocus={(event) => event.currentTarget.select()}
+                    />
+                  ) : null}
+                </>
+              ) : null}
             </div>
             <div className="music-cue-modal-actions">
               {isWebAppleMusic ? (
@@ -3062,6 +3262,34 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
                 >
                   Copy command
                 </button>
+              ) : useSpotifyLocalExport ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => void handleCopyExportCommand()}
+                    disabled={!exportSpotifyLinksText}
+                  >
+                    Copy links
+                  </button>
+                  <button type="button" onClick={handleDownloadSpotifyCue} disabled={!exportSpotifyLinksText}>
+                    Download .txt
+                  </button>
+                  <button type="button" onClick={handleDownloadSpotifyCueCsv} disabled={!exportSpotifyLinksText}>
+                    Download .csv
+                  </button>
+                  {exportSpotifyTerminalCommand ? (
+                    <button type="button" onClick={() => void handleCopySpotifyPlayCommand()}>
+                      Copy Mac play command
+                    </button>
+                  ) : null}
+                  <button
+                    type="button"
+                    onClick={() => void handleSavePlaylist()}
+                    disabled={!exportPlaylistName.trim() || !exportSpotifyLinksText}
+                  >
+                    Copy links &amp; close
+                  </button>
+                </>
               ) : (
                 <button
                   type="button"
@@ -3072,7 +3300,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
                 </button>
               )}
               <button type="button" onClick={handleCloseExportDialog} disabled={isExportingPlaylist}>
-                {isWebAppleMusic ? "Close" : "Cancel"}
+                {isWebAppleMusic || useSpotifyLocalExport ? "Close" : "Cancel"}
               </button>
             </div>
           </div>
@@ -3223,13 +3451,15 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
           {isWebDeployment && musicService === "spotify" ? (
             <div className="music-cue-shared-controls">
               <div className="music-cue-layout-toggle music-cue-scope-toggle" role="group" aria-label="Song space">
-                <button
-                  type="button"
-                  className={songSpaceMode === "mine" ? "music-cue-layout-active" : ""}
-                  onClick={() => handleSongSpaceChange("mine")}
-                >
-                  My song space
-                </button>
+                {showMySongSpace ? (
+                  <button
+                    type="button"
+                    className={songSpaceMode === "mine" ? "music-cue-layout-active" : ""}
+                    onClick={() => handleSongSpaceChange("mine")}
+                  >
+                    My song space
+                  </button>
+                ) : null}
                 <button
                   type="button"
                   className={songSpaceMode === "shared" ? "music-cue-layout-active" : ""}
@@ -3746,12 +3976,25 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
               <button
                 type="button"
                 onClick={handlePlayCue}
-                disabled={!cue || (!isValidatingLibrary && cueSummary?.playableCount === 0)}
+                disabled={
+                  !cue ||
+                  (useSpotifyLocalExport
+                    ? toSpotifyCueTracks(cue.songs).length === 0
+                    : !isValidatingLibrary && cueSummary?.playableCount === 0)
+                }
               >
-                {isWebAppleMusic ? "Copy play command" : "Play"}
+                {isWebAppleMusic
+                  ? "Copy play command"
+                  : useSpotifyLocalExport
+                    ? "Copy Spotify links"
+                    : "Play"}
               </button>
               <button type="button" onClick={handleOpenExportDialog} disabled={!cue}>
-                {isWebAppleMusic ? "Copy playlist command" : "Export playlist"}
+                {isWebAppleMusic
+                  ? "Copy playlist command"
+                  : useSpotifyLocalExport
+                    ? "Export for Spotify"
+                    : "Export playlist"}
               </button>
               {buildMode === "manual" && (
                 <button type="button" onClick={handleUndo} disabled={!canUndo}>

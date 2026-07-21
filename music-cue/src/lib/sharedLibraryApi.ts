@@ -125,8 +125,7 @@ export const loadSongSpaceMode = (): SongSpaceMode => {
   if (stored === "mine" || stored === "shared") {
     return stored;
   }
-  const enabled = loadEnabledContributorIds();
-  return enabled.length <= 1 ? "mine" : "shared";
+  return "shared";
 };
 
 export const saveSongSpaceMode = (mode: SongSpaceMode): void => {
@@ -184,7 +183,8 @@ export const filterSongsForSongSpace = (
     return songs;
   }
   if (!localContributorId) {
-    return songs;
+    // Without a published identity, "mine" is only the locally loaded library (no shared owners).
+    return songs.filter((song) => (song.owners ?? []).length === 0);
   }
   return songs.filter((song) => {
     const owners = song.owners ?? [];
