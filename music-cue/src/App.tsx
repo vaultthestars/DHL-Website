@@ -42,7 +42,7 @@ const TitleBar = ({
       <span className="win95-titlebar-text">
         {WINDOW_TITLE}
         {welcomeName ? (
-          <span className="win95-titlebar-welcome"> · Welcome, {welcomeName}?</span>
+          <span className="win95-titlebar-welcome"> · Welcome, {welcomeName}</span>
         ) : null}
       </span>
     </div>

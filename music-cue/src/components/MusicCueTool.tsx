@@ -92,6 +92,8 @@ import {
   normalizeLayoutConfigForService,
 } from "../lib/layoutMetrics";
 import {
+  filterSongsForSongSpace,
+  getAllContributorIds,
   listSharedContributors,
   disableMockUsersForWeb,
   loadMergedSharedLibrary,
@@ -776,10 +778,15 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     };
   }, [musicProvider, songs]);
 
+  const songSpaceSongs = useMemo(
+    () => filterSongsForSongSpace(songs, songSpaceMode, localContributorId),
+    [localContributorId, songSpaceMode, songs]
+  );
+
   const visibleSongs = useMemo(() => {
     const query = searchFilter.trim().toLowerCase();
     const minPlays = Number(minPlayCount) || 0;
-    return songs.filter((song) => {
+    return songSpaceSongs.filter((song) => {
       if (musicService === "apple-music" && genreFilter && song.genre !== genreFilter) {
         return false;
       }
@@ -792,7 +799,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
       const haystack = `${song.title} ${song.artist} ${song.album} ${song.genre}`.toLowerCase();
       return haystack.includes(query);
     });
-  }, [genreFilter, minPlayCount, musicService, searchFilter, songs]);
+  }, [genreFilter, minPlayCount, musicService, searchFilter, songSpaceSongs]);
 
   const isolateGraphSongs = useCallback(
     (sourceSongs: Song[]) => {
@@ -1048,7 +1055,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     [computeLayoutPosition, layoutConfig]
   );
 
-  const layoutTransitionKey = songSpaceMode;
+  const layoutTransitionKey = `${songSpaceMode}:${libraryScopeMode}`;
 
   const { getDisplayPosition, transition } = useLayoutTransition(
     layoutConfig,
@@ -2456,7 +2463,6 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     async (contributorIds: string[], contributors: LibraryContributor[]) => {
       if (contributorIds.length === 0) {
         setSharedTrackCount(0);
-        applyLoadedLibrary([], defaultStats(), "No contributors selected.");
         return;
       }
       setIsLoadingSharedLibrary(true);
@@ -2502,16 +2508,12 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
   const refreshSharedContributors = useCallback(async () => {
     const contributors = await listSharedContributors(includeMockUsers);
     setSharedContributors(contributors);
-    const contributorIds = resolveActiveContributorIds(
-      songSpaceMode,
-      resolveLocalContributorId(includeMockUsers, contributors),
-      contributors
-    );
-    if (isWebDeployment && musicService === "spotify" && contributors.length > 0) {
+    const contributorIds = getAllContributorIds(contributors);
+    if (isWebDeployment && musicService === "spotify" && contributorIds.length > 0) {
       await applyMergedSharedLibrary(contributorIds, contributors);
     }
     return contributors;
-  }, [applyMergedSharedLibrary, includeMockUsers, musicService, songSpaceMode]);
+  }, [applyMergedSharedLibrary, includeMockUsers, musicService]);
 
   useEffect(() => {
     if (!isWebDeployment || musicService !== "spotify") {
@@ -2530,12 +2532,11 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     setSongSpaceMode(mode);
     saveSongSpaceMode(mode);
     reloadLayoutCaches(getActiveClusterLayoutScope(mode, libraryScopeMode));
-    const contributorIds = resolveActiveContributorIds(
-      mode,
-      resolveLocalContributorId(includeMockUsers, sharedContributors),
-      sharedContributors
+    setStatusMessage(
+      mode === "mine"
+        ? "My song space — your library layout and clusters."
+        : "Shared song space — collaborative library view."
     );
-    void applyMergedSharedLibrary(contributorIds, sharedContributors);
   };
 
   const handleIsolateToggle = () => {
@@ -2972,12 +2973,10 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
       reloadLayoutCaches(
         getActiveClusterLayoutScope(settings.songSpaceMode, settings.libraryScopeMode)
       );
-      const contributorIds = resolveActiveContributorIds(
-        settings.songSpaceMode,
-        resolveLocalContributorId(includeMockUsers, sharedContributors),
-        sharedContributors
-      );
-      void applyMergedSharedLibrary(contributorIds, sharedContributors);
+      const contributorIds = getAllContributorIds(sharedContributors);
+      if (contributorIds.length > 0) {
+        void applyMergedSharedLibrary(contributorIds, sharedContributors);
+      }
       setStatusMessage("Synced view with collaborator.");
     },
     [

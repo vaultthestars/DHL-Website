@@ -175,6 +175,29 @@ export const resolveActiveContributorIds = (
     .filter((contributorId) => !isMockContributorId(contributorId));
 };
 
+export const filterSongsForSongSpace = (
+  songs: Array<{ id: string; owners?: Array<{ id: string }> }>,
+  songSpaceMode: SongSpaceMode,
+  localContributorId: string | null
+): typeof songs => {
+  if (songSpaceMode !== "mine") {
+    return songs;
+  }
+  if (!localContributorId) {
+    return songs;
+  }
+  return songs.filter((song) => {
+    const owners = song.owners ?? [];
+    if (owners.length === 0) {
+      return true;
+    }
+    return owners.some((owner) => owner.id === localContributorId);
+  });
+};
+
+export const getAllContributorIds = (contributors: LibraryContributor[]): string[] =>
+  contributors.map((contributor) => contributor.id).filter((id) => !isMockContributorId(id));
+
 export const saveEnabledContributorIds = (contributorIds: string[]): void => {
   localStorage.setItem(ENABLED_CONTRIBUTORS_KEY, JSON.stringify(contributorIds));
 };
