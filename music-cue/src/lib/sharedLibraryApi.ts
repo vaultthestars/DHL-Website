@@ -65,36 +65,68 @@ export const loadMergedSharedLibrary = async (
   const realIds = selectedIds.filter((contributorId) => !isMockContributorId(contributorId));
   const mockIds = selectedIds.filter((contributorId) => isMockContributorId(contributorId));
 
-  const snapshots: SharedLibrarySnapshot[] = [];
+  let mergedFromServer: MergedLibrary | null = null;
   if (realIds.length > 0) {
-    const realSnapshots = await Promise.all(realIds.map((contributorId) => fetchSharedLibrarySnapshot(contributorId)));
-    snapshots.push(...realSnapshots.filter((snapshot): snapshot is SharedLibrarySnapshot => snapshot !== null));
+    mergedFromServer = await fetchJson<MergedLibrary>(
+      `/api/shared-libraries/merge?contributors=${encodeURIComponent(realIds.join(","))}`
+    );
+    if (mergedFromServer.songs.length === 0) {
+      throw new Error(
+        "Shared library is listed but could not be loaded. Ask the owner to re-share, or try Refresh shared."
+      );
+    }
   }
+
+  const snapshots: SharedLibrarySnapshot[] = [];
   if (mockIds.length > 0 && canUseClientMocks(includeMockUsers)) {
     const { getMockSnapshots } = await import("./mockLibraries");
     snapshots.push(...getMockSnapshots(mockIds));
   }
 
   if (snapshots.length === 0) {
+    if (!mergedFromServer) {
+      return {
+        songs: [],
+        stats: {
+          minYear: 1970,
+          maxYear: new Date().getFullYear(),
+          genres: [],
+          genreCounts: {},
+          maxPlayCount: 1,
+          playlistIds: [],
+          playlistNames: {},
+          playlistCounts: {},
+        },
+        sharedTrackCount: 0,
+        playlistOwners: {},
+        contributors: [],
+      };
+    }
+    const contributors = await listSharedContributors(includeMockUsers);
     return {
-      songs: [],
-      stats: {
-        minYear: 1970,
-        maxYear: new Date().getFullYear(),
-        genres: [],
-        genreCounts: {},
-        maxPlayCount: 1,
-        playlistIds: [],
-        playlistNames: {},
-        playlistCounts: {},
-      },
-      sharedTrackCount: 0,
-      playlistOwners: {},
-      contributors: [],
+      ...mergedFromServer,
+      contributors: contributors.filter((contributor) => selectedIds.includes(contributor.id)),
     };
   }
 
   const merged = mergeSharedLibrarySnapshots(snapshots);
+  if (mergedFromServer) {
+    const combined = mergeSharedLibrarySnapshots([
+      {
+        contributor: { id: "server-merge", name: "Shared" },
+        updatedAt: new Date().toISOString(),
+        songs: mergedFromServer.songs,
+        stats: mergedFromServer.stats,
+      },
+      ...snapshots,
+    ]);
+    const contributors = await listSharedContributors(includeMockUsers);
+    return {
+      ...combined,
+      contributors: contributors.filter((contributor) => selectedIds.includes(contributor.id)),
+    };
+  }
+
   const contributors = await listSharedContributors(includeMockUsers);
   return {
     ...merged,
