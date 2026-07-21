@@ -10,6 +10,8 @@ import {
 } from "./spotifyImportStorage";
 
 const CONNECTED_USER_KEY = "music-cue-spotify-connected-user";
+const SESSION_KEY = "music-cue-spotify-import-session";
+const HINT_KEY = "music-cue-spotify-import-hint";
 
 export const saveConnectedSpotifyUser = (contributor: { id: string; name: string }): void => {
   localStorage.setItem(CONNECTED_USER_KEY, JSON.stringify(contributor));
@@ -34,8 +36,6 @@ export const loadConnectedSpotifyUser = (): { id: string; name: string } | null 
 export const clearConnectedSpotifyUser = (): void => {
   localStorage.removeItem(CONNECTED_USER_KEY);
 };
-
-const HINT_KEY = "music-cue-spotify-import-hint";
 
 export type SpotifyImportPhase = "saved-tracks" | "playlists" | "playlist-tracks" | "genres";
 
