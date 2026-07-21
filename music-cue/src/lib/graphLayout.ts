@@ -1,4 +1,4 @@
-import { ClusterCenterOverrides, LayoutConfig, LibraryStats, NormalizedPoint, Song } from "./types";
+import { ClusterCenterOverrides, GraphPoint, LayoutConfig, LibraryStats, NormalizedPoint, Song } from "./types";
 import {
   getAxisMetricLabel,
   getMetricRange,
@@ -15,26 +15,27 @@ import {
   getEnabledOwnerMetaClusters,
   getSongScopeClusterId,
   LibraryScopeMode,
-  radialIsolateAxisPosition,
   songsForOwnerScope,
-  transformToMetaCluster,
+  wedgeIsolateAxisPosition,
 } from "./libraryScope";
+import {
+  computeAllIsolateOwnerBounds,
+  getClusterOverridesForOwner,
+  getIsolateOwnerIds,
+  translateSoloLayoutToMetaCluster,
+} from "./isolateClusterLayout";
 import { MusicServiceId } from "./musicProvider";
 
 const GRAPH_PADDING = 48;
-const INNER_SCOPE_DIMENSIONS: GraphDimensions = { width: 400, height: 400 };
 
 export type LayoutContext = {
   libraryScopeMode?: LibraryScopeMode;
   enabledOwnerIds?: string[];
-};
-
-const hasMultipleLibraryOwners = (songs: Song[]): boolean => {
-  const ownerIds = new Set<string>();
-  songs.forEach((song) => {
-    (song.owners ?? []).forEach((owner) => ownerIds.add(owner.id));
-  });
-  return ownerIds.size > 1;
+  isolateOwnerBounds?: Map<string, { centroid: GraphPoint; radius: number }>;
+  /** When true, inner clusters use solo-layout coordinates (single metacluster isolate). */
+  skipIsolateCentroidTranslation?: boolean;
+  /** Optional animated override for metacluster centers during layout reposition. */
+  metaClusterCenterForOwner?: (ownerId: string, defaultCenter: GraphPoint) => GraphPoint;
 };
 
 export type GraphDimensions = {
@@ -296,38 +297,73 @@ export const layoutSongPosition = (
   const libraryScopeMode = layoutContext.libraryScopeMode ?? "conglomerate";
   const allSongs = songs.length > 0 ? songs : [song];
 
-  if (libraryScopeMode === "isolate" && hasMultipleLibraryOwners(allSongs)) {
-    const metaClusters = getEnabledOwnerMetaClusters(allSongs, dimensions, layoutContext.enabledOwnerIds);
-    const scopeClusterId = getSongScopeClusterId(song);
-    const metaCluster = metaClusters.find((cluster) => cluster.id === scopeClusterId);
-    if (metaCluster) {
-      const ownerSongs = songsForOwnerScope(allSongs, scopeClusterId);
-      const ownerStats = buildLibraryStatsFromSongs(ownerSongs, stats.playlistNames);
-
-      if (!isClusterView(layoutConfig)) {
-        const radialMetric = layoutConfig.axisY === "year" ? layoutConfig.axisX : layoutConfig.axisY;
-        const metricValue = getMetricValue(song, radialMetric) ?? song.year;
-        const metricRange = getMetricRange(ownerSongs, radialMetric, ownerStats);
-        return radialIsolateAxisPosition(
-          song,
-          metricValue,
-          metricRange.min,
-          metricRange.max,
-          metaCluster,
-          radialMetric
+  if (libraryScopeMode === "isolate") {
+    const ownerIds = getIsolateOwnerIds(allSongs, layoutContext.enabledOwnerIds);
+    if (ownerIds.length > 0) {
+      const scopeClusterId = getSongScopeClusterId(song);
+      const ownerBounds =
+        layoutContext.isolateOwnerBounds ??
+        computeAllIsolateOwnerBounds(
+          allSongs,
+          dimensions,
+          layoutConfig,
+          stats,
+          clusterOverrides,
+          layoutContext.enabledOwnerIds,
+          (soloSong, ownerSongs, ownerOverrides) =>
+            layoutSongPositionConglomerate(
+              soloSong,
+              dimensions,
+              layoutConfig,
+              buildLibraryStatsFromSongs(ownerSongs, stats.playlistNames),
+              customPositions,
+              ownerOverrides,
+              ownerSongs
+            )
         );
-      }
+      const metaClusters = getEnabledOwnerMetaClusters(allSongs, dimensions, layoutContext.enabledOwnerIds, {
+        isAxisView: !isClusterView(layoutConfig),
+        ownerBounds,
+      });
+      const metaCluster = metaClusters.find((cluster) => cluster.id === scopeClusterId);
+      if (metaCluster) {
+        const metaCenter =
+          layoutContext.metaClusterCenterForOwner?.(scopeClusterId, metaCluster.center) ??
+          metaCluster.center;
+        const ownerSongs = songsForOwnerScope(allSongs, scopeClusterId);
+        const ownerStats = buildLibraryStatsFromSongs(ownerSongs, stats.playlistNames);
 
-      const innerPosition = layoutSongPositionConglomerate(
-        song,
-        INNER_SCOPE_DIMENSIONS,
-        layoutConfig,
-        ownerStats,
-        customPositions,
-        clusterOverrides,
-        ownerSongs
-      );
-      return transformToMetaCluster(innerPosition, INNER_SCOPE_DIMENSIONS, metaCluster);
+        if (!isClusterView(layoutConfig)) {
+          const radialMetric = layoutConfig.axisY === "year" ? layoutConfig.axisX : layoutConfig.axisY;
+          const metricValue = getMetricValue(song, radialMetric) ?? song.year;
+          const metricRange = getMetricRange(allSongs, radialMetric, stats);
+          return wedgeIsolateAxisPosition(
+            song,
+            metricValue,
+            metricRange.min,
+            metricRange.max,
+            { ...metaCluster, center: metaCenter },
+            ownerSongs,
+            radialMetric
+          );
+        }
+
+        const ownerOverrides = getClusterOverridesForOwner(clusterOverrides, scopeClusterId, layoutConfig);
+        const soloPosition = layoutSongPositionConglomerate(
+          song,
+          dimensions,
+          layoutConfig,
+          ownerStats,
+          customPositions,
+          ownerOverrides,
+          ownerSongs
+        );
+        const bounds = ownerBounds.get(scopeClusterId);
+        if (bounds && !layoutContext.skipIsolateCentroidTranslation) {
+          return translateSoloLayoutToMetaCluster(soloPosition, bounds, metaCenter);
+        }
+        return soloPosition;
+      }
     }
   }
 
@@ -400,3 +436,30 @@ export const getLayoutAxisLabels = (
     y: `${getAxisMetricLabel(layoutConfig.axisY, serviceId)} →`,
   };
 };
+
+export const getIsolateOwnerBoundsForLayout = (
+  graphSongs: Song[],
+  dimensions: GraphDimensions,
+  layoutConfig: LayoutConfig,
+  stats: LibraryStats,
+  clusterOverrides: ClusterCenterOverrides,
+  enabledOwnerIds?: string[]
+): Map<string, { centroid: GraphPoint; radius: number }> =>
+  computeAllIsolateOwnerBounds(
+    graphSongs,
+    dimensions,
+    layoutConfig,
+    stats,
+    clusterOverrides,
+    enabledOwnerIds,
+    (soloSong, ownerSongs, ownerOverrides) =>
+      layoutSongPositionConglomerate(
+        soloSong,
+        dimensions,
+        layoutConfig,
+        buildLibraryStatsFromSongs(ownerSongs, stats.playlistNames),
+        {},
+        ownerOverrides,
+        ownerSongs
+      )
+  );

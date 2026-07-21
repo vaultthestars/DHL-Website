@@ -41,7 +41,7 @@ const buildSnapshot = (id: string, name: string, seeds: MockTrackSeed[]): Shared
   };
 };
 
-const SHARED: MockTrackSeed[] = [
+const AUGUST_EXTRA: MockTrackSeed[] = [
   {
     id: "3n3Ppam7vgaVa1iaRUc9Lp",
     title: "Mr. Brightside",
@@ -72,7 +72,7 @@ const SHARED: MockTrackSeed[] = [
     genre: "Synthpop",
     year: 2019,
     playCount: 88,
-    playlistId: "SHARED_NIGHT",
+    playlistId: "AUGUST_NIGHT",
     playlistName: "Late night drive",
   },
   {
@@ -83,7 +83,7 @@ const SHARED: MockTrackSeed[] = [
     genre: "Electronic",
     year: 2011,
     playCount: 77,
-    playlistId: "SHARED_NIGHT",
+    playlistId: "AUGUST_NIGHT",
     playlistName: "Late night drive",
   },
   {
@@ -94,8 +94,8 @@ const SHARED: MockTrackSeed[] = [
     genre: "Art Pop",
     year: 2016,
     playCount: 81,
-    playlistId: "SHARED_FEELS",
-    playlistName: "Shared feels",
+    playlistId: "AUGUST_FEELS",
+    playlistName: "August feels",
   },
   {
     id: "4VqPOruhp5EdPBeR92za8a",
@@ -105,7 +105,7 @@ const SHARED: MockTrackSeed[] = [
     genre: "Hip-Hop",
     year: 2018,
     playCount: 83,
-    playlistId: "SHARED_PARTY",
+    playlistId: "AUGUST_PARTY",
     playlistName: "House party",
   },
 ];
@@ -152,8 +152,8 @@ const AUGUST_ONLY: MockTrackSeed[] = [
     genre: "Art Pop",
     year: 2016,
     playCount: 70,
-    playlistId: "SHARED_FEELS",
-    playlistName: "Shared feels",
+    playlistId: "AUGUST_FEELS",
+    playlistName: "August feels",
   },
   {
     id: "1C7QSS4WMj7AI2KTojK2M1",
@@ -424,17 +424,11 @@ export const MOCK_CONTRIBUTOR_IDS = {
 
 const MOCK_SNAPSHOTS: Record<string, SharedLibrarySnapshot> = {
   [MOCK_CONTRIBUTOR_IDS.august]: buildSnapshot(MOCK_CONTRIBUTOR_IDS.august, "August", dedupeSeeds([
-    ...SHARED,
+    ...AUGUST_EXTRA,
     ...AUGUST_ONLY,
   ])),
-  [MOCK_CONTRIBUTOR_IDS.riley]: buildSnapshot(MOCK_CONTRIBUTOR_IDS.riley, "Riley", dedupeSeeds([
-    ...SHARED,
-    ...RILEY_ONLY,
-  ])),
-  [MOCK_CONTRIBUTOR_IDS.sam]: buildSnapshot(MOCK_CONTRIBUTOR_IDS.sam, "Sam", dedupeSeeds([
-    ...SHARED,
-    ...SAM_ONLY,
-  ])),
+  [MOCK_CONTRIBUTOR_IDS.riley]: buildSnapshot(MOCK_CONTRIBUTOR_IDS.riley, "Riley", dedupeSeeds(RILEY_ONLY)),
+  [MOCK_CONTRIBUTOR_IDS.sam]: buildSnapshot(MOCK_CONTRIBUTOR_IDS.sam, "Sam", dedupeSeeds(SAM_ONLY)),
 };
 
 export const getMockContributors = (): LibraryContributor[] =>

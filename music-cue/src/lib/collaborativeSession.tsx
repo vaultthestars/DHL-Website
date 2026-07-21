@@ -15,6 +15,7 @@ import { usePlayerIdentity, usePresence } from "@playhtml/react";
 import { fromNormalizedPosition, type GraphDimensions } from "./graphLayout";
 import { graphPointToPanelPosition, type ViewTransform } from "./graphView";
 import type { LibraryScopeMode } from "./libraryScope";
+import type { SongSpaceMode } from "./sharedLibraryApi";
 import { layoutConfigKey } from "./layoutMetrics";
 import { isWebDeployment } from "./runtime";
 import type { LayoutConfig, NormalizedPoint } from "./types";
@@ -24,7 +25,7 @@ export const SESSION_PRESENCE_CHANNEL = "session";
 export type CollaborativeViewSettings = {
   layoutConfig: LayoutConfig;
   libraryScopeMode: LibraryScopeMode;
-  enabledContributorIds: string[];
+  songSpaceMode: SongSpaceMode;
   includeMockUsers: boolean;
   viewTransform: ViewTransform;
 };
@@ -44,8 +45,8 @@ export const viewSettingsMatch = (
 ): boolean =>
   layoutConfigKey(left.layoutConfig) === layoutConfigKey(right.layoutConfig) &&
   left.libraryScopeMode === right.libraryScopeMode &&
-  left.includeMockUsers === right.includeMockUsers &&
-  arraysEqual([...left.enabledContributorIds].sort(), [...right.enabledContributorIds].sort());
+  left.songSpaceMode === right.songSpaceMode &&
+  left.includeMockUsers === right.includeMockUsers;
 
 const getSessionData = (presence: Record<string, unknown>): SessionPresenceData | null => {
   const direct = presence as SessionPresenceData;
@@ -77,8 +78,8 @@ const noopSessionContext: CollaborativeSessionContextValue = {
   participants: [],
   myViewSettings: {
     layoutConfig: { viewMode: "cluster", clusterMode: "playlist", axisX: "year", axisY: "year" },
-    libraryScopeMode: "conglomerate",
-    enabledContributorIds: [],
+    libraryScopeMode: "isolate",
+    songSpaceMode: "shared",
     includeMockUsers: true,
     viewTransform: { scale: 1, panX: 0, panY: 0 },
   },

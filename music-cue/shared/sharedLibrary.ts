@@ -25,6 +25,23 @@ export type MergedLibrary = {
   songs: Song[];
   stats: LibraryStats;
   sharedTrackCount: number;
+  playlistOwners: Record<string, string>;
+};
+
+export const buildPlaylistOwnersFromSnapshots = (
+  snapshots: SharedLibrarySnapshot[]
+): Record<string, string> => {
+  const playlistOwners: Record<string, string> = {};
+  snapshots.forEach((snapshot) => {
+    snapshot.songs.forEach((song) => {
+      (song.playlists ?? []).forEach((playlistId) => {
+        if (!playlistOwners[playlistId]) {
+          playlistOwners[playlistId] = snapshot.contributor.id;
+        }
+      });
+    });
+  });
+  return playlistOwners;
 };
 
 const defaultStats = (): LibraryStats => ({
@@ -85,7 +102,11 @@ export const buildLibraryStatsFromSongs = (
   };
 };
 
-const mergeSongOwners = (left: Song, right: Song): Song => {
+const mergeSongOwners = (
+  left: Song,
+  right: Song,
+  playlistOwners: Record<string, string>
+): Song => {
   const ownersById = new Map<string, { id: string; name: string }>();
   (left.owners ?? []).forEach((owner) => ownersById.set(owner.id, owner));
   (right.owners ?? []).forEach((owner) => ownersById.set(owner.id, owner));
@@ -93,12 +114,17 @@ const mergeSongOwners = (left: Song, right: Song): Song => {
     leftOwner.name.localeCompare(rightOwner.name)
   );
 
+  const ownerIds = new Set(owners.map((owner) => owner.id));
   const playlistSet = new Set([...(left.playlists ?? []), ...(right.playlists ?? [])]);
+  const playlists = [...playlistSet].filter((playlistId) => {
+    const creatorId = playlistOwners[playlistId];
+    return creatorId !== undefined && ownerIds.has(creatorId);
+  });
   return {
     ...left,
     playCount: Math.max(left.playCount, right.playCount),
     loved: left.loved || right.loved,
-    playlists: [...playlistSet],
+    playlists,
     owners,
     ownerCount: owners.length,
   };
@@ -117,13 +143,17 @@ const tagSongsForContributor = (
 export const mergeSharedLibrarySnapshots = (snapshots: SharedLibrarySnapshot[]): MergedLibrary => {
   const songMap = new Map<string, Song>();
   const playlistNames: Record<string, string> = {};
+  const playlistOwners = buildPlaylistOwnersFromSnapshots(snapshots);
 
   snapshots.forEach((snapshot) => {
     Object.assign(playlistNames, snapshot.stats.playlistNames ?? {});
     const taggedSongs = tagSongsForContributor(snapshot.songs, snapshot.contributor);
     taggedSongs.forEach((song) => {
       const existing = songMap.get(song.id);
-      songMap.set(song.id, existing ? mergeSongOwners(existing, song) : song);
+      songMap.set(
+        song.id,
+        existing ? mergeSongOwners(existing, song, playlistOwners) : song
+      );
     });
   });
 
@@ -134,5 +164,6 @@ export const mergeSharedLibrarySnapshots = (snapshots: SharedLibrarySnapshot[]):
     songs,
     stats,
     sharedTrackCount: songs.filter((song) => (song.ownerCount ?? 1) > 1).length,
+    playlistOwners,
   };
 };

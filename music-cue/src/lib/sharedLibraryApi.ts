@@ -2,7 +2,7 @@ import type { LibraryContributor, MergedLibrary, SharedLibrarySnapshot } from ".
 import { mergeSharedLibrarySnapshots } from "../../shared/sharedLibrary";
 import type { LoadedLibrary } from "./musicProvider";
 import { isMockContributorId } from "./libraryScope";
-import { getMockContributors, getMockSnapshots } from "./mockLibraries";
+import { MOCK_CONTRIBUTOR_IDS, getMockContributors, getMockSnapshots } from "./mockLibraries";
 
 const fetchJson = async <T>(url: string, init?: RequestInit): Promise<T> => {
   const response = await fetch(url, {
@@ -78,6 +78,7 @@ export const loadMergedSharedLibrary = async (
         playlistCounts: {},
       },
       sharedTrackCount: 0,
+      playlistOwners: {},
       contributors: [],
     };
   }
@@ -97,9 +98,14 @@ export const publishSharedLibrary = async (): Promise<{ contributor: { id: strin
 export const toLoadedLibrary = (merged: MergedSharedLibraryResponse): LoadedLibrary => ({
   songs: merged.songs,
   stats: merged.stats,
+  playlistOwners: merged.playlistOwners,
 });
 
 const ENABLED_CONTRIBUTORS_KEY = "music-cue-enabled-contributors";
+const LOCAL_CONTRIBUTOR_ID_KEY = "music-cue-local-contributor-id";
+const SONG_SPACE_MODE_KEY = "music-cue-song-space-mode";
+
+export type SongSpaceMode = "mine" | "shared";
 
 export const loadEnabledContributorIds = (): string[] => {
   try {
@@ -112,6 +118,56 @@ export const loadEnabledContributorIds = (): string[] => {
   } catch {
     return [];
   }
+};
+
+export const loadSongSpaceMode = (): SongSpaceMode => {
+  const stored = localStorage.getItem(SONG_SPACE_MODE_KEY);
+  if (stored === "mine" || stored === "shared") {
+    return stored;
+  }
+  const enabled = loadEnabledContributorIds();
+  return enabled.length <= 1 ? "mine" : "shared";
+};
+
+export const saveSongSpaceMode = (mode: SongSpaceMode): void => {
+  localStorage.setItem(SONG_SPACE_MODE_KEY, mode);
+};
+
+export const saveLocalContributorId = (contributorId: string): void => {
+  localStorage.setItem(LOCAL_CONTRIBUTOR_ID_KEY, contributorId);
+};
+
+export const loadLocalContributorId = (): string | null => {
+  try {
+    return localStorage.getItem(LOCAL_CONTRIBUTOR_ID_KEY);
+  } catch {
+    return null;
+  }
+};
+
+export const resolveLocalContributorId = (
+  includeMockUsers: boolean,
+  contributors: LibraryContributor[]
+): string | null => {
+  if (includeMockUsers) {
+    return MOCK_CONTRIBUTOR_IDS.august;
+  }
+  const stored = loadLocalContributorId();
+  if (stored && contributors.some((contributor) => contributor.id === stored)) {
+    return stored;
+  }
+  return stored;
+};
+
+export const resolveActiveContributorIds = (
+  songSpaceMode: SongSpaceMode,
+  localContributorId: string | null,
+  contributors: LibraryContributor[]
+): string[] => {
+  if (songSpaceMode === "mine") {
+    return localContributorId ? [localContributorId] : [];
+  }
+  return contributors.map((contributor) => contributor.id);
 };
 
 export const saveEnabledContributorIds = (contributorIds: string[]): void => {

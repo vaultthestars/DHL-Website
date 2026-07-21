@@ -12,6 +12,7 @@ export type CuePlaylistResult = {
 export type LoadedLibrary = {
   songs: Song[];
   stats: LibraryStats;
+  playlistOwners?: Record<string, string>;
 };
 
 export type ConnectionStatus = {

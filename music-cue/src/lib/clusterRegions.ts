@@ -1,4 +1,4 @@
-import { ClusterCenterOverrides, ClusterMode, GraphPoint, LibraryStats, NormalizedPoint, Song } from "./types";
+import { ClusterCenterOverrides, ClusterMode, GraphPoint, LayoutConfig, LibraryStats, NormalizedPoint, Song } from "./types";
 import {
   getPlaylistOverlapClusterCenter,
   getPlaylistOverlapLabelCenter,
@@ -11,7 +11,10 @@ import {
   GraphDimensions,
   resolveClusterCenter,
 } from "./graphLayout";
-import { getEnabledOwnerMetaClusters, LibraryScopeMode, SHARED_OWNER_CLUSTER_ID } from "./libraryScope";
+import { getEnabledOwnerMetaClusters, getSongScopeClusterId, LibraryScopeMode, wedgeToHullPath } from "./libraryScope";
+import { getClusterOverridesForOwner } from "./isolateClusterLayout";
+import { isClusterView } from "./layoutMetrics";
+import { buildLibraryStatsFromSongs } from "../../shared/sharedLibrary";
 
 import { UNASSIGNED_PLAYLIST_CLUSTER_ID } from "./playlistConstants";
 
@@ -208,10 +211,21 @@ export const buildClusterRegions = (
       const memberPositions = members.map((song) => getPosition(song));
       const padding = Math.max(20, Math.min(42, 14 + Math.sqrt(members.length) * 3));
       const hullPath = pointsToHullPath(memberPositions, padding);
+      const labelCenter =
+        memberPositions.length > 0
+          ? memberPositions.reduce(
+              (sum, point) => ({ x: sum.x + point.x, y: sum.y + point.y }),
+              { x: 0, y: 0 }
+            )
+          : cluster.center;
+      if (memberPositions.length > 0) {
+        labelCenter.x /= memberPositions.length;
+        labelCenter.y /= memberPositions.length;
+      }
       return {
         id: cluster.id,
         label: truncateLabel(cluster.label),
-        center: cluster.center,
+        center: labelCenter,
         hullPath,
         fill: hueToFill(cluster.hue, 62, 72, 0.16),
         stroke: hueToFill(cluster.hue, 72, 42, 0.55),
@@ -221,31 +235,108 @@ export const buildClusterRegions = (
     .filter((region): region is ClusterRegion => region !== null);
 };
 
+const ownerScopedClusterId = (ownerId: string, clusterId: string): string => `owner:${ownerId}:${clusterId}`;
+
+export const buildIsolateScopedClusterRegions = (
+  graphSongs: Song[],
+  clusterMode: ClusterMode,
+  layoutConfig: LayoutConfig,
+  getPosition: (song: Song) => GraphPoint,
+  dimensions: GraphDimensions,
+  clusterOverrides: ClusterCenterOverrides,
+  enabledOwnerIds?: string[],
+  playlistNames: Record<string, string> = {},
+  ownerBounds?: Map<string, { centroid: GraphPoint; radius: number }>
+): ClusterRegion[] => {
+  const metaClusters = getEnabledOwnerMetaClusters(graphSongs, dimensions, enabledOwnerIds, {
+    isAxisView: false,
+    ownerBounds,
+  });
+
+  return metaClusters.flatMap((meta) => {
+    const ownerSongs = graphSongs.filter((song) => getSongScopeClusterId(song) === meta.id);
+    if (ownerSongs.length === 0) {
+      return [];
+    }
+
+    const ownerStats = buildLibraryStatsFromSongs(ownerSongs, playlistNames);
+    const ownerOverrides = getClusterOverridesForOwner(clusterOverrides, meta.id, layoutConfig);
+    return buildClusterRegions(
+      clusterMode,
+      ownerSongs,
+      getPosition,
+      ownerStats,
+      dimensions,
+      ownerOverrides
+    ).map((region) => ({
+      ...region,
+      id: ownerScopedClusterId(meta.id, region.id),
+    }));
+  });
+};
+
 export const buildOwnerMetaRegions = (
   visibleSongs: Song[],
   dimensions: GraphDimensions,
   libraryScopeMode: LibraryScopeMode,
-  enabledOwnerIds?: string[]
+  enabledOwnerIds: string[] | undefined,
+  getPosition: (song: Song) => GraphPoint,
+  layoutConfig: LayoutConfig,
+  ownerBounds?: Map<string, { centroid: GraphPoint; radius: number }>
 ): ClusterRegion[] => {
   if (libraryScopeMode !== "isolate") {
     return [];
   }
 
-  return getEnabledOwnerMetaClusters(visibleSongs, dimensions, enabledOwnerIds).map((meta, index) => {
-    const members = visibleSongs.filter((song) => {
-      const ownerIds = song.owners?.map((owner) => owner.id) ?? [];
-      if (meta.id === SHARED_OWNER_CLUSTER_ID) {
-        return ownerIds.length > 1;
+  const isClusterLayout = isClusterView(layoutConfig);
+
+  return getEnabledOwnerMetaClusters(visibleSongs, dimensions, enabledOwnerIds, {
+    isAxisView: !isClusterLayout,
+    ownerBounds,
+  }).map((meta, index) => {
+    const members = visibleSongs.filter((song) => getSongScopeClusterId(song) === meta.id);
+    const hue = clusterHue(index, 6);
+
+    let hullPath: string;
+    let labelCenter: GraphPoint;
+
+    if (!isClusterLayout && meta.shape === "wedge" && meta.startAngle !== undefined && meta.endAngle !== undefined) {
+      const innerRadius = meta.innerRadius ?? meta.radius * 0.2;
+      const outerRadius = meta.outerRadius ?? meta.radius;
+      hullPath = wedgeToHullPath(meta.center, innerRadius, outerRadius, meta.startAngle, meta.endAngle);
+      const midAngle = (meta.startAngle + meta.endAngle) / 2;
+      const labelRadius = innerRadius + (outerRadius - innerRadius) * 0.55;
+      labelCenter = {
+        x: meta.center.x + labelRadius * Math.cos(midAngle),
+        y: meta.center.y + labelRadius * Math.sin(midAngle),
+      };
+    } else if (isClusterLayout && members.length > 0) {
+      const memberPositions = members.map((song) => getPosition(song));
+      const padding = Math.max(24, Math.min(52, 18 + Math.sqrt(members.length) * 4)) * 5;
+      hullPath = pointsToHullPath(memberPositions, padding);
+      labelCenter =
+        memberPositions.length > 0
+          ? memberPositions.reduce(
+              (sum, point) => ({ x: sum.x + point.x, y: sum.y + point.y }),
+              { x: 0, y: 0 }
+            )
+          : meta.center;
+      if (memberPositions.length > 0) {
+        labelCenter = {
+          x: labelCenter.x / memberPositions.length,
+          y: labelCenter.y / memberPositions.length,
+        };
       }
-      return ownerIds.includes(meta.id);
-    });
-    const hue = meta.id === SHARED_OWNER_CLUSTER_ID ? 46 : clusterHue(index, 6);
-    const radius = meta.radius + 18;
-    const hullPath = `M ${(meta.center.x - radius).toFixed(1)} ${meta.center.y.toFixed(1)} a ${radius} ${radius} 0 1 0 ${radius * 2} 0 a ${radius} ${radius} 0 1 0 ${-radius * 2} 0`;
+    } else {
+      const radius = meta.radius + 18;
+      hullPath = `M ${(meta.center.x - radius).toFixed(1)} ${meta.center.y.toFixed(1)} a ${radius} ${radius} 0 1 0 ${radius * 2} 0 a ${radius} ${radius} 0 1 0 ${-radius * 2} 0`;
+      labelCenter = meta.center;
+    }
+
     return {
       id: `owner:${meta.id}`,
       label: meta.name,
-      center: meta.center,
+      center: labelCenter,
       hullPath,
       fill: hueToFill(hue, 62, 72, 0.08),
       stroke: hueToFill(hue, 72, 42, 0.45),

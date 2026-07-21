@@ -1,7 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useRef, type MutableRefObject, type ReactNode, type RefObject } from "react";
 import { PlayProvider, usePageData, usePlayContext } from "@playhtml/react";
 import { isWebDeployment } from "./runtime";
-import { type ClusterLayoutScope, loadClusterCenterOverrides } from "./storage";
+import { loadUnifiedClusterCenterOverrides, type ClusterLayoutScope } from "./storage";
 import type { ClusterCenterOverrides } from "./types";
 
 export const PLAYHTML_ROOM = "dhl-music-cue-v1";
@@ -59,7 +59,7 @@ const CollaborativeLayoutBridge = ({
   const pageDataKey = clusterLayoutPageDataKey(layoutScope);
   const [remoteOverrides, setRemoteOverrides] = usePageData<ClusterCenterOverrides>(
     pageDataKey,
-    loadClusterCenterOverrides(layoutScope)
+    loadUnifiedClusterCenterOverrides()
   );
   const { isLoading } = usePlayContext();
   const localRef = useRef(clusterOverrides);

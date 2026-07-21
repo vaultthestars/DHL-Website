@@ -125,7 +125,7 @@ const bundledClusterDefaults = (): ClusterCenterOverrides =>
       }
     : { genre: {}, playlist: {} };
 
-export const loadClusterCenterOverrides = (scope: ClusterLayoutScope = "conglomerate"): ClusterCenterOverrides => {
+export const loadClusterCenterOverrides = (scope: ClusterLayoutScope = "isolate"): ClusterCenterOverrides => {
   let genreStored = loadClusterCenterMap(genreClusterLayoutKey(scope));
   let playlistStored = loadClusterCenterMap(playlistClusterLayoutKey(scope));
 
@@ -149,6 +149,19 @@ export const loadClusterCenterOverrides = (scope: ClusterLayoutScope = "conglome
   };
 };
 
+export const loadUnifiedClusterCenterOverrides = (): ClusterCenterOverrides => {
+  const isolate = loadClusterCenterOverrides("isolate");
+  const conglomerate = loadClusterCenterOverrides("conglomerate");
+  return {
+    genre: { ...conglomerate.genre, ...isolate.genre },
+    playlist: { ...conglomerate.playlist, ...isolate.playlist },
+  };
+};
+
+export const saveUnifiedClusterCenterOverrides = (overrides: ClusterCenterOverrides): void => {
+  saveClusterCenterOverridesForScope("isolate", overrides);
+};
+
 export const saveClusterCenterOverridesForScope = (
   scope: ClusterLayoutScope,
   overrides: ClusterCenterOverrides
@@ -159,14 +172,14 @@ export const saveClusterCenterOverridesForScope = (
 
 export const saveGenreClusterCenterOverrides = (
   positions: Record<string, NormalizedPoint>,
-  scope: ClusterLayoutScope = "conglomerate"
+  scope: ClusterLayoutScope = "isolate"
 ): void => {
   localStorage.setItem(genreClusterLayoutKey(scope), JSON.stringify(positions));
 };
 
 export const savePlaylistClusterCenterOverrides = (
   positions: Record<string, NormalizedPoint>,
-  scope: ClusterLayoutScope = "conglomerate"
+  scope: ClusterLayoutScope = "isolate"
 ): void => {
   localStorage.setItem(playlistClusterLayoutKey(scope), JSON.stringify(positions));
 };

@@ -1,7 +1,9 @@
-import { useEffect, useRef, useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
+import { flushSync } from "react-dom";
 import { GraphDimensions } from "./graphLayout";
-import { isClusterView, layoutConfigKey } from "./layoutMetrics";
+import { layoutConfigKey } from "./layoutMetrics";
 import { GraphPoint, LayoutConfig, Song } from "./types";
+import { getCanonicalSongId, isIsolateScopedSongId } from "./isolateScopeSongs";
 
 export const LAYOUT_TRANSITION_SPEED_PX_PER_SEC = 360;
 
@@ -12,6 +14,8 @@ export type LayoutTransitionState = {
   progress: number;
   fromLayout: LayoutConfig;
   toLayout: LayoutConfig;
+  fromScopeKey: string;
+  toScopeKey: string;
   isAnimating: boolean;
 };
 
@@ -19,7 +23,8 @@ export const useLayoutTransition = (
   layoutConfig: LayoutConfig,
   visibleSongs: Song[],
   dimensions: GraphDimensions,
-  computePosition: (song: Song, config: LayoutConfig) => GraphPoint
+  computePosition: (song: Song, config: LayoutConfig) => GraphPoint,
+  extraTransitionKey = ""
 ): {
   getDisplayPosition: (song: Song) => GraphPoint;
   transition: LayoutTransitionState;
@@ -29,6 +34,8 @@ export const useLayoutTransition = (
     progress: 1,
     fromLayout: layoutConfig,
     toLayout: layoutConfig,
+    fromScopeKey: extraTransitionKey,
+    toScopeKey: extraTransitionKey,
     isAnimating: false,
   });
 
@@ -38,21 +45,94 @@ export const useLayoutTransition = (
     to: Map<string, GraphPoint>;
     fromLayout: LayoutConfig;
     toLayout: LayoutConfig;
+    fromScopeKey: string;
+    toScopeKey: string;
     startTime: number;
     durationMs: number;
     layoutChanged: boolean;
   } | null>(null);
 
   const prevLayoutRef = useRef(layoutConfig);
+  const prevTransitionKeyRef = useRef(`${layoutConfigKey(layoutConfig)}|${extraTransitionKey}`);
   const computePositionRef = useRef(computePosition);
   computePositionRef.current = computePosition;
 
-  useEffect(() => {
+  const buildTransitionKey = (config: LayoutConfig, scopeKey: string): string =>
+    `${layoutConfigKey(config)}|${scopeKey}`;
+
+  const getScopeKey = (transitionKey: string): string => {
+    const firstPipe = transitionKey.indexOf("|");
+    if (firstPipe < 0) {
+      return "";
+    }
+    const remainder = transitionKey.slice(firstPipe + 1);
+    return remainder.split("|")[0] ?? "";
+  };
+
+  const applyScopeTransitionFromPositions = (
+    startFrom: Map<string, GraphPoint>,
+    to: Map<string, GraphPoint>,
+    previousScopeKey: string,
+    nextScopeKey: string,
+    songs: Song[]
+  ): void => {
+    if (previousScopeKey === nextScopeKey) {
+      return;
+    }
+
+    if (previousScopeKey === "conglomerate" && nextScopeKey === "isolate") {
+      songs.forEach((song) => {
+        const canonicalId = getCanonicalSongId(song.id);
+        const sharedFrom = startFrom.get(canonicalId) ?? startFrom.get(song.id) ?? to.get(song.id);
+        if (sharedFrom) {
+          startFrom.set(song.id, sharedFrom);
+        }
+      });
+      return;
+    }
+
+    if (previousScopeKey === "isolate" && nextScopeKey === "conglomerate") {
+      songs.forEach((song) => {
+        const duplicatePositions = [...startFrom.entries()].filter(
+          ([songId]) => getCanonicalSongId(songId) === song.id
+        );
+        const targetPoint = to.get(song.id);
+        if (duplicatePositions.length > 0) {
+          const merged = duplicatePositions.reduce(
+            (sum, [, point]) => ({ x: sum.x + point.x, y: sum.y + point.y }),
+            { x: 0, y: 0 }
+          );
+          startFrom.set(song.id, {
+            x: merged.x / duplicatePositions.length,
+            y: merged.y / duplicatePositions.length,
+          });
+          if (targetPoint) {
+            duplicatePositions.forEach(([songId]) => {
+              to.set(songId, targetPoint);
+            });
+          }
+          return;
+        }
+        const fallback = startFrom.get(song.id) ?? to.get(song.id);
+        if (fallback) {
+          startFrom.set(song.id, fallback);
+        }
+      });
+    }
+  };
+
+  const animatedPositionsRef = useRef(animatedPositions);
+  animatedPositionsRef.current = animatedPositions;
+
+  useLayoutEffect(() => {
     const previousLayout = prevLayoutRef.current;
+    const previousTransitionKey = prevTransitionKeyRef.current;
     const toLayout = layoutConfig;
-    const toKey = layoutConfigKey(toLayout);
-    const layoutChanged = layoutConfigKey(previousLayout) !== toKey;
+    const toKey = buildTransitionKey(toLayout, extraTransitionKey);
+    const layoutChanged = previousTransitionKey !== toKey;
+    const previousScopeKey = getScopeKey(previousTransitionKey);
     prevLayoutRef.current = toLayout;
+    prevTransitionKeyRef.current = toKey;
 
     const to = new Map<string, GraphPoint>();
     visibleSongs.forEach((song) => {
@@ -65,20 +145,39 @@ export const useLayoutTransition = (
         progress: 1,
         fromLayout: toLayout,
         toLayout,
+        fromScopeKey: extraTransitionKey,
+        toScopeKey: extraTransitionKey,
         isAnimating: false,
       });
       return undefined;
     }
 
     const startFrom =
-      animatedPositions.size > 0
-        ? new Map(animatedPositions)
+      animatedPositionsRef.current.size > 0
+        ? new Map(animatedPositionsRef.current)
         : new Map(visibleSongs.map((song) => [song.id, to.get(song.id)!]));
 
+    applyScopeTransitionFromPositions(
+      startFrom,
+      to,
+      previousScopeKey,
+      extraTransitionKey,
+      visibleSongs
+    );
+
     let maxDistance = 0;
-    visibleSongs.forEach((song) => {
-      const fromPoint = startFrom.get(song.id) ?? to.get(song.id);
-      const toPoint = to.get(song.id);
+    const distanceSongIds = new Set(visibleSongs.map((song) => song.id));
+    if (previousScopeKey === "isolate" && extraTransitionKey === "conglomerate") {
+      startFrom.forEach((_, songId) => {
+        if (isIsolateScopedSongId(songId)) {
+          distanceSongIds.add(songId);
+        }
+      });
+    }
+
+    distanceSongIds.forEach((songId) => {
+      const fromPoint = startFrom.get(songId) ?? to.get(songId);
+      const toPoint = to.get(songId);
       if (!fromPoint || !toPoint) {
         return;
       }
@@ -95,6 +194,8 @@ export const useLayoutTransition = (
         progress: 1,
         fromLayout: toLayout,
         toLayout,
+        fromScopeKey: extraTransitionKey,
+        toScopeKey: extraTransitionKey,
         isAnimating: false,
       });
       return undefined;
@@ -109,16 +210,23 @@ export const useLayoutTransition = (
       to,
       fromLayout: previousLayout,
       toLayout,
+      fromScopeKey: previousScopeKey,
+      toScopeKey: extraTransitionKey,
       startTime,
       durationMs,
       layoutChanged,
     };
 
-    setTransition({
-      progress: 0,
-      fromLayout: previousLayout,
-      toLayout,
-      isAnimating: true,
+    flushSync(() => {
+      setAnimatedPositions(new Map(startFrom));
+      setTransition({
+        progress: 0,
+        fromLayout: previousLayout,
+        toLayout,
+        fromScopeKey: previousScopeKey,
+        toScopeKey: extraTransitionKey,
+        isAnimating: true,
+      });
     });
 
     const tick = (now: number) => {
@@ -130,14 +238,23 @@ export const useLayoutTransition = (
       const rawProgress = Math.min(1, (now - session.startTime) / session.durationMs);
       const progress = easeInOut(rawProgress);
       const nextPositions = new Map<string, GraphPoint>();
+      const animatedSongIds = new Set(visibleSongs.map((song) => song.id));
 
-      visibleSongs.forEach((song) => {
-        const fromPoint = session.from.get(song.id) ?? session.to.get(song.id);
-        const toPoint = session.to.get(song.id);
+      if (session.fromScopeKey === "isolate" && session.toScopeKey === "conglomerate") {
+        session.from.forEach((_, songId) => {
+          if (isIsolateScopedSongId(songId)) {
+            animatedSongIds.add(songId);
+          }
+        });
+      }
+
+      animatedSongIds.forEach((songId) => {
+        const fromPoint = session.from.get(songId) ?? session.to.get(songId);
+        const toPoint = session.to.get(songId);
         if (!fromPoint || !toPoint) {
           return;
         }
-        nextPositions.set(song.id, {
+        nextPositions.set(songId, {
           x: fromPoint.x + (toPoint.x - fromPoint.x) * progress,
           y: fromPoint.y + (toPoint.y - fromPoint.y) * progress,
         });
@@ -148,6 +265,8 @@ export const useLayoutTransition = (
         progress,
         fromLayout: session.fromLayout,
         toLayout: session.toLayout,
+        fromScopeKey: session.fromScopeKey,
+        toScopeKey: session.toScopeKey,
         isAnimating: rawProgress < 1,
       });
 
@@ -155,28 +274,51 @@ export const useLayoutTransition = (
         session.frameId = requestAnimationFrame(tick);
       } else {
         animationRef.current = null;
+        setTransition({
+          progress: 1,
+          fromLayout: session.toLayout,
+          toLayout: session.toLayout,
+          fromScopeKey: session.toScopeKey,
+          toScopeKey: session.toScopeKey,
+          isAnimating: false,
+        });
       }
     };
 
     animationRef.current.frameId = requestAnimationFrame(tick);
 
     return () => {
-      if (animationRef.current) {
-        cancelAnimationFrame(animationRef.current.frameId);
-        animationRef.current = null;
+      const session = animationRef.current;
+      if (!session) {
+        return;
       }
+      cancelAnimationFrame(session.frameId);
+      setAnimatedPositions(new Map(session.to));
+      setTransition({
+        progress: 1,
+        fromLayout: session.toLayout,
+        toLayout: session.toLayout,
+        fromScopeKey: session.toScopeKey,
+        toScopeKey: session.toScopeKey,
+        isAnimating: false,
+      });
+      animationRef.current = null;
     };
-  }, [dimensions.height, dimensions.width, layoutConfig, visibleSongs]);
+  }, [dimensions.height, dimensions.width, extraTransitionKey, layoutConfig, visibleSongs]);
 
   const getDisplayPosition = (song: Song): GraphPoint => {
-    const isLayoutTransitioning =
-      transition.isAnimating || layoutConfigKey(layoutConfig) !== layoutConfigKey(transition.toLayout);
-    if (isLayoutTransitioning) {
+    if (transition.isAnimating) {
       const animated = animatedPositions.get(song.id);
       if (animated) {
         return animated;
       }
+      const session = animationRef.current;
+      const fromPoint = session?.from.get(song.id);
+      if (fromPoint) {
+        return fromPoint;
+      }
     }
+
     return computePosition(song, layoutConfig);
   };
 
@@ -186,4 +328,4 @@ export const useLayoutTransition = (
   };
 };
 
-export const isClusterLayoutConfig = (config: LayoutConfig): boolean => isClusterView(config);
+export const isClusterLayoutConfig = (config: LayoutConfig): boolean => config.viewMode === "cluster";
