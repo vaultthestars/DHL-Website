@@ -73,6 +73,10 @@ export const getSongNodeFill = (
   stats: LibraryStats,
   songs: Song[] = []
 ): string => {
+  if ((song.ownerCount ?? 0) > 1) {
+    return hueToFill(46, 84, 56);
+  }
+
   let hue = 220;
   if (isClusterView(layoutConfig)) {
     hue =

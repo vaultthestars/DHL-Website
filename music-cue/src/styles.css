@@ -618,6 +618,27 @@ body {
   flex: 0 0 auto;
 }
 
+.music-cue-contributor-toggle {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  align-items: center;
+  flex: 1 1 100%;
+}
+
+.music-cue-contributor-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.music-cue-contributor-option input {
+  margin: 0;
+}
+
 .music-cue-spotify-callback {
   display: flex;
   align-items: center;

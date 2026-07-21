@@ -4,3 +4,4 @@ dist-server
 .DS_Store
 .spotify-tokens.json
 .env
+.data

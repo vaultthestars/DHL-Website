@@ -1,4 +1,5 @@
 import { createCookieSessionStore, createSpotifyClient, isSpotifyConfigured } from "./spotifyClient";
+import { saveSharedLibrarySnapshot } from "./sharedLibraryStore";
 
 type HandlerRequest = {
   method?: string;
@@ -73,6 +74,24 @@ export const handleSpotifyRoute = async (
 
     if (route === "library" && req.method === "GET") {
       finish(200, await client.fetchLibrary());
+      return;
+    }
+
+    if (route === "publish-shared-library" && req.method === "POST") {
+      const library = await client.fetchLibrary();
+      const updatedAt = new Date().toISOString();
+      await saveSharedLibrarySnapshot({
+        contributor: library.contributor,
+        updatedAt,
+        songs: library.songs,
+        stats: library.stats,
+      });
+      finish(200, {
+        ok: true,
+        contributor: library.contributor,
+        trackCount: library.songs.length,
+        updatedAt,
+      });
       return;
     }
 

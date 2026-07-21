@@ -133,6 +133,10 @@ export type SpotifyLibraryStats = {
 };
 
 export type SpotifyLibraryPayload = {
+  contributor: {
+    id: string;
+    name: string;
+  };
   songs: SpotifyLibrarySong[];
   stats: SpotifyLibraryStats;
 };
@@ -310,7 +314,11 @@ export const createSpotifyClient = (store: SpotifySessionStore) => {
   };
 
   const fetchLibrary = async (): Promise<SpotifyLibraryPayload> => {
-    const profile = await spotifyFetch<{ id: string }>("/me");
+    const profile = await spotifyFetch<{ id: string; display_name?: string }>("/me");
+    const contributor = {
+      id: profile.id,
+      name: profile.display_name?.trim() || "Spotify user",
+    };
 
     const savedItems = (await fetchAllPages<{ items: SpotifySavedTrackItem[]; next: string | null }>(
       "/me/tracks?limit=50",
@@ -407,6 +415,7 @@ export const createSpotifyClient = (store: SpotifySessionStore) => {
     });
     const years = songs.map((song) => song.year);
     return {
+      contributor,
       songs,
       stats: {
         minYear: years.length ? Math.min(...years) : 1970,

@@ -1,7 +1,9 @@
 "use strict";
+var __create = Object.create;
 var __defProp = Object.defineProperty;
 var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
 var __getOwnPropNames = Object.getOwnPropertyNames;
+var __getProtoOf = Object.getPrototypeOf;
 var __hasOwnProp = Object.prototype.hasOwnProperty;
 var __export = (target, all) => {
   for (var name in all)
@@ -15,6 +17,14 @@ var __copyProps = (to, from, except, desc) => {
   }
   return to;
 };
+var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__getProtoOf(mod)) : {}, __copyProps(
+  // If the importer is in node compatibility mode or this is not an ESM
+  // file that has been converted to a CommonJS file using a Babel-
+  // compatible transform (i.e. "__esModule" has not been set), then set
+  // "default" to the CommonJS "module.exports" for node compatibility.
+  isNodeMode || !mod || !mod.__esModule ? __defProp(target, "default", { value: mod, enumerable: true }) : target,
+  mod
+));
 var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
 
 // scripts/spotify-handler.ts
@@ -96,15 +106,15 @@ var SPOTIFY_SCOPES = [
   "user-modify-playback-state"
 ].join(" ");
 var NO_DEVICES_MESSAGE = "No Spotify devices found. Open the Spotify app, play any song once, then try Play again.";
-var formatSpotifyApiError = (status, path, spotifyMessage) => {
+var formatSpotifyApiError = (status, path2, spotifyMessage) => {
   const normalizedMessage = spotifyMessage?.toLowerCase() ?? "";
   if (status === 403 && (normalizedMessage.includes("not registered") || normalizedMessage.includes("developer dashboard") || normalizedMessage.includes("check settings on developer.spotify.com"))) {
     return "This Spotify account is not allowlisted for this app yet. The site owner must add your Spotify email in the Spotify Developer Dashboard (User Management), then you can disconnect and connect again.";
   }
   if (spotifyMessage) {
-    return `${spotifyMessage} (${path})`;
+    return `${spotifyMessage} (${path2})`;
   }
-  return `Spotify API error (${status}) (${path})`;
+  return `Spotify API error (${status}) (${path2})`;
 };
 var pickPlaybackDevice = (devices) => {
   const available = devices.filter((device) => device.id && !device.is_restricted);
@@ -202,9 +212,9 @@ var createSpotifyClient = (store) => {
     const refreshed = await refreshAccessToken(tokens.refreshToken);
     return refreshed.accessToken;
   };
-  const spotifyFetch = async (path, init) => {
+  const spotifyFetch = async (path2, init) => {
     const accessToken = await getAccessToken();
-    const response = await fetch(`${SPOTIFY_API_URL}${path}`, {
+    const response = await fetch(`${SPOTIFY_API_URL}${path2}`, {
       ...init,
       headers: {
         Authorization: `Bearer ${accessToken}`,
@@ -217,17 +227,17 @@ var createSpotifyClient = (store) => {
     }
     if (!response.ok) {
       const payload = await response.json().catch(() => ({}));
-      throw new Error(formatSpotifyApiError(response.status, path, payload.error?.message));
+      throw new Error(formatSpotifyApiError(response.status, path2, payload.error?.message));
     }
     return await response.json();
   };
   const fetchAllPages = async (firstPath, collect, nextPath) => {
     const items = [];
-    let path = firstPath;
-    while (path) {
-      const payload = await spotifyFetch(path);
+    let path2 = firstPath;
+    while (path2) {
+      const payload = await spotifyFetch(path2);
       items.push(...collect(payload));
-      path = nextPath(payload) ?? "";
+      path2 = nextPath(payload) ?? "";
     }
     return items;
   };
@@ -265,6 +275,10 @@ var createSpotifyClient = (store) => {
   };
   const fetchLibrary = async () => {
     const profile = await spotifyFetch("/me");
+    const contributor = {
+      id: profile.id,
+      name: profile.display_name?.trim() || "Spotify user"
+    };
     const savedItems = await fetchAllPages(
       "/me/tracks?limit=50",
       (payload) => payload.items,
@@ -350,6 +364,7 @@ var createSpotifyClient = (store) => {
     });
     const years = songs.map((song) => song.year);
     return {
+      contributor,
       songs,
       stats: {
         minYear: years.length ? Math.min(...years) : 1970,
@@ -498,6 +513,107 @@ var createSpotifyClient = (store) => {
   };
 };
 
+// api/lib/spotify/sharedLibraryStore.ts
+var import_node_fs = require("node:fs");
+var import_node_path = __toESM(require("node:path"));
+var LOCAL_LIBRARY_DIR = import_node_path.default.resolve(process.cwd(), ".data/shared-libraries");
+var BLOB_PREFIX = "music-cue/libraries";
+var INDEX_PATH = `${BLOB_PREFIX}/index.json`;
+var useBlobStorage = () => Boolean(process.env.BLOB_READ_WRITE_TOKEN);
+var readLocalSnapshot = (contributorId) => {
+  const filePath = import_node_path.default.join(LOCAL_LIBRARY_DIR, `${contributorId}.json`);
+  if (!(0, import_node_fs.existsSync)(filePath)) {
+    return null;
+  }
+  try {
+    return JSON.parse((0, import_node_fs.readFileSync)(filePath, "utf8"));
+  } catch {
+    return null;
+  }
+};
+var writeLocalSnapshot = (snapshot) => {
+  (0, import_node_fs.mkdirSync)(LOCAL_LIBRARY_DIR, { recursive: true });
+  (0, import_node_fs.writeFileSync)(
+    import_node_path.default.join(LOCAL_LIBRARY_DIR, `${snapshot.contributor.id}.json`),
+    `${JSON.stringify(snapshot, null, 2)}
+`,
+    "utf8"
+  );
+};
+var readLocalIndex = () => {
+  const contributors = [];
+  if (!(0, import_node_fs.existsSync)(LOCAL_LIBRARY_DIR)) {
+    return { contributors };
+  }
+  for (const fileName of (0, import_node_fs.readdirSync)(LOCAL_LIBRARY_DIR)) {
+    if (!fileName.endsWith(".json")) {
+      continue;
+    }
+    const snapshot = readLocalSnapshot(fileName.replace(/\.json$/, ""));
+    if (!snapshot) {
+      continue;
+    }
+    contributors.push({
+      id: snapshot.contributor.id,
+      name: snapshot.contributor.name,
+      updatedAt: snapshot.updatedAt,
+      trackCount: snapshot.songs.length
+    });
+  }
+  contributors.sort((left, right) => left.name.localeCompare(right.name));
+  return { contributors };
+};
+var writeLocalIndex = (index) => {
+  (0, import_node_fs.mkdirSync)(LOCAL_LIBRARY_DIR, { recursive: true });
+  (0, import_node_fs.writeFileSync)(import_node_path.default.join(LOCAL_LIBRARY_DIR, "index.json"), `${JSON.stringify(index, null, 2)}
+`, "utf8");
+};
+var getBlobModule = async () => import("@vercel/blob");
+var readBlobJson = async (pathname) => {
+  const { head } = await getBlobModule();
+  try {
+    const metadata = await head(pathname);
+    const response = await fetch(metadata.url);
+    if (!response.ok) {
+      return null;
+    }
+    return await response.json();
+  } catch {
+    return null;
+  }
+};
+var writeBlobJson = async (pathname, payload) => {
+  const { put } = await getBlobModule();
+  await put(pathname, JSON.stringify(payload), {
+    access: "public",
+    addRandomSuffix: false,
+    contentType: "application/json"
+  });
+};
+var upsertContributor = (index, snapshot) => {
+  const contributor = {
+    id: snapshot.contributor.id,
+    name: snapshot.contributor.name,
+    updatedAt: snapshot.updatedAt,
+    trackCount: snapshot.songs.length
+  };
+  const contributors = index.contributors.filter((entry) => entry.id !== contributor.id);
+  contributors.push(contributor);
+  contributors.sort((left, right) => left.name.localeCompare(right.name));
+  return { contributors };
+};
+var saveSharedLibrarySnapshot = async (snapshot) => {
+  if (!useBlobStorage()) {
+    writeLocalSnapshot(snapshot);
+    const index = readLocalIndex();
+    writeLocalIndex(upsertContributor(index, snapshot));
+    return;
+  }
+  await writeBlobJson(`${BLOB_PREFIX}/${snapshot.contributor.id}.json`, snapshot);
+  const currentIndex = await readBlobJson(INDEX_PATH) ?? { contributors: [] };
+  await writeBlobJson(INDEX_PATH, upsertContributor(currentIndex, snapshot));
+};
+
 // api/lib/spotify/spotifyHandlers.ts
 var handleSpotifyRoute = async (route, req, res) => {
   const cookiesToSet = [];
@@ -550,6 +666,23 @@ var handleSpotifyRoute = async (route, req, res) => {
     }
     if (route === "library" && req.method === "GET") {
       finish(200, await client.fetchLibrary());
+      return;
+    }
+    if (route === "publish-shared-library" && req.method === "POST") {
+      const library = await client.fetchLibrary();
+      const updatedAt = (/* @__PURE__ */ new Date()).toISOString();
+      await saveSharedLibrarySnapshot({
+        contributor: library.contributor,
+        updatedAt,
+        songs: library.songs,
+        stats: library.stats
+      });
+      finish(200, {
+        ok: true,
+        contributor: library.contributor,
+        trackCount: library.songs.length,
+        updatedAt
+      });
       return;
     }
     if (route === "validate-tracks" && req.method === "POST") {

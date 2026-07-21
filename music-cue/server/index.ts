@@ -26,6 +26,7 @@ import {
 } from "./musicApp.js";
 
 import { readClusterLayoutFile, writeClusterLayoutFile } from "./clusterLayout.js";
+import { handleSharedLibraryRoute } from "./sharedLibraryHandlers.js";
 import { spotifyRouter } from "./spotifyRoutes.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -91,6 +92,15 @@ app.put("/api/cluster-layout", (req, res) => {
   }
   writeClusterLayoutFile({ genre, playlist });
   res.json({ ok: true });
+});
+
+app.all("/api/shared-libraries/*", async (req, res) => {
+  const route = req.path.replace(/^\/api\/shared-libraries\/?/, "");
+  await handleSharedLibraryRoute(route, req, res);
+});
+
+app.get("/api/shared-libraries", async (req, res) => {
+  await handleSharedLibraryRoute("", req, res);
 });
 
 app.get("/api/music/ping", async (_req, res) => {

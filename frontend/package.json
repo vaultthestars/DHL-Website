@@ -10,6 +10,7 @@
     "@types/node": "^16.11.68",
     "@types/react-dom": "^18.0.6",
     "@vercel/analytics": "^1.5.0",
+    "@vercel/blob": "^0.27.3",
     "d3": "^7.6.1",
     "firebase": "^9.14.0",
     "react": "^18.2.0",
@@ -22,10 +23,12 @@
   },
   "scripts": {
     "start": "react-scripts start",
-    "sync:spotify-api": "mkdir -p api/lib/spotify && cp ../music-cue/server/spotifySession.ts ../music-cue/server/spotifyClient.ts ../music-cue/server/spotifyHandlers.ts api/lib/spotify/ && node -e \"const fs=require('fs');const p='api/lib/spotify';for(const f of fs.readdirSync(p)) fs.writeFileSync(p+'/'+f, fs.readFileSync(p+'/'+f,'utf8').replace(/\\.js\\\";/g,'\\\";'))\"",
+    "sync:spotify-api": "mkdir -p api/lib/spotify && cp ../music-cue/server/spotifySession.ts ../music-cue/server/spotifyClient.ts ../music-cue/server/spotifyHandlers.ts ../music-cue/server/sharedLibraryStore.ts ../music-cue/shared/sharedLibrary.ts api/lib/spotify/ && node -e \"const fs=require('fs');const p='api/lib/spotify';for(const f of fs.readdirSync(p)) fs.writeFileSync(p+'/'+f, fs.readFileSync(p+'/'+f,'utf8').replace(/\\.js\\\";/g,'\\\";').replace(/\\.\\.\\/shared\\/sharedLibrary/g,'./sharedLibrary'))\"",
+    "sync:shared-libraries-api": "mkdir -p api/lib/sharedLibrary && cp ../music-cue/server/sharedLibraryHandlers.ts ../music-cue/server/sharedLibraryStore.ts ../music-cue/shared/sharedLibrary.ts api/lib/sharedLibrary/ && node -e \"const fs=require('fs');const p='api/lib/sharedLibrary';for(const f of fs.readdirSync(p)) fs.writeFileSync(p+'/'+f, fs.readFileSync(p+'/'+f,'utf8').replace(/\\.js\\\";/g,'\\\";').replace(/\\.\\.\\/shared\\/sharedLibrary/g,'./sharedLibrary'))\"",
     "bundle:spotify-api": "esbuild scripts/spotify-handler.ts --bundle --platform=node --format=cjs --target=node18 --outfile='api/spotify/[...path].js' --packages=external",
+    "bundle:shared-libraries-api": "esbuild scripts/shared-libraries-handler.ts --bundle --platform=node --format=cjs --target=node18 --outfile='api/shared-libraries/[...path].js' --packages=external",
     "build:music-cue": "cd ../music-cue && npm install && VITE_BASE_PATH=/music-cue/ VITE_APP_MODE=web npm run build && rm -rf ../frontend/public/music-cue && mkdir -p ../frontend/public/music-cue && cp -r dist/* ../frontend/public/music-cue/",
-    "build": "npm run sync:spotify-api && npm run bundle:spotify-api && npm run build:music-cue && DISABLE_ESLINT_PLUGIN=true react-scripts build",
+    "build": "npm run sync:spotify-api && npm run bundle:spotify-api && npm run sync:shared-libraries-api && npm run bundle:shared-libraries-api && npm run build:music-cue && DISABLE_ESLINT_PLUGIN=true react-scripts build",
     "test": "react-scripts test",
     "eject": "react-scripts eject"
   },

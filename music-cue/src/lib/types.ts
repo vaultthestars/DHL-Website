@@ -24,6 +24,8 @@ export type Song = {
   durationMs: number;
   playlists: string[];
   audioFeatures?: AudioFeatures;
+  owners?: Array<{ id: string; name: string }>;
+  ownerCount?: number;
 };
 
 export type GraphPoint = { x: number; y: number };

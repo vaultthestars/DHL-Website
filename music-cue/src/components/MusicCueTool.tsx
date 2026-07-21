@@ -53,6 +53,15 @@ import {
   normalizeLayoutConfigForService,
 } from "../lib/layoutMetrics";
 import {
+  listSharedContributors,
+  loadEnabledContributorIds,
+  loadMergedSharedLibrary,
+  publishSharedLibrary,
+  saveEnabledContributorIds,
+  toLoadedLibrary,
+} from "../lib/sharedLibraryApi";
+import type { LibraryContributor } from "../../shared/sharedLibrary";
+import {
   AxisMetric,
   ClusterCenterOverrides,
   ClusterMode,
@@ -256,6 +265,10 @@ export const MusicCueTool = () => {
   const [spotifyStatus, setSpotifyStatus] = useState<{ connected: boolean; configured: boolean; message?: string } | null>(
     null
   );
+  const [sharedContributors, setSharedContributors] = useState<LibraryContributor[]>([]);
+  const [enabledContributorIds, setEnabledContributorIds] = useState<string[]>(() => loadEnabledContributorIds());
+  const [sharedTrackCount, setSharedTrackCount] = useState(0);
+  const [isLoadingSharedLibrary, setIsLoadingSharedLibrary] = useState(false);
   const [dimensions, setDimensions] = useState<GraphDimensions>(() => getGraphDimensions(null));
   const [viewTransform, setViewTransform] = useState<ViewTransform>(DEFAULT_VIEW_TRANSFORM);
   const [buildMode, setBuildMode] = useState<CueBuildMode>(() => loadBuildMode());
@@ -1233,7 +1246,7 @@ export const MusicCueTool = () => {
     }
   };
 
-  const applyLoadedLibrary = (loadedSongs: Song[], loadedStats: LibraryStats, message: string) => {
+  const applyLoadedLibrary = useCallback((loadedSongs: Song[], loadedStats: LibraryStats, message: string) => {
     invalidatePlaylistOverlapLayoutCache();
     const normalized = normalizeSongs(loadedSongs, loadedStats);
     setSongs(normalized);
@@ -1248,6 +1261,91 @@ export const MusicCueTool = () => {
     setPlaybackTrackingEnabled(false);
     playbackTrackingRef.current = { persistentId: null, cueIndex: -1 };
     setStatusMessage(message);
+  }, [musicService]);
+
+  const applyMergedSharedLibrary = useCallback(
+    async (contributorIds: string[], contributors: LibraryContributor[]) => {
+      if (contributorIds.length === 0) {
+        setSharedTrackCount(0);
+        applyLoadedLibrary([], defaultStats(), "No contributors selected.");
+        return;
+      }
+      setIsLoadingSharedLibrary(true);
+      try {
+        const merged = await loadMergedSharedLibrary(contributorIds);
+        const loaded = toLoadedLibrary(merged);
+        setSharedTrackCount(merged.sharedTrackCount);
+        const contributorNames = contributors
+          .filter((contributor) => contributorIds.includes(contributor.id))
+          .map((contributor) => contributor.name)
+          .join(" + ");
+        const sharedLabel =
+          merged.sharedTrackCount > 0 ? ` · ${merged.sharedTrackCount} tracks in common` : "";
+        applyLoadedLibrary(
+          loaded.songs,
+          loaded.stats,
+          `Loaded shared library from ${contributorNames} (${loaded.songs.length} tracks${sharedLabel}).`
+        );
+      } catch (error) {
+        setStatusMessage(error instanceof Error ? error.message : "Could not load shared library.");
+      } finally {
+        setIsLoadingSharedLibrary(false);
+      }
+    },
+    [applyLoadedLibrary]
+  );
+
+  const refreshSharedContributors = useCallback(async () => {
+    const contributors = await listSharedContributors();
+    setSharedContributors(contributors);
+    const storedEnabled = loadEnabledContributorIds().filter((contributorId) =>
+      contributors.some((contributor) => contributor.id === contributorId)
+    );
+    const nextEnabled =
+      storedEnabled.length > 0 ? storedEnabled : contributors.map((contributor) => contributor.id);
+    setEnabledContributorIds(nextEnabled);
+    saveEnabledContributorIds(nextEnabled);
+    if (isWebDeployment && musicService === "spotify" && contributors.length > 0) {
+      await applyMergedSharedLibrary(nextEnabled, contributors);
+    }
+    return contributors;
+  }, [applyMergedSharedLibrary, musicService]);
+
+  useEffect(() => {
+    if (!isWebDeployment || musicService !== "spotify") {
+      return;
+    }
+    void refreshSharedContributors().catch(() => {
+      // Shared libraries are optional until someone publishes.
+    });
+  }, [musicService, refreshSharedContributors]);
+
+  const handleContributorToggle = (contributorId: string) => {
+    const nextEnabled = enabledContributorIds.includes(contributorId)
+      ? enabledContributorIds.filter((id) => id !== contributorId)
+      : [...enabledContributorIds, contributorId];
+    setEnabledContributorIds(nextEnabled);
+    saveEnabledContributorIds(nextEnabled);
+    void applyMergedSharedLibrary(nextEnabled, sharedContributors);
+  };
+
+  const handleRefreshSharedLibrary = () => {
+    void refreshSharedContributors();
+  };
+
+  const handlePublishSharedLibrary = async () => {
+    setIsImporting(true);
+    try {
+      const published = await publishSharedLibrary();
+      await refreshSharedContributors();
+      setStatusMessage(
+        `Published ${published.trackCount} tracks as ${published.contributor.name} to the shared library.`
+      );
+    } catch (error) {
+      setStatusMessage(error instanceof Error ? error.message : "Could not publish shared library.");
+    } finally {
+      setIsImporting(false);
+    }
   };
 
   const handleMusicServiceChange = (serviceId: MusicServiceId) => {
@@ -1302,6 +1400,21 @@ export const MusicCueTool = () => {
         loaded.stats,
         `Loaded ${loaded.songs.length} saved tracks and ${loaded.stats.playlistIds.length} playlists from Spotify.`
       );
+      if (isWebDeployment) {
+        try {
+          const published = await publishSharedLibrary();
+          await refreshSharedContributors();
+          setStatusMessage(
+            `Loaded and shared ${published.trackCount} tracks as ${published.contributor.name}.`
+          );
+        } catch (error) {
+          setStatusMessage(
+            error instanceof Error
+              ? `Loaded your library, but sharing failed: ${error.message}`
+              : "Loaded your library, but sharing failed."
+          );
+        }
+      }
     } catch (error) {
       setStatusMessage(error instanceof Error ? error.message : "Could not load Spotify library.");
     } finally {
@@ -1657,6 +1770,8 @@ export const MusicCueTool = () => {
                 : unavailableSongIds.size > 0
                   ? ` · ${unavailableSongIds.size} unavailable (red)`
                   : ""}
+              {sharedTrackCount > 0 ? ` · ${sharedTrackCount} in common` : ""}
+              {isLoadingSharedLibrary ? " · refreshing shared library…" : ""}
               {musicService === "spotify" && spotifyStatus
                 ? spotifyStatus.connected
                   ? " · Spotify connected"
@@ -1726,10 +1841,37 @@ export const MusicCueTool = () => {
                 onClick={() => void handleLoadSpotifyLibrary()}
                 disabled={isImporting || !spotifyStatus?.connected}
               >
-                {isImporting ? "Loading…" : "Load library"}
+                {isImporting ? "Loading…" : "Load & share library"}
               </button>
+              {isWebDeployment && spotifyStatus?.connected ? (
+                <button type="button" onClick={() => void handlePublishSharedLibrary()} disabled={isImporting}>
+                  {isImporting ? "Publishing…" : "Re-share library"}
+                </button>
+              ) : null}
+              {isWebDeployment ? (
+                <button type="button" onClick={handleRefreshSharedLibrary} disabled={isLoadingSharedLibrary}>
+                  {isLoadingSharedLibrary ? "Refreshing…" : "Refresh shared"}
+                </button>
+              ) : null}
             </div>
           )}
+
+          {isWebDeployment && musicService === "spotify" && sharedContributors.length > 0 ? (
+            <div className="music-cue-contributor-toggle" role="group" aria-label="Shared library contributors">
+              {sharedContributors.map((contributor) => (
+                <label key={contributor.id} className="music-cue-contributor-option">
+                  <input
+                    type="checkbox"
+                    checked={enabledContributorIds.includes(contributor.id)}
+                    onChange={() => handleContributorToggle(contributor.id)}
+                  />
+                  <span>
+                    {contributor.name} ({contributor.trackCount})
+                  </span>
+                </label>
+              ))}
+            </div>
+          ) : null}
 
           <div className="music-cue-layout-toggle" role="group" aria-label="View mode">
             <button
