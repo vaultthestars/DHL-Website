@@ -55,7 +55,7 @@ import {
   loadGraphTool,
   loadLayoutConfig,
   loadLibrary,
-  clearStoredLibrary,
+  loadPersonalSpotifyLibrary,
   loadMusicService,
   loadPathThreshold,
   loadCustomPositions,
@@ -370,10 +370,13 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
   const handleUndoRef = useRef<() => void>(() => {});
 
   const initialMusicService = loadMusicService();
-  const shouldSkipCachedLibrary = isWebDeployment && initialMusicService === "spotify";
-  const initialLibrary = shouldSkipCachedLibrary
-    ? { songs: [], stats: null }
-    : loadLibrary(initialMusicService);
+  const initialSongSpaceMode = loadSongSpaceMode();
+  const initialLibrary =
+    isWebDeployment && initialMusicService === "spotify"
+      ? initialSongSpaceMode === "mine"
+        ? loadPersonalSpotifyLibrary()
+        : { songs: [], stats: null }
+      : loadLibrary(initialMusicService);
   const initialSongs = normalizeSongs(initialLibrary.songs, initialLibrary.stats);
   const [musicService, setMusicService] = useState<MusicServiceId>(initialMusicService);
   const musicProvider = useMemo(() => getMusicProvider(musicService), [musicService]);
@@ -656,10 +659,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
       return;
     }
     disableMockUsersForWeb();
-    if (musicService === "spotify" && spotifyStatus && !spotifyStatus.connected) {
-      clearStoredLibrary("spotify");
-    }
-  }, [musicService, spotifyStatus]);
+  }, []);
 
   useEffect(() => {
     if (!onWelcomeNameChange) {
@@ -2554,37 +2554,89 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
 
   const refreshSharedContributors = useCallback(
     async (options?: { loadLibrary?: boolean }) => {
-      const contributors = await listSharedContributors(includeMockUsers);
-      setSharedContributors(contributors);
-      const contributorIds = getAllContributorIds(contributors);
-      const shouldLoadLibrary = options?.loadLibrary ?? songSpaceMode === "shared";
-      if (
-        isWebDeployment &&
-        musicService === "spotify" &&
-        contributorIds.length > 0 &&
-        shouldLoadLibrary
-      ) {
-        await applyMergedSharedLibrary(contributorIds, contributors);
-      } else if (isWebDeployment && musicService === "spotify" && shouldLoadLibrary && contributorIds.length === 0) {
-        setSharedTrackCount(0);
-        setStatusMessage("No shared libraries published yet. Connect Spotify and use Load & share library.");
+      try {
+        const contributors = await listSharedContributors(includeMockUsers);
+        setSharedContributors(contributors);
+        const contributorIds = getAllContributorIds(contributors);
+        const isGuest = spotifyStatus !== null && !spotifyStatus.connected;
+        const shouldLoadLibrary =
+          options?.loadLibrary ??
+          (spotifyStatus === null ? songSpaceMode === "shared" : isGuest || songSpaceMode === "shared");
+
+        if (
+          isWebDeployment &&
+          musicService === "spotify" &&
+          contributorIds.length > 0 &&
+          shouldLoadLibrary
+        ) {
+          await applyMergedSharedLibrary(contributorIds, contributors);
+        } else if (
+          isWebDeployment &&
+          musicService === "spotify" &&
+          shouldLoadLibrary &&
+          contributorIds.length === 0
+        ) {
+          setSharedTrackCount(0);
+          setStatusMessage(
+            isGuest
+              ? "No shared libraries published yet."
+              : "No shared libraries published yet. Connect Spotify and use Load & share library."
+          );
+        } else if (
+          isWebDeployment &&
+          musicService === "spotify" &&
+          spotifyStatus?.connected &&
+          songSpaceMode === "mine" &&
+          songsRef.current.length === 0
+        ) {
+          const stored = loadPersonalSpotifyLibrary();
+          if (stored.songs.length > 0) {
+            applyLoadedLibrary(
+              stored.songs,
+              stored.stats ?? normalizeStats(null, stored.songs),
+              `Restored your library (${stored.songs.length} tracks).`,
+              {},
+              { persist: true }
+            );
+          }
+        }
+        return contributors;
+      } catch (error) {
+        setStatusMessage(
+          error instanceof Error
+            ? `Could not load shared libraries: ${error.message}`
+            : "Could not load shared libraries."
+        );
+        return [];
       }
-      return contributors;
     },
-    [applyMergedSharedLibrary, includeMockUsers, musicService, songSpaceMode]
+    [
+      applyLoadedLibrary,
+      applyMergedSharedLibrary,
+      includeMockUsers,
+      musicService,
+      songSpaceMode,
+      spotifyStatus,
+    ]
   );
 
   useEffect(() => {
-    if (!isWebDeployment || musicService !== "spotify") {
+    if (!isWebDeployment || musicService !== "spotify" || spotifyStatus === null) {
       return;
     }
-    void refreshSharedContributors({ loadLibrary: loadSongSpaceMode() === "shared" }).catch(() => {
-      // Shared libraries are optional until someone publishes.
+    void refreshSharedContributors().catch(() => {
+      // refreshSharedContributors already surfaces errors in the status line.
     });
-  }, [musicService, refreshSharedContributors]);
+  }, [musicService, refreshSharedContributors, spotifyStatus]);
 
   useEffect(() => {
-    if (!isWebDeployment || musicService !== "spotify" || spotifyStatus?.connected || songSpaceMode === "shared") {
+    if (
+      !isWebDeployment ||
+      musicService !== "spotify" ||
+      spotifyStatus === null ||
+      spotifyStatus.connected ||
+      songSpaceMode === "shared"
+    ) {
       return;
     }
     clearFrozenIsolateBounds();
@@ -2599,7 +2651,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     reloadLayoutCaches,
     refreshSharedContributors,
     songSpaceMode,
-    spotifyStatus?.connected,
+    spotifyStatus,
   ]);
 
   const handleSongSpaceChange = (mode: SongSpaceMode) => {
@@ -2615,6 +2667,21 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     reloadLayoutCaches(getActiveClusterLayoutScope(mode, libraryScopeMode));
     if (mode === "shared") {
       void refreshSharedContributors({ loadLibrary: true });
+    } else if (isWebDeployment && musicService === "spotify") {
+      const stored = loadPersonalSpotifyLibrary();
+      if (stored.songs.length > 0) {
+        applyLoadedLibrary(
+          stored.songs,
+          stored.stats ?? normalizeStats(null, stored.songs),
+          `My song space — ${stored.songs.length} tracks.`,
+          {},
+          { persist: true }
+        );
+      } else {
+        setSongs([]);
+        setStats(normalizeStats(null, []));
+        setStatusMessage("My song space — load your library from Spotify to begin.");
+      }
     }
     setStatusMessage(
       mode === "mine"
@@ -2645,7 +2712,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     try {
       const published = await publishSharedLibrary();
       saveLocalContributorId(published.contributor.id);
-      await refreshSharedContributors({ loadLibrary: true });
+      await refreshSharedContributors({ loadLibrary: songSpaceMode === "shared" });
       setStatusMessage(
         `Published ${published.trackCount} tracks as ${published.contributor.name} to the shared library.`
       );
@@ -2715,7 +2782,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
         try {
           const published = await publishSharedLibrary();
           saveLocalContributorId(published.contributor.id);
-          await refreshSharedContributors({ loadLibrary: true });
+          await refreshSharedContributors({ loadLibrary: songSpaceMode === "shared" });
           setStatusMessage(
             `Loaded and shared ${published.trackCount} tracks as ${published.contributor.name}.`
           );

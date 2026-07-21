@@ -4,6 +4,7 @@ import { defaultCustomClusterCatalog } from "./customClusters";
 
 export type ClusterLayoutScope = LibraryScopeMode | "custom";
 import { MusicServiceId } from "./musicProvider";
+import { isMockContributorId } from "./libraryScope";
 import {
   ClusterCenterOverrides,
   CueBuildMode,
@@ -318,6 +319,19 @@ export const loadLibrary = (
   } catch {
     return { songs: [], stats: null };
   }
+};
+
+/** Load a cached personal Spotify library, discarding any legacy mock/shared snapshot data. */
+export const loadPersonalSpotifyLibrary = (): { songs: Song[]; stats: LibraryStats | null } => {
+  const library = loadLibrary("spotify");
+  const hasMockOwners = library.songs.some((song) =>
+    (song.owners ?? []).some((owner) => isMockContributorId(owner.id))
+  );
+  if (hasMockOwners) {
+    clearStoredLibrary("spotify");
+    return { songs: [], stats: null };
+  }
+  return library;
 };
 
 export const exportCustomLayoutJson = (positions: Record<string, NormalizedPoint>): string =>

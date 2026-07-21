@@ -28,9 +28,7 @@ const canUseClientMocks = (includeMockUsers: boolean): boolean =>
   includeMockUsers && !isWebDeployment;
 
 export const listSharedContributors = async (includeMockUsers = false): Promise<LibraryContributor[]> => {
-  const payload = await fetchJson<SharedLibraryIndexResponse>("/api/shared-libraries").catch(() => ({
-    contributors: [],
-  }));
+  const payload = await fetchJson<SharedLibraryIndexResponse>("/api/shared-libraries");
   const contributors = payload.contributors ?? [];
   if (!canUseClientMocks(includeMockUsers)) {
     return contributors.filter((contributor) => !isMockContributorId(contributor.id));
@@ -51,8 +49,8 @@ export const fetchSharedLibrarySnapshot = async (contributorId: string): Promise
     const { getMockSnapshots } = await import("./mockLibraries");
     return getMockSnapshots([contributorId])[0] ?? null;
   }
-  return fetchJson<SharedLibrarySnapshot>(`/api/shared-libraries/snapshot/${encodeURIComponent(contributorId)}`).catch(
-    () => null
+  return fetchJson<SharedLibrarySnapshot>(
+    `/api/shared-libraries/snapshot/${encodeURIComponent(contributorId)}`
   );
 };
 
