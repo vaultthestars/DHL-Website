@@ -5,6 +5,9 @@ import {getcolorstring} from  "../Homepage"
 import './subpages.css'
 import  {tabs} from "./animationtabs"
 import { Button } from '../button';
+import { Viewport } from '../hooks/useWindowSize';
+import { MobileTabPage } from '../components/MobileTabPage';
+import { TabDescription } from '../components/TabDescription';
 
 //TODO: Add titles(side title and top title)
 //TODO: Add a link entry
@@ -47,18 +50,19 @@ function italistyle(x: number): string{
        return "italic"
 }
 
-export default function Animationpage(Timer: number, setPage: pagesetter, mouse: point, extravars: reactvar[]) {
+export default function Animationpage(Timer: number, setPage: pagesetter, mouse: point, extravars: reactvar[], viewport: Viewport) {
     const currtab = extravars[0].var
     const setcurrtab = extravars[0].setter
     const t0 = extravars[1].var
-    const wdims = {x: window.innerWidth, y: window.innerHeight};
+    const wdims = {x: viewport.width, y: viewport.height};
 
     const tabdims = {x: wdims.x - (N-1)*marginwidth, y: wdims.y}
     const linespace = 20
 
     return <div key = "pagewrapper" className = "pagewrapper">
+            <div className="desktop-only">
             <svg className="animsvg" fill = "true"
-                 width="100%" height={window.innerHeight} aria-label="loading screen">
+                 width="100%" height={viewport.height} aria-label="loading screen">
               <rect
               key = {"Header"}
               x = {0}
@@ -153,23 +157,14 @@ return <g>
               y = {origin.y + marginwidth/2}
               >{tabs[i].title}</text>
 
-              <text className="verse"
-              key = "verse"
-              // text-anchor="middle"
-              dominant-baseline = "central"
-              // letterSpacing={4}
-              // textLength={0.75*widd}
-              fill = "hsl(0 0% 0%)"
-              fontFamily='Helvetica'
-              // fontWeight= "bold"
+              <foreignObject
+              x={textboxorigin.x}
+              y={textboxorigin.y}
+              width={Math.max(tabdims.x - 2 * marginwidth, 200)}
+              height={tabdims.y - imageheight - marginwidth}
               >
-              {Array.from(Array(tabs[i].description.length).keys()).map((linenum)=>{
-                     return  <tspan x={textboxorigin.x}
-                     y = {textboxorigin.y + linenum*linespace + 5}
-                     fontStyle={italistyle(linenum)}
-                     >{tabs[i].description[linenum]}</tspan>
-              })}
-              </text>
+                <TabDescription lines={tabs[i].description} />
+              </foreignObject>
               <foreignObject width={imdms.x*imageheight/imdms.y} height={imageheight} x = {imageorigin.x} y = {imageorigin.y}>
                      <iframe width={imdms.x*imageheight/imdms.y} height={imageheight}
                      src = {tabs[i].imageurl}
@@ -181,6 +176,24 @@ return <g>
                 })}
               {/* {Button({x: wdims.x/2,y: wdims.y + marginwidth}, {x: 1.25*500/3,y: 1.25*marginwidth/2}, "HOME", ()=>{setPage(0)},mouse)} */}
             </svg>
+            </div>
+            <div className="mobile-only">
+              <MobileTabPage
+                title="ANIMATION"
+                setPage={setPage}
+                tabs={tabs}
+                hue={(360 * 3) / N}
+                renderContent={(tab) => (
+                  <iframe
+                    className="mobile-embed"
+                    src={tab.imageurl}
+                    title={tab.title}
+                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                    allowFullScreen
+                  />
+                )}
+              />
+            </div>
         </div>
     // Otherwise, display our main app window
 }

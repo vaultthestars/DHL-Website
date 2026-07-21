@@ -8,7 +8,7 @@ import room7 from '../images/roommate agreement/study_rules.png'
 import room8 from '../images/roommate agreement/visitor_rules.png'
 
 export const blogtext = 
-<div id="" style={{backgroundColor: "lightblue",width:"100%", height:"100%", overflowY:"scroll",wordWrap:"normal", textAlign: "left", fontFamily: "serif"}}>
+<div className="blog-content" style={{backgroundColor: "lightblue", color: "#000", width:"100%", height:"100%", overflowY:"scroll",wordWrap:"normal", textAlign: "left", fontFamily: "serif"}}>
 
 <b><i>Welcome to my blog. This window is scrollable.</i></b>
 

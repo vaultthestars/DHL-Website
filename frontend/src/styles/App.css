@@ -103,5 +103,19 @@
   margin-Left: 100px;
   margin-right: 100px;
   text-align: left;
-  /* font-size: 12px; */
+  max-width: 42rem;
+}
+
+@media (max-width: 768px) {
+  .bodyText {
+    position: static !important;
+    width: auto !important;
+    margin-left: 1rem;
+    margin-right: 1rem;
+    padding-bottom: 2rem;
+  }
+
+  .google-button {
+    margin-left: 0;
+  }
 }

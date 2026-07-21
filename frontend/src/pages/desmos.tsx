@@ -6,6 +6,9 @@ import './subpages.css'
 import  {tabs} from "./animationtabs"
 import { Button } from '../button';
 import { graphs } from './desmospages';
+import { Viewport } from '../hooks/useWindowSize';
+import { PageHeader } from '../components/PageHeader';
+import { TabDescription } from '../components/TabDescription';
 
 //TODO: Add titles(side title and top title)
 //TODO: Add a link entry
@@ -39,11 +42,18 @@ const desparagraph = [
 
 ]
 
-export default function Desmospage(Timer: number, setPage: pagesetter, mouse: point, extravars: reactvar[]) {
-    const wdims = {x: window.innerWidth, y: window.innerHeight};
+export default function Desmospage(Timer: number, setPage: pagesetter, mouse: point, extravars: reactvar[], viewport: Viewport) {
+    const wdims = {x: viewport.width, y: viewport.height};
     const imscale = wdims.x/2
+    const videoWidth = 0.8 * imscale;
+    const videoHeight = 0.8 * imscale * 315 / 560;
+    const videoX = marginwidth / 2;
+    const introY = marginwidth + (0.2 * imscale * 315) / 560 / 2;
+    const textX = videoX + videoWidth + marginwidth / 2;
+    const textWidth = Math.max(wdims.x - textX - marginwidth, 240);
 
     return <div key = "pagewrapper" className = "pagewrapper">
+            <div className="desktop-only">
             <svg className="animsvg" fill = "true"
                  width="100%" height={wdims.x/4*Math.ceil(N/4)+imscale*315/560+marginwidth} aria-label="loading screen">
 <rect
@@ -90,31 +100,25 @@ export default function Desmospage(Timer: number, setPage: pagesetter, mouse: po
               stroke = "hsl(0 0% 0%)"
               strokeWidth= {1}
               />
-              <text
-              key = {"Description"}
-            //   textAnchor="middle"
-              dominant-baseline = "central"
-              fill = "hsl(0 0% 0%)"
-              fontFamily='Helvetica'
-            //   fontWeight= "bold"
-              fontSize={15}
-            //   letterSpacing={20}
-              x = {wdims.x/2 - marginwidth/2}
-              y = {marginwidth + (0.2*imscale*315/560)/2+7}
+              <foreignObject
+              width={videoWidth}
+              height={videoHeight}
+              x={videoX}
+              y={introY}
               >
-                    {Array.from(Array(desparagraph.length).keys()).map((linenum)=>{
-                        const linespace = 15
-                     return  <tspan x={wdims.x/2 - marginwidth/2}
-                     y = {marginwidth + (0.2*imscale*315/560)/2+7 + linenum*linespace + 5}
-                     >{desparagraph[linenum]}</tspan>
-              })}
-              </text>
-              <foreignObject width={0.8*imscale} height={0.8*imscale*315/560} x = {marginwidth/2} y = {marginwidth + (0.2*imscale*315/560)/2}>
-                     <iframe width={0.8*imscale} height={0.8*imscale*315/560}
+                     <iframe width={videoWidth} height={videoHeight}
                      src = {"https://www.youtube.com/embed/FYMmFFY1V1s?si=tKZSR2kDAT2tjzSg"}
                      title="YouTube video player" 
                      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" 
                      allowFullScreen></iframe>
+              </foreignObject>
+              <foreignObject
+              x={textX}
+              y={introY}
+              width={textWidth}
+              height={videoHeight}
+              >
+                <TabDescription lines={desparagraph} />
               </foreignObject>
                 {Array.from(Array(N).keys()).map((i)=>{
               const initorigin = {x: (i%4)*wdims.x/4 + wdims.x/8, y: marginwidth + wdims.x/4*Math.floor(i/4) + 200 + imscale*315/560}
@@ -158,6 +162,37 @@ return <g>
 </g>
                 })}
             </svg>
+            </div>
+            <div className="mobile-only mobile-page">
+              <PageHeader title="DESMOS" setPage={setPage} hue={0} />
+              <div className="mobile-intro">
+                <TabDescription lines={desparagraph} />
+                <iframe
+                  src="https://www.youtube.com/embed/FYMmFFY1V1s?si=tKZSR2kDAT2tjzSg"
+                  title="Desmos introduction video"
+                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                  allowFullScreen
+                />
+              </div>
+              <div className="mobile-card-grid">
+                {graphs.map((graph) => (
+                  <a
+                    key={graph.code}
+                    className="mobile-card"
+                    href={`https://www.desmos.com/calculator/${graph.code}`}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    <img
+                      src={`https://www.desmos.com/calc_thumbs/production/${graph.code}.png`}
+                      alt={graph.title}
+                      loading="lazy"
+                    />
+                    <div className="mobile-card__title">{graph.title}</div>
+                  </a>
+                ))}
+              </div>
+            </div>
         </div>
     // Otherwise, display our main app window
 }

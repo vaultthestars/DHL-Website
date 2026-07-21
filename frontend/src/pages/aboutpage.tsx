@@ -5,9 +5,11 @@ import {getcolorstring} from  "../Homepage"
 import './subpages.css'
 import  {tabs} from "./writing_tabs"
 import { Button } from '../button';
-import { access } from 'fs';
+import { Viewport } from '../hooks/useWindowSize';
+import { PageHeader } from '../components/PageHeader';
+import { MobileConwayGrid } from '../components/MobileConwayGrid';
 
-import {arrsize} from '../App'
+import {arrsize, shuffleConwayGrid} from '../lib/conway'
 
 //TODO: Add titles(side title and top title)
 //TODO: Add a link entry
@@ -50,8 +52,8 @@ function divwrap(n: number, p: point){
 }
 
 
-export default function Aboutpage(Timer: number, setPage: pagesetter, mouse: point, extravars: reactvar[]) {
-    const wdims = {x: window.innerWidth, y: window.innerHeight};
+export default function Aboutpage(Timer: number, setPage: pagesetter, mouse: point, extravars: reactvar[], viewport: Viewport) {
+    const wdims = {x: viewport.width, y: viewport.height};
 
     const tabdims = {x: wdims.x - (N-1)*marginwidth, y: wdims.y}
     const linespace = 20
@@ -59,9 +61,9 @@ export default function Aboutpage(Timer: number, setPage: pagesetter, mouse: poi
     const setcurcells = extravars[3].setter
 
     return <div key = "pagewrapper" className = "pagewrapper">
-
+            <div className="desktop-only">
             <svg className="animsvg" fill = "true"
-                 width="100%" height={2*window.innerHeight} aria-label="loading screen">
+                 width="100%" height={2*viewport.height} aria-label="loading screen">
               <rect
               key = {"Header"}
               x = {0}
@@ -107,7 +109,7 @@ export default function Aboutpage(Timer: number, setPage: pagesetter, mouse: poi
                             width = {cellsize}
                             height = {cellsize}
                             fill = {getcolorstring({h: 360*i/(arrsize*arrsize), s: 0.6, v: 0.5*cellvals[i]})}
-                            onClick={()=>setcurcells(Array.from(Array(arrsize*arrsize).keys()).map((num) => {return Math.floor(Math.random()*1.5)}))}
+                            onClick={()=>setcurcells(shuffleConwayGrid())}
                             />
                      }
 
@@ -167,6 +169,57 @@ export default function Aboutpage(Timer: number, setPage: pagesetter, mouse: poi
               <br/>
               <a href="https://drive.google.com/file/d/1R2M4pI9WCkJQdacKYyuET7LLO34xe1ca/view?usp=sharing" className = "bodyText">Resume Link</a>
               </p>
+            </div>
+            <div className="mobile-only mobile-page">
+              <PageHeader title="ABOUT" setPage={setPage} hue={(360 * 3) / N} />
+              <div className="mobile-prose">
+                <p>Hi! My name is Dylan Lee.</p>
+                <p>
+                  I work in a variety of mediums, although primarily through visual art, writing, music, and code.
+                  I enjoy skateboarding, exploring, climbing trees, and dancing. I would like to read more- last summer I finally read a book again for the first time- it was the Three Body Problem by Liu Cixin.
+                </p>
+                <p>
+                  My favorite book, or at least my go-to recommendation for most people would be Ray Bradbury's Dandelion Wine.
+                  Although Bradbury is primarily a science fiction writer, Dandelion Wine is entirely just regular fiction- it is a collection
+                  of short stories set in a small town in the summer of 1928, mostly seen through the eyes of a young boy named Douglas Spaulding.
+                  He is 12 years old, and in the first chapter of the book he, while picking berries in the woods with his father and younger brother Tom,
+                  discovers that he, as a human being, is alive- it's a truly beautiful chapter that still hits me in the gut whenever I go back and read it.
+                </p>
+                <p>
+                  The worst injury I've ever had is a broken wrist.
+                  The furthest distance I have ever walked is currently 17 miles- I started in Shadyside, Pittsburgh, and walked all the way to Boston, PA.
+                  I listen to a wide range of music but have most recently been listening to Mei Semones, No Buses, Tricot, Title Fight, and Femtanyl.
+                </p>
+                <p>My favorite movies are listed in no particular order as follows:</p>
+                <ul>
+                  <li>Moonrise Kingdom</li>
+                  <li>Dead Poet's Society</li>
+                  <li>The Way Way Back</li>
+                  <li>Before Sunrise</li>
+                  <li>Lost in Translation</li>
+                  <li>Sing Street</li>
+                  <li>About Time</li>
+                  <li>Past Lives</li>
+                  <li>La La Land</li>
+                  <li>Inception</li>
+                  <li>Either Spirited Away or The Boy and the Heron or Ponyo</li>
+                  <li>Logan Lucky</li>
+                  <li>Green Book</li>
+                  <li>Everything Everywhere All At Once</li>
+                  <li>Spy, with Melissa McCarthy</li>
+                </ul>
+                <p>
+                  I graduated from Brown University in 2025 with a Bachelor's of Science degree in Computer Science, and currently work as a 2D animator at Duolingo in Pittsburgh.
+                </p>
+                <p>
+                  <a href="https://drive.google.com/file/d/1R2M4pI9WCkJQdacKYyuET7LLO34xe1ca/view?usp=sharing">Resume Link</a>
+                </p>
+              </div>
+              <MobileConwayGrid
+                cellvals={cellvals}
+                onShuffle={() => setcurcells(shuffleConwayGrid())}
+              />
+            </div>
         </div>
     // Otherwise, display our main app window
 }

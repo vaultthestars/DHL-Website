@@ -1,12 +1,16 @@
-import React, { useState, Dispatch, SetStateAction, useEffect, useCallback, JSX } from 'react';
+import React, { useState, Dispatch, SetStateAction, useEffect, useCallback, JSX, useRef } from 'react';
 import Homepage from './Homepage'
 import './styles/App.css';
+import './styles/responsive.css';
 import Animationpage from './pages/animation';
 import Desmospage from './pages/desmos';
 import musicpage from './pages/musicpage';
 import Writing from './pages/writing';
 import Aboutpage from './pages/aboutpage';
 import { Analytics } from "@vercel/analytics/react"
+import { useWindowSize, Viewport } from './hooks/useWindowSize';
+import { useStableViewport } from './hooks/useStableViewport';
+import { createRandomConwayGrid, stepConway } from './lib/conway';
 
 export function RootLayout({
   children,
@@ -32,7 +36,7 @@ export function RootLayout({
 type point = {x: number, y: number}
 export type pagesetter = React.Dispatch<React.SetStateAction<number>>
 export type reactvar = {var: any, setter: React.Dispatch<React.SetStateAction<any>>}
-type pagebutton = {name: string, page: (timer: number, setter: pagesetter, mouse: point, extravars: reactvar[])=>{}}
+type pagebutton = {name: string, page: (timer: number, setter: pagesetter, mouse: point, extravars: reactvar[], viewport: Viewport)=>{}}
 
 export const pages = [{name: "MUSIC", page: musicpage},
 {name: "ANIMATION", page: Animationpage},
@@ -40,12 +44,12 @@ export const pages = [{name: "MUSIC", page: musicpage},
 {name: "WRITING", page: Writing},
 {name: "ABOUT", page: Aboutpage}]
 
-function returnpage(currpage: number, timer: number, setter: pagesetter, mouse: point, extravars: reactvar[]): JSX.Element{
+function returnpage(currpage: number, timer: number, setter: pagesetter, mouse: point, extravars: reactvar[], viewport: Viewport, layoutViewport: Viewport): JSX.Element{
   if(currpage == 0){
-    return Homepage(timer, setter, mouse)
+    return Homepage(timer, setter, mouse, viewport)
   } 
   else{
-    return pages[currpage-1].page(timer, setter, mouse, extravars)
+    return pages[currpage-1].page(timer, setter, mouse, extravars, layoutViewport)
     //HERE: Only return pages 1 through 4!
   }
 }
@@ -85,106 +89,85 @@ function clamplr(x: number, l: number, r: number){
   return x;
 }
 
-export const arrsize = 200;
-
-//1 = alive 0 = dead 2 = dying 3 = dying
-
-function conway(cellvals: Array<number>){
-  let cellsum = 0;
-  return Array.from(Array(arrsize*arrsize).keys()).map((i) => {
-    cellsum = 0;
-    const xpos = i%arrsize;
-    const ypos = Math.floor(i/arrsize);
-
-    //For the below to be effective, it needs to move around a bit. Or only do the stamp thing every few counts.
-    const currcell = cellvals[i];
-    if(currcell == 2){
-      return 3; //Are you dying?
-    }
-    else if(currcell == 3){
-      return 0; //Are you dying?
-    }
-    else{
-       //You are either living or dead.
-        
-      for(let x = -1; x < 2; x++){
-        for(let y = -1; y < 2; y++){
-          if(!((x == 0) && (y == 0))){
-            const thiscell = cellvals[clamplr(i + x + arrsize*y , 0, cellvals.length-1)]
-            if(thiscell == 1){
-              cellsum = cellsum + 1;
-            }
-          }
-        }
-      }
-      //Are you dead?
-      if(currcell == 0){
-        if(cellsum == 2){
-          return 1;
-        }
-        else{
-          return 0;
-        }
-      }
-      else{
-        //You must be alive
-        if((cellsum < 3)||(cellsum > 5)){
-          return 2;
-        }
-        else{
-          return 1;
-        }
-      }
-    }
-    // return Math.floor(Math.random()*2)
-  })
-}
-
 function App() {
 
+  const viewport = useWindowSize();
+  const layoutViewport = useStableViewport(viewport);
   // A global timer variable that loops from 0 to 1. Used for onscreen animations.
   const [Timer, setTimer] = useState<number>(0)
   const [Currpage, setCurrpage] = useState<number>(0)
-  const [mousePosition,setMousePosition] = React.useState({ x: null, y: null });
+  const [mousePosition,setMousePosition] = React.useState<{ x: number | null; y: number | null }>({ x: null, y: null });
   const [currtab,setcurrtab] = React.useState<number>(0);
   const [t0,sett0] = React.useState<number>(0);
   const [musictab, setmusictab] = useState<number>(0) 
-  const [cellvals, setcellvals] = React.useState<Array<number>>(Array.from(Array(arrsize*arrsize).keys()).map((num) => {return Math.floor(Math.random()*2)}));
+  const [cellvals, setcellvals] = React.useState<Array<number>>(createRandomConwayGrid());
+  const isResizingRef = useRef(false);
+  const currtabRef = useRef(currtab);
   
   const othervars: reactvar[] = [{var: currtab, setter: setcurrtab},{var: t0, setter: sett0}, {var: musictab, setter: setmusictab}, {var: cellvals, setter: setcellvals}]
   // If the page is 0, we go to the home page.
 
-  // A number denoting the speed at which circles move on screen.
-  const updateMousePosition = (ev: { clientX: any; clientY: any; }) => {
-    setMousePosition({ x: ev.clientX, y: ev.clientY });
-  };
+  const updatePointerPosition = useCallback((clientX: number, clientY: number) => {
+    setMousePosition({ x: clientX, y: clientY });
+  }, []);
 
   useEffect(() => {
-    if(Currpage == 0 || Currpage == 1 || Currpage == 3){
-      window.addEventListener('mousemove', updateMousePosition);
-    }
-    //Do we have to remove this later? idk it isn't causing issues for now
-    const interval = setInterval(() => {
-      // Increase the Timer variable regardless of what's going on, since we have animations in all cases
-      setTimer((Timer + 0.001) % 1)
-      sett0(t0b(t0,currtab)) 
-      // console.log("opacival: "+document.documentElement.style.getPropertyValue('--opacival'));
-      if(Currpage == 5){
-        setcellvals(conway(cellvals));
-      }
+    currtabRef.current = currtab;
+  }, [currtab]);
 
+  useEffect(() => {
+    isResizingRef.current = true;
+    sett0(currtabRef.current);
+    const timeout = window.setTimeout(() => {
+      isResizingRef.current = false;
+    }, 50);
+    return () => window.clearTimeout(timeout);
+  }, [viewport.width, viewport.height]);
+
+  useEffect(() => {
+    const tracksPointer = Currpage === 0 || Currpage === 1 || Currpage === 3;
+    const onMouseMove = (event: MouseEvent) => {
+      updatePointerPosition(event.clientX, event.clientY);
+    };
+    const onTouchMove = (event: TouchEvent) => {
+      const touch = event.touches[0];
+      if (touch) {
+        updatePointerPosition(touch.clientX, touch.clientY);
+      }
+    };
+
+    if (tracksPointer) {
+      window.addEventListener('mousemove', onMouseMove);
+      window.addEventListener('touchmove', onTouchMove, { passive: true });
+      window.addEventListener('touchstart', onTouchMove, { passive: true });
     }
-    , 10);
-     return () => {clearInterval(interval);
-      if(Currpage == 0 || Currpage == 1 || Currpage == 3){
-        window.removeEventListener('mousemove', updateMousePosition);
-        
-      }}
-})
+
+    const interval = setInterval(() => {
+      setTimer((currentTimer) => (currentTimer + 0.001) % 1);
+      sett0((currentT0) => {
+        if (isResizingRef.current) {
+          return currtabRef.current;
+        }
+        return t0b(currentT0, currtabRef.current);
+      });
+      if (Currpage === 5) {
+        setcellvals((currentCells) => stepConway(currentCells));
+      }
+    }, 10);
+
+    return () => {
+      clearInterval(interval);
+      if (tracksPointer) {
+        window.removeEventListener('mousemove', onMouseMove);
+        window.removeEventListener('touchmove', onTouchMove);
+        window.removeEventListener('touchstart', onTouchMove);
+      }
+    };
+  }, [Currpage, updatePointerPosition]);
   const mouse = {x: stringtonum(mousePosition.x), y: stringtonum(mousePosition.y)+window.scrollY}
   return (      
     <div className="App">
-      {returnpage(Currpage, Timer, setCurrpage, mouse, othervars)}
+      {returnpage(Currpage, Timer, setCurrpage, mouse, othervars, viewport, layoutViewport)}
     </div>
   );
 }

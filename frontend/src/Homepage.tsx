@@ -4,6 +4,8 @@ import {Dstring, Hstring, Lstring} from "./LetterData";
 import App from "./App"
 import {pages, pagesetter} from "./App"
 import { Button } from './button';
+import { Viewport } from './hooks/useWindowSize';
+import { MobileHomeHero } from './components/MobileHomeHero';
 
 const tau = 2*Math.PI
 
@@ -96,21 +98,18 @@ function boxdist(mouse: point, reccenter: point, recdims: point): number{
 }
 
 
-export default function Homepage(Timer: number, setPage: pagesetter, mousePosition: {x: any, y: any}) {
+export default function Homepage(Timer: number, setPage: pagesetter, mousePosition: {x: any, y: any}, viewport: Viewport) {
     const mouse = mousePosition
-    // -window.scrollY
-    // const clickx = stringtonum(clicked.x)
-    // const clicky = stringtonum(clicked.y)
     const numlayers = 8;
-    const buttonlayers = 3;
-    let center = {x: window.innerWidth/2, y: 350};
+    let center = {x: viewport.width/2, y: 350};
 
     const frameweight = 16
     const framedims = {x: 420, y: 200}
 
     return <div key = "wrapper" className = "wrapper">
+            <div className="desktop-only">
             <svg className="svgwindow" fill = "true"
-                 width="100%" height={window.innerHeight} aria-label="loading screen">
+                 width="100%" height={viewport.height} aria-label="loading screen">
                     <text
                         key = {"nametitle"}
                         x = {center.x}
@@ -184,6 +183,29 @@ export default function Homepage(Timer: number, setPage: pagesetter, mousePositi
                             Built for Google Chrome
                         </text>
             </svg>
+            </div>
+            <div className="mobile-only mobile-page">
+              <div className="mobile-hero">
+                <h1 className="mobile-hero__title">DYLAN HWANG LEE</h1>
+                <MobileHomeHero mouse={mouse} />
+              </div>
+              <nav className="mobile-nav-list" aria-label="Site sections">
+                {pages.map((page, index) => (
+                  <button
+                    key={page.name}
+                    type="button"
+                    className="mobile-nav-button"
+                    onClick={() => setPage(index + 1)}
+                  >
+                    {page.name}
+                  </button>
+                ))}
+              </nav>
+              <footer className="mobile-footer">
+                <div>Contact: dhl31415926@gmail.com</div>
+                <div>Built for Google Chrome</div>
+              </footer>
+            </div>
         </div>
     // Otherwise, display our main app window
 }
