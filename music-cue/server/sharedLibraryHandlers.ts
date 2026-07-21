@@ -1,5 +1,6 @@
 import { mergeSharedLibrarySnapshots } from "../shared/sharedLibrary";
 import {
+  getSharedLibrarySnapshot,
   getSharedLibrarySnapshots,
   listSharedLibraryContributors,
 } from "./sharedLibraryStore";
@@ -33,6 +34,17 @@ export const handleSharedLibraryRoute = async (
   try {
     if (route === "" && req.method === "GET") {
       res.status(200).json(await listSharedLibraryContributors());
+      return;
+    }
+
+    if (route.startsWith("snapshot/") && req.method === "GET") {
+      const contributorId = route.slice("snapshot/".length);
+      const snapshot = await getSharedLibrarySnapshot(contributorId);
+      if (!snapshot) {
+        res.status(404).json({ error: "Shared library snapshot not found." });
+        return;
+      }
+      res.status(200).json(snapshot);
       return;
     }
 

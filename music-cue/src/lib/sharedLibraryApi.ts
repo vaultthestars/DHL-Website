@@ -1,5 +1,8 @@
-import type { LibraryContributor, MergedLibrary } from "../../shared/sharedLibrary";
+import type { LibraryContributor, MergedLibrary, SharedLibrarySnapshot } from "../../shared/sharedLibrary";
+import { mergeSharedLibrarySnapshots } from "../../shared/sharedLibrary";
 import type { LoadedLibrary } from "./musicProvider";
+import { isMockContributorId } from "./libraryScope";
+import { getMockContributors, getMockSnapshots } from "./mockLibraries";
 
 const fetchJson = async <T>(url: string, init?: RequestInit): Promise<T> => {
   const response = await fetch(url, {
@@ -21,14 +24,70 @@ export type MergedSharedLibraryResponse = MergedLibrary & {
   contributors: LibraryContributor[];
 };
 
-export const listSharedContributors = async (): Promise<LibraryContributor[]> => {
-  const payload = await fetchJson<SharedLibraryIndexResponse>("/api/shared-libraries");
-  return payload.contributors ?? [];
+export const listSharedContributors = async (includeMockUsers = false): Promise<LibraryContributor[]> => {
+  const payload = await fetchJson<SharedLibraryIndexResponse>("/api/shared-libraries").catch(() => ({
+    contributors: [],
+  }));
+  const contributors = payload.contributors ?? [];
+  if (!includeMockUsers) {
+    return contributors;
+  }
+  const merged = [...contributors, ...getMockContributors()];
+  const byId = new Map(merged.map((contributor) => [contributor.id, contributor]));
+  return [...byId.values()].sort((left, right) => left.name.localeCompare(right.name));
 };
 
-export const loadMergedSharedLibrary = async (contributorIds: string[]): Promise<MergedSharedLibraryResponse> => {
-  const query = contributorIds.length > 0 ? `?contributors=${encodeURIComponent(contributorIds.join(","))}` : "";
-  return fetchJson<MergedSharedLibraryResponse>(`/api/shared-libraries/merge${query}`);
+export const fetchSharedLibrarySnapshot = async (contributorId: string): Promise<SharedLibrarySnapshot | null> => {
+  if (isMockContributorId(contributorId)) {
+    return getMockSnapshots([contributorId])[0] ?? null;
+  }
+  return fetchJson<SharedLibrarySnapshot>(`/api/shared-libraries/snapshot/${encodeURIComponent(contributorId)}`).catch(
+    () => null
+  );
+};
+
+export const loadMergedSharedLibrary = async (
+  contributorIds: string[],
+  includeMockUsers = false
+): Promise<MergedSharedLibraryResponse> => {
+  const selectedIds = includeMockUsers
+    ? contributorIds
+    : contributorIds.filter((contributorId) => !isMockContributorId(contributorId));
+
+  const realIds = selectedIds.filter((contributorId) => !isMockContributorId(contributorId));
+  const mockIds = selectedIds.filter((contributorId) => isMockContributorId(contributorId));
+
+  const snapshots: SharedLibrarySnapshot[] = [];
+  if (realIds.length > 0) {
+    const realSnapshots = await Promise.all(realIds.map((contributorId) => fetchSharedLibrarySnapshot(contributorId)));
+    snapshots.push(...realSnapshots.filter((snapshot): snapshot is SharedLibrarySnapshot => snapshot !== null));
+  }
+  snapshots.push(...getMockSnapshots(mockIds));
+
+  if (snapshots.length === 0) {
+    return {
+      songs: [],
+      stats: {
+        minYear: 1970,
+        maxYear: new Date().getFullYear(),
+        genres: [],
+        genreCounts: {},
+        maxPlayCount: 1,
+        playlistIds: [],
+        playlistNames: {},
+        playlistCounts: {},
+      },
+      sharedTrackCount: 0,
+      contributors: [],
+    };
+  }
+
+  const merged = mergeSharedLibrarySnapshots(snapshots);
+  const contributors = await listSharedContributors(includeMockUsers);
+  return {
+    ...merged,
+    contributors: contributors.filter((contributor) => selectedIds.includes(contributor.id)),
+  };
 };
 
 export const publishSharedLibrary = async (): Promise<{ contributor: { id: string; name: string }; trackCount: number }> => {
@@ -57,4 +116,30 @@ export const loadEnabledContributorIds = (): string[] => {
 
 export const saveEnabledContributorIds = (contributorIds: string[]): void => {
   localStorage.setItem(ENABLED_CONTRIBUTORS_KEY, JSON.stringify(contributorIds));
+};
+
+const INCLUDE_MOCK_USERS_KEY = "music-cue-include-mock-users";
+const LIBRARY_SCOPE_MODE_KEY = "music-cue-library-scope-mode";
+
+export const loadIncludeMockUsers = (): boolean => {
+  try {
+    return localStorage.getItem(INCLUDE_MOCK_USERS_KEY) === "true";
+  } catch {
+    return false;
+  }
+};
+
+export const saveIncludeMockUsers = (includeMockUsers: boolean): void => {
+  localStorage.setItem(INCLUDE_MOCK_USERS_KEY, includeMockUsers ? "true" : "false");
+};
+
+export type LibraryScopeMode = "conglomerate" | "isolate";
+
+export const loadLibraryScopeMode = (): LibraryScopeMode => {
+  const stored = localStorage.getItem(LIBRARY_SCOPE_MODE_KEY);
+  return stored === "isolate" ? "isolate" : "conglomerate";
+};
+
+export const saveLibraryScopeMode = (mode: LibraryScopeMode): void => {
+  localStorage.setItem(LIBRARY_SCOPE_MODE_KEY, mode);
 };

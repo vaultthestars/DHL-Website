@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { buildClusterRegions, ClusterRegion } from "../lib/clusterRegions";
+import { buildClusterRegions, buildOwnerMetaRegions, ClusterRegion } from "../lib/clusterRegions";
 import { syncClusterLayoutToServer } from "../lib/clusterLayoutSync";
 import {
   getLayoutAxisLabels,
@@ -55,10 +55,15 @@ import {
 import {
   listSharedContributors,
   loadEnabledContributorIds,
+  loadIncludeMockUsers,
+  loadLibraryScopeMode,
   loadMergedSharedLibrary,
   publishSharedLibrary,
   saveEnabledContributorIds,
+  saveIncludeMockUsers,
+  saveLibraryScopeMode,
   toLoadedLibrary,
+  type LibraryScopeMode,
 } from "../lib/sharedLibraryApi";
 import type { LibraryContributor } from "../../shared/sharedLibrary";
 import {
@@ -267,6 +272,18 @@ export const MusicCueTool = () => {
   );
   const [sharedContributors, setSharedContributors] = useState<LibraryContributor[]>([]);
   const [enabledContributorIds, setEnabledContributorIds] = useState<string[]>(() => loadEnabledContributorIds());
+  const [includeMockUsers, setIncludeMockUsers] = useState(() => {
+    try {
+      const stored = localStorage.getItem("music-cue-include-mock-users");
+      if (stored === null && isWebDeployment) {
+        return true;
+      }
+      return stored === "true";
+    } catch {
+      return false;
+    }
+  });
+  const [libraryScopeMode, setLibraryScopeMode] = useState<LibraryScopeMode>(() => loadLibraryScopeMode());
   const [sharedTrackCount, setSharedTrackCount] = useState(0);
   const [isLoadingSharedLibrary, setIsLoadingSharedLibrary] = useState(false);
   const [dimensions, setDimensions] = useState<GraphDimensions>(() => getGraphDimensions(null));
@@ -528,8 +545,11 @@ export const MusicCueTool = () => {
 
   const computeLayoutPosition = useCallback(
     (song: Song, config: LayoutConfig): GraphPoint =>
-      layoutSongPosition(song, dimensions, config, stats, {}, clusterOverrides, visibleSongs),
-    [clusterOverrides, dimensions, stats, visibleSongs]
+      layoutSongPosition(song, dimensions, config, stats, {}, clusterOverrides, visibleSongs, {
+        libraryScopeMode,
+        enabledOwnerIds: enabledContributorIds,
+      }),
+    [clusterOverrides, dimensions, enabledContributorIds, libraryScopeMode, stats, visibleSongs]
   );
 
   const clusterSnapshotInputsRef = useRef({
@@ -578,18 +598,37 @@ export const MusicCueTool = () => {
   }, [layoutConfig, stats, visibleSongs]);
 
   const clusterRegions = useMemo(() => {
+    const ownerRegions =
+      libraryScopeMode === "isolate"
+        ? buildOwnerMetaRegions(visibleSongs, dimensions, libraryScopeMode, enabledContributorIds)
+        : [];
+
     if (!isClusterView(layoutConfig) || isLayoutTransitioning) {
-      return [];
+      return ownerRegions;
     }
-    return buildClusterRegions(
-      layoutConfig.clusterMode,
-      visibleSongs,
-      getDisplayPosition,
-      stats,
-      dimensions,
-      clusterOverrides
-    );
-  }, [clusterOverrides, dimensions, getDisplayPosition, isLayoutTransitioning, layoutConfig, stats, visibleSongs]);
+
+    return [
+      ...ownerRegions,
+      ...buildClusterRegions(
+        layoutConfig.clusterMode,
+        visibleSongs,
+        getDisplayPosition,
+        stats,
+        dimensions,
+        clusterOverrides
+      ),
+    ];
+  }, [
+    clusterOverrides,
+    dimensions,
+    enabledContributorIds,
+    getDisplayPosition,
+    isLayoutTransitioning,
+    layoutConfig,
+    libraryScopeMode,
+    stats,
+    visibleSongs,
+  ]);
 
   useEffect(() => {
     const wasTransitioning = wasLayoutTransitioningRef.current;
@@ -1272,7 +1311,7 @@ export const MusicCueTool = () => {
       }
       setIsLoadingSharedLibrary(true);
       try {
-        const merged = await loadMergedSharedLibrary(contributorIds);
+        const merged = await loadMergedSharedLibrary(contributorIds, includeMockUsers);
         const loaded = toLoadedLibrary(merged);
         setSharedTrackCount(merged.sharedTrackCount);
         const contributorNames = contributors
@@ -1292,11 +1331,11 @@ export const MusicCueTool = () => {
         setIsLoadingSharedLibrary(false);
       }
     },
-    [applyLoadedLibrary]
+    [applyLoadedLibrary, includeMockUsers]
   );
 
   const refreshSharedContributors = useCallback(async () => {
-    const contributors = await listSharedContributors();
+    const contributors = await listSharedContributors(includeMockUsers);
     setSharedContributors(contributors);
     const storedEnabled = loadEnabledContributorIds().filter((contributorId) =>
       contributors.some((contributor) => contributor.id === contributorId)
@@ -1309,7 +1348,7 @@ export const MusicCueTool = () => {
       await applyMergedSharedLibrary(nextEnabled, contributors);
     }
     return contributors;
-  }, [applyMergedSharedLibrary, musicService]);
+  }, [applyMergedSharedLibrary, includeMockUsers, musicService]);
 
   useEffect(() => {
     if (!isWebDeployment || musicService !== "spotify") {
@@ -1327,6 +1366,23 @@ export const MusicCueTool = () => {
     setEnabledContributorIds(nextEnabled);
     saveEnabledContributorIds(nextEnabled);
     void applyMergedSharedLibrary(nextEnabled, sharedContributors);
+  };
+
+  const handleIncludeMockUsersToggle = () => {
+    const nextValue = !includeMockUsers;
+    setIncludeMockUsers(nextValue);
+    saveIncludeMockUsers(nextValue);
+    void refreshSharedContributors();
+  };
+
+  const handleLibraryScopeChange = (mode: LibraryScopeMode) => {
+    setLibraryScopeMode(mode);
+    saveLibraryScopeMode(mode);
+    setStatusMessage(
+      mode === "isolate"
+        ? "Isolate mode — each person gets their own cluster ring."
+        : "Conglomerate mode — all libraries merge into one graph."
+    );
   };
 
   const handleRefreshSharedLibrary = () => {
@@ -1855,6 +1911,31 @@ export const MusicCueTool = () => {
               ) : null}
             </div>
           )}
+
+          {isWebDeployment && musicService === "spotify" ? (
+            <div className="music-cue-shared-controls">
+              <label className="music-cue-contributor-option">
+                <input type="checkbox" checked={includeMockUsers} onChange={handleIncludeMockUsersToggle} />
+                <span>Demo users (August, Riley, Sam)</span>
+              </label>
+              <div className="music-cue-layout-toggle music-cue-scope-toggle" role="group" aria-label="Library scope">
+                <button
+                  type="button"
+                  className={libraryScopeMode === "conglomerate" ? "music-cue-layout-active" : ""}
+                  onClick={() => handleLibraryScopeChange("conglomerate")}
+                >
+                  Conglomerate
+                </button>
+                <button
+                  type="button"
+                  className={libraryScopeMode === "isolate" ? "music-cue-layout-active" : ""}
+                  onClick={() => handleLibraryScopeChange("isolate")}
+                >
+                  Isolate
+                </button>
+              </div>
+            </div>
+          ) : null}
 
           {isWebDeployment && musicService === "spotify" && sharedContributors.length > 0 ? (
             <div className="music-cue-contributor-toggle" role="group" aria-label="Shared library contributors">

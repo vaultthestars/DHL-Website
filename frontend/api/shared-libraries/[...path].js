@@ -45,7 +45,7 @@ var defaultStats = () => ({
   playlistNames: {},
   playlistCounts: {}
 });
-var rebuildStats = (songs, playlistNames = {}) => {
+var buildLibraryStatsFromSongs = (songs, playlistNames = {}) => {
   if (songs.length === 0) {
     return defaultStats();
   }
@@ -118,7 +118,7 @@ var mergeSharedLibrarySnapshots = (snapshots) => {
     });
   });
   const songs = [...songMap.values()];
-  const stats = rebuildStats(songs, playlistNames);
+  const stats = buildLibraryStatsFromSongs(songs, playlistNames);
   return {
     songs,
     stats,
@@ -211,6 +211,16 @@ var handleSharedLibraryRoute = async (route, req, res) => {
   try {
     if (route === "" && req.method === "GET") {
       res.status(200).json(await listSharedLibraryContributors());
+      return;
+    }
+    if (route.startsWith("snapshot/") && req.method === "GET") {
+      const contributorId = route.slice("snapshot/".length);
+      const snapshot = await getSharedLibrarySnapshot(contributorId);
+      if (!snapshot) {
+        res.status(404).json({ error: "Shared library snapshot not found." });
+        return;
+      }
+      res.status(200).json(snapshot);
       return;
     }
     if (route === "merge" && req.method === "GET") {

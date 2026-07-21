@@ -38,7 +38,10 @@ const defaultStats = (): LibraryStats => ({
   playlistCounts: {},
 });
 
-const rebuildStats = (songs: Song[], playlistNames: Record<string, string> = {}): LibraryStats => {
+export const buildLibraryStatsFromSongs = (
+  songs: Song[],
+  playlistNames: Record<string, string> = {}
+): LibraryStats => {
   if (songs.length === 0) {
     return defaultStats();
   }
@@ -125,7 +128,7 @@ export const mergeSharedLibrarySnapshots = (snapshots: SharedLibrarySnapshot[]):
   });
 
   const songs = [...songMap.values()];
-  const stats = rebuildStats(songs, playlistNames);
+  const stats = buildLibraryStatsFromSongs(songs, playlistNames);
 
   return {
     songs,

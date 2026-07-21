@@ -11,6 +11,7 @@ import {
   GraphDimensions,
   resolveClusterCenter,
 } from "./graphLayout";
+import { getEnabledOwnerMetaClusters, LibraryScopeMode, SHARED_OWNER_CLUSTER_ID } from "./libraryScope";
 
 import { UNASSIGNED_PLAYLIST_CLUSTER_ID } from "./playlistConstants";
 
@@ -218,6 +219,39 @@ export const buildClusterRegions = (
       };
     })
     .filter((region): region is ClusterRegion => region !== null);
+};
+
+export const buildOwnerMetaRegions = (
+  visibleSongs: Song[],
+  dimensions: GraphDimensions,
+  libraryScopeMode: LibraryScopeMode,
+  enabledOwnerIds?: string[]
+): ClusterRegion[] => {
+  if (libraryScopeMode !== "isolate") {
+    return [];
+  }
+
+  return getEnabledOwnerMetaClusters(visibleSongs, dimensions, enabledOwnerIds).map((meta, index) => {
+    const members = visibleSongs.filter((song) => {
+      const ownerIds = song.owners?.map((owner) => owner.id) ?? [];
+      if (meta.id === SHARED_OWNER_CLUSTER_ID) {
+        return ownerIds.length > 1;
+      }
+      return ownerIds.includes(meta.id);
+    });
+    const hue = meta.id === SHARED_OWNER_CLUSTER_ID ? 46 : clusterHue(index, 6);
+    const radius = meta.radius + 18;
+    const hullPath = `M ${(meta.center.x - radius).toFixed(1)} ${meta.center.y.toFixed(1)} a ${radius} ${radius} 0 1 0 ${radius * 2} 0 a ${radius} ${radius} 0 1 0 ${-radius * 2} 0`;
+    return {
+      id: `owner:${meta.id}`,
+      label: meta.name,
+      center: meta.center,
+      hullPath,
+      fill: hueToFill(hue, 62, 72, 0.08),
+      stroke: hueToFill(hue, 72, 42, 0.45),
+      memberCount: members.length,
+    };
+  });
 };
 
 export const findNearestCluster = (

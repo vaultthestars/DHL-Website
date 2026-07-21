@@ -657,6 +657,19 @@ body {
   margin: 0;
 }
 
+.music-cue-shared-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  align-items: center;
+  flex: 1 1 100%;
+}
+
+.music-cue-scope-toggle {
+  grid-template-columns: repeat(2, minmax(96px, 1fr));
+  flex: 0 0 auto;
+}
+
 .music-cue-spotify-callback {
   display: flex;
   align-items: center;

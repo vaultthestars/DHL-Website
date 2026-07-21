@@ -10,8 +10,32 @@ import {
   getPlaylistOverlapLayoutContext,
   layoutPlaylistOverlapSong,
 } from "./playlistOverlapLayout";
+import { buildLibraryStatsFromSongs } from "../../shared/sharedLibrary";
+import {
+  getEnabledOwnerMetaClusters,
+  getSongScopeClusterId,
+  LibraryScopeMode,
+  radialIsolateAxisPosition,
+  songsForOwnerScope,
+  transformToMetaCluster,
+} from "./libraryScope";
+import { MusicServiceId } from "./musicProvider";
 
 const GRAPH_PADDING = 48;
+const INNER_SCOPE_DIMENSIONS: GraphDimensions = { width: 400, height: 400 };
+
+export type LayoutContext = {
+  libraryScopeMode?: LibraryScopeMode;
+  enabledOwnerIds?: string[];
+};
+
+const hasMultipleLibraryOwners = (songs: Song[]): boolean => {
+  const ownerIds = new Set<string>();
+  songs.forEach((song) => {
+    (song.owners ?? []).forEach((owner) => ownerIds.add(owner.id));
+  });
+  return ownerIds.size > 1;
+};
 
 export type GraphDimensions = {
   width: number;
@@ -266,7 +290,66 @@ export const layoutSongPosition = (
   stats: LibraryStats,
   customPositions: Record<string, NormalizedPoint>,
   clusterOverrides: ClusterCenterOverrides = EMPTY_CLUSTER_OVERRIDES,
-  songs: Song[] = []
+  songs: Song[] = [],
+  layoutContext: LayoutContext = {}
+): { x: number; y: number } => {
+  const libraryScopeMode = layoutContext.libraryScopeMode ?? "conglomerate";
+  const allSongs = songs.length > 0 ? songs : [song];
+
+  if (libraryScopeMode === "isolate" && hasMultipleLibraryOwners(allSongs)) {
+    const metaClusters = getEnabledOwnerMetaClusters(allSongs, dimensions, layoutContext.enabledOwnerIds);
+    const scopeClusterId = getSongScopeClusterId(song);
+    const metaCluster = metaClusters.find((cluster) => cluster.id === scopeClusterId);
+    if (metaCluster) {
+      const ownerSongs = songsForOwnerScope(allSongs, scopeClusterId);
+      const ownerStats = buildLibraryStatsFromSongs(ownerSongs, stats.playlistNames);
+
+      if (!isClusterView(layoutConfig)) {
+        const radialMetric = layoutConfig.axisY === "year" ? layoutConfig.axisX : layoutConfig.axisY;
+        const metricValue = getMetricValue(song, radialMetric) ?? song.year;
+        const metricRange = getMetricRange(ownerSongs, radialMetric, ownerStats);
+        return radialIsolateAxisPosition(
+          song,
+          metricValue,
+          metricRange.min,
+          metricRange.max,
+          metaCluster,
+          radialMetric
+        );
+      }
+
+      const innerPosition = layoutSongPositionConglomerate(
+        song,
+        INNER_SCOPE_DIMENSIONS,
+        layoutConfig,
+        ownerStats,
+        customPositions,
+        clusterOverrides,
+        ownerSongs
+      );
+      return transformToMetaCluster(innerPosition, INNER_SCOPE_DIMENSIONS, metaCluster);
+    }
+  }
+
+  return layoutSongPositionConglomerate(
+    song,
+    dimensions,
+    layoutConfig,
+    stats,
+    customPositions,
+    clusterOverrides,
+    songs
+  );
+};
+
+const layoutSongPositionConglomerate = (
+  song: Song,
+  dimensions: GraphDimensions,
+  layoutConfig: LayoutConfig,
+  stats: LibraryStats,
+  customPositions: Record<string, NormalizedPoint>,
+  clusterOverrides: ClusterCenterOverrides,
+  songs: Song[]
 ): { x: number; y: number } => {
   if (!isClusterView(layoutConfig)) {
     return axisMetricPosition(song, layoutConfig, stats, dimensions, songs);
