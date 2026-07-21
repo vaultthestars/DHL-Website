@@ -72,6 +72,13 @@ export const useLayoutTransition = (
     return remainder.split("|")[0] ?? "";
   };
 
+  const songSpaceFromScopeKey = (scopeKey: string): string => scopeKey.split(":")[0] ?? "";
+
+  const libraryScopeFromScopeKey = (scopeKey: string): string => {
+    const parts = scopeKey.split(":");
+    return parts.length > 1 ? parts.slice(1).join(":") : scopeKey;
+  };
+
   const applyScopeTransitionFromPositions = (
     startFrom: Map<string, GraphPoint>,
     to: Map<string, GraphPoint>,
@@ -83,7 +90,10 @@ export const useLayoutTransition = (
       return;
     }
 
-    if (previousScopeKey === "conglomerate" && nextScopeKey === "isolate") {
+    const previousLibraryScope = libraryScopeFromScopeKey(previousScopeKey);
+    const nextLibraryScope = libraryScopeFromScopeKey(nextScopeKey);
+
+    if (previousLibraryScope === "conglomerate" && nextLibraryScope === "isolate") {
       songs.forEach((song) => {
         const canonicalId = getCanonicalSongId(song.id);
         const sharedFrom = startFrom.get(canonicalId) ?? startFrom.get(song.id) ?? to.get(song.id);
@@ -94,7 +104,7 @@ export const useLayoutTransition = (
       return;
     }
 
-    if (previousScopeKey === "isolate" && nextScopeKey === "conglomerate") {
+    if (previousLibraryScope === "isolate" && nextLibraryScope === "conglomerate") {
       songs.forEach((song) => {
         const duplicatePositions = [...startFrom.entries()].filter(
           ([songId]) => getCanonicalSongId(songId) === song.id
@@ -128,16 +138,24 @@ export const useLayoutTransition = (
   animatedPositionsRef.current = animatedPositions;
 
   useLayoutEffect(() => {
+    const toLayout = layoutConfig;
+    const toKey = buildTransitionKey(toLayout, extraTransitionKey);
+
     if (isLargeLibrary) {
+      prevLayoutRef.current = toLayout;
+      prevTransitionKeyRef.current = toKey;
       return undefined;
     }
 
     const previousLayout = prevLayoutRef.current;
     const previousTransitionKey = prevTransitionKeyRef.current;
-    const toLayout = layoutConfig;
-    const toKey = buildTransitionKey(toLayout, extraTransitionKey);
     const layoutChanged = previousTransitionKey !== toKey;
     const previousScopeKey = getScopeKey(previousTransitionKey);
+    const previousLibraryScope = libraryScopeFromScopeKey(previousScopeKey);
+    const nextLibraryScope = libraryScopeFromScopeKey(extraTransitionKey);
+    const songSpaceChanged =
+      layoutChanged &&
+      songSpaceFromScopeKey(previousScopeKey) !== songSpaceFromScopeKey(extraTransitionKey);
     prevLayoutRef.current = toLayout;
     prevTransitionKeyRef.current = toKey;
 
@@ -173,7 +191,8 @@ export const useLayoutTransition = (
       return undefined;
     }
 
-    const snapLayoutInstantly = visibleSongs.length >= LARGE_LIBRARY_LAYOUT_SNAP_THRESHOLD;
+    const snapLayoutInstantly =
+      visibleSongs.length >= LARGE_LIBRARY_LAYOUT_SNAP_THRESHOLD || songSpaceChanged;
 
     const startFrom =
       animatedPositionsRef.current.size > 0
@@ -190,7 +209,7 @@ export const useLayoutTransition = (
 
     let maxDistance = 0;
     const distanceSongIds = new Set(visibleSongs.map((song) => song.id));
-    if (previousScopeKey === "isolate" && extraTransitionKey === "conglomerate") {
+    if (previousLibraryScope === "isolate" && nextLibraryScope === "conglomerate") {
       startFrom.forEach((_, songId) => {
         if (isIsolateScopedSongId(songId)) {
           distanceSongIds.add(songId);
@@ -263,7 +282,10 @@ export const useLayoutTransition = (
       const nextPositions = new Map<string, GraphPoint>();
       const animatedSongIds = new Set(visibleSongs.map((song) => song.id));
 
-      if (session.fromScopeKey === "isolate" && session.toScopeKey === "conglomerate") {
+      if (
+        libraryScopeFromScopeKey(session.fromScopeKey) === "isolate" &&
+        libraryScopeFromScopeKey(session.toScopeKey) === "conglomerate"
+      ) {
         session.from.forEach((_, songId) => {
           if (isIsolateScopedSongId(songId)) {
             animatedSongIds.add(songId);

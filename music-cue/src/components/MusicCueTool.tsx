@@ -3101,32 +3101,36 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
       return;
     }
     clearFrozenIsolateBounds();
-    setSongSpaceMode(mode);
-    saveSongSpaceMode(mode);
-    reloadLayoutCaches(getActiveClusterLayoutScope(mode, libraryScopeMode));
-    if (mode === "shared") {
-      void refreshSharedContributors({ loadLibrary: true });
-    } else if (isWebDeployment && musicService === "spotify") {
-      const stored = loadPersonalSpotifyLibrary();
-      if (stored.songs.length > 0) {
-        applyLoadedLibrary(
-          stored.songs,
-          stored.stats ?? normalizeStats(null, stored.songs),
-          `My song space — ${stored.songs.length} tracks.`,
-          {},
-          { persist: true }
-        );
-      } else {
-        setSongs([]);
-        setStats(normalizeStats(null, []));
-        setStatusMessage("My song space — load your library from Spotify to begin.");
+    invalidatePlaylistOverlapLayoutCache();
+    invalidateLayoutPositionCaches();
+    startTransition(() => {
+      setSongSpaceMode(mode);
+      saveSongSpaceMode(mode);
+      reloadLayoutCaches(getActiveClusterLayoutScope(mode, libraryScopeMode));
+      if (mode === "shared") {
+        void refreshSharedContributors({ loadLibrary: true });
+      } else if (isWebDeployment && musicService === "spotify") {
+        const stored = loadPersonalSpotifyLibrary();
+        if (stored.songs.length > 0) {
+          applyLoadedLibrary(
+            stored.songs,
+            stored.stats ?? normalizeStats(null, stored.songs),
+            `My song space — ${stored.songs.length} tracks.`,
+            {},
+            { persist: true }
+          );
+        } else {
+          setSongs([]);
+          setStats(normalizeStats(null, []));
+          setStatusMessage("My song space — load your library from Spotify to begin.");
+        }
       }
-    }
-    setStatusMessage(
-      mode === "mine"
-        ? "My song space — your library layout and clusters."
-        : "Shared song space — collaborative library view."
-    );
+      setStatusMessage(
+        mode === "mine"
+          ? "My song space — your library layout and clusters."
+          : "Shared song space — collaborative library view."
+      );
+    });
   };
 
   const handleIsolateToggle = () => {
