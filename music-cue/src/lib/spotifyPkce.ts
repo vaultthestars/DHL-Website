@@ -1,5 +1,42 @@
 const SPOTIFY_CODE_VERIFIER_KEY = "music-cue-spotify-code-verifier";
 const SPOTIFY_AUTH_STATE_KEY = "music-cue-spotify-auth-state";
+const SPOTIFY_AUTH_STARTED_AT_KEY = "music-cue-spotify-auth-started-at";
+const SPOTIFY_AUTH_TTL_MS = 10 * 60 * 1000;
+
+const readStorage = (key: string): string | null => {
+  try {
+    return localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+};
+
+const writeStorage = (key: string, value: string): void => {
+  try {
+    localStorage.setItem(key, value);
+  } catch {
+    // Private browsing or storage blocked.
+  }
+};
+
+const removeStorage = (key: string): void => {
+  try {
+    localStorage.removeItem(key);
+  } catch {
+    // Ignore storage errors.
+  }
+};
+
+const clearSpotifyAuthStorage = (): void => {
+  removeStorage(SPOTIFY_CODE_VERIFIER_KEY);
+  removeStorage(SPOTIFY_AUTH_STATE_KEY);
+  removeStorage(SPOTIFY_AUTH_STARTED_AT_KEY);
+};
+
+const isFreshSpotifyAuth = (): boolean => {
+  const startedAt = Number(readStorage(SPOTIFY_AUTH_STARTED_AT_KEY));
+  return Number.isFinite(startedAt) && Date.now() - startedAt < SPOTIFY_AUTH_TTL_MS;
+};
 
 const randomString = (length: number): string => {
   const values = crypto.getRandomValues(new Uint8Array(length));
@@ -22,8 +59,9 @@ export const beginSpotifyAuth = async (): Promise<{ authorizeUrl: string; state:
   const state = randomString(16);
   const codeChallenge = await createCodeChallenge(codeVerifier);
 
-  sessionStorage.setItem(SPOTIFY_CODE_VERIFIER_KEY, codeVerifier);
-  sessionStorage.setItem(SPOTIFY_AUTH_STATE_KEY, state);
+  writeStorage(SPOTIFY_CODE_VERIFIER_KEY, codeVerifier);
+  writeStorage(SPOTIFY_AUTH_STATE_KEY, state);
+  writeStorage(SPOTIFY_AUTH_STARTED_AT_KEY, String(Date.now()));
 
   const response = await fetch("/api/spotify/auth-url", {
     method: "POST",
@@ -42,13 +80,20 @@ export const beginSpotifyAuth = async (): Promise<{ authorizeUrl: string; state:
 };
 
 export const completeSpotifyAuth = async (code: string, state: string): Promise<void> => {
-  const expectedState = sessionStorage.getItem(SPOTIFY_AUTH_STATE_KEY);
-  const codeVerifier = sessionStorage.getItem(SPOTIFY_CODE_VERIFIER_KEY);
+  if (!isFreshSpotifyAuth()) {
+    clearSpotifyAuthStorage();
+    throw new Error("Spotify login expired. Try connecting again.");
+  }
+
+  const expectedState = readStorage(SPOTIFY_AUTH_STATE_KEY);
+  const codeVerifier = readStorage(SPOTIFY_CODE_VERIFIER_KEY);
 
   if (!expectedState || state !== expectedState) {
+    clearSpotifyAuthStorage();
     throw new Error("Spotify login state mismatch. Try connecting again.");
   }
   if (!codeVerifier) {
+    clearSpotifyAuthStorage();
     throw new Error("Spotify login verifier missing. Try connecting again.");
   }
 
@@ -59,8 +104,7 @@ export const completeSpotifyAuth = async (code: string, state: string): Promise<
     body: JSON.stringify({ code, codeVerifier }),
   });
 
-  sessionStorage.removeItem(SPOTIFY_CODE_VERIFIER_KEY);
-  sessionStorage.removeItem(SPOTIFY_AUTH_STATE_KEY);
+  clearSpotifyAuthStorage();
 
   if (!response.ok) {
     const payload = (await response.json().catch(() => ({}))) as { error?: string };

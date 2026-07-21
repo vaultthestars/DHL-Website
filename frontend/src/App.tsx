@@ -95,7 +95,10 @@ function App() {
   const layoutViewport = useStableViewport(viewport);
   // A global timer variable that loops from 0 to 1. Used for onscreen animations.
   const [Timer, setTimer] = useState<number>(0)
-  const [Currpage, setCurrpage] = useState<number>(0)
+  const [Currpage, setCurrpage] = useState<number>(() => {
+    const params = new URLSearchParams(window.location.search);
+    return params.get("open") === "music" ? 1 : 0;
+  });
   const [mousePosition,setMousePosition] = React.useState<{ x: number | null; y: number | null }>({ x: null, y: null });
   const [currtab,setcurrtab] = React.useState<number>(0);
   const [t0,sett0] = React.useState<number>(0);
@@ -109,6 +112,13 @@ function App() {
 
   const updatePointerPosition = useCallback((clientX: number, clientY: number) => {
     setMousePosition({ x: clientX, y: clientY });
+  }, []);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("open") === "music") {
+      setCurrpage(1);
+    }
   }, []);
 
   useEffect(() => {

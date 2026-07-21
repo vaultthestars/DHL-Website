@@ -17,6 +17,10 @@ export default function musicpage(
   viewport: Viewport
 ) {
   const contentHeight = viewport.height - marginwidth;
+  const musicCueSrc = (() => {
+    const spotify = new URLSearchParams(window.location.search).get("spotify");
+    return spotify ? `/music-cue/?spotify=${encodeURIComponent(spotify)}` : "/music-cue/";
+  })();
 
   return (
     <div key="pagewrapper" className="pagewrapper">
@@ -57,7 +61,7 @@ export default function musicpage(
         />
       </svg>
       <iframe
-        src="/music-cue/"
+        src={musicCueSrc}
         title="Music Cue"
         style={{
           width: "100%",
@@ -71,7 +75,7 @@ export default function musicpage(
         <PageHeader title="MUSIC" setPage={setPage} hue={220} />
         <iframe
           className="mobile-music-frame"
-          src="/music-cue/"
+          src={musicCueSrc}
           title="Music Cue"
         />
       </div>

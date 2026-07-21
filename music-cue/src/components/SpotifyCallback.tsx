@@ -22,7 +22,10 @@ export const SpotifyCallback = () => {
 
     void completeSpotifyAuth(code, state)
       .then(() => {
-        window.location.replace(`${import.meta.env.BASE_URL}?spotify=connected`);
+        const returnUrl = new URL(window.location.origin);
+        returnUrl.searchParams.set("open", "music");
+        returnUrl.searchParams.set("spotify", "connected");
+        window.location.replace(returnUrl.toString());
       })
       .catch((authError) => {
         setMessage(authError instanceof Error ? authError.message : "Spotify login failed.");

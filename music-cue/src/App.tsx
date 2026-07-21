@@ -4,10 +4,20 @@ import { Win95Taskbar } from "./components/Win95Taskbar";
 
 const WINDOW_TITLE = "Music Cue";
 
+const isEmbeddedApp = (): boolean => {
+  try {
+    return window.self !== window.top;
+  } catch {
+    return true;
+  }
+};
+
 export const App = () => {
+  const embeddedClass = isEmbeddedApp() ? "win95-embedded" : "";
+
   if (window.location.pathname.endsWith("/spotify/callback")) {
     return (
-      <div className="win95-app">
+      <div className={`win95-app ${embeddedClass}`}>
         <div className="win95-workspace">
           <div className="win95-shell">
             <div className="win95-titlebar">
@@ -23,7 +33,7 @@ export const App = () => {
   }
 
   return (
-  <div className="win95-app">
+  <div className={`win95-app ${embeddedClass}`}>
     <div className="win95-workspace">
       <div className="win95-shell">
         <div className="win95-titlebar">

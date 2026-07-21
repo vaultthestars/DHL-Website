@@ -25,7 +25,9 @@ export const spotifyProvider: MusicProvider = {
 
   async connect() {
     const { authorizeUrl } = await beginSpotifyAuth();
-    window.location.assign(authorizeUrl);
+    // Spotify blocks login inside iframes; use the top window on mobile embeds.
+    const target = window.top ?? window;
+    target.location.href = authorizeUrl;
   },
 
   async disconnect() {
