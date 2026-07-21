@@ -8,8 +8,12 @@ import {
 } from "../../../shared/spotifyLibraryAssembly";
 import {
   clearSpotifyImportSession,
+  computeSpotifyImportPercent,
   createSpotifyImportSession,
+  getSpotifyImportContributorHint,
+  getSpotifyImportRateLimitCooldownMs,
   loadSpotifyImportSession,
+  markSpotifyImportRateLimited,
   saveSpotifyImportSession,
   SpotifyImportRateLimitError,
   type SpotifyImportSession,
@@ -29,7 +33,7 @@ type SpotifyPage<T> = {
   next: string | null;
 };
 
-const PAGE_REQUEST_DELAY_MS = 550;
+const PAGE_REQUEST_DELAY_MS = 750;
 const PHASE_COOLDOWN_MS = 4_000;
 
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
@@ -84,6 +88,7 @@ const fetchJson = async <T>(url: string, init?: RequestInit, attempt = 0): Promi
     const rateLimited = response.status === 429 || isRateLimitMessage(errorMessage);
 
     if (rateLimited) {
+      markSpotifyImportRateLimited();
       throw new SpotifyImportRateLimitError(
         errorMessage || "Spotify rate limit reached. Progress saved — wait a minute, then click Load again to resume."
       );
@@ -122,7 +127,24 @@ const fetchSpotifyPage = async <T>(
 };
 
 const persistSession = (session: SpotifyImportSession): void => {
-  saveSpotifyImportSession(session);
+  void saveSpotifyImportSession(session);
+};
+
+const resolveImportContributor = (
+  session: SpotifyImportSession | null,
+  options?: LoadLibraryOptions
+): { id: string; name: string } => {
+  if (session?.contributor?.id) {
+    return session.contributor;
+  }
+  if (options?.knownContributor?.id) {
+    return options.knownContributor;
+  }
+  const hintContributor = getSpotifyImportContributorHint();
+  if (hintContributor?.id) {
+    return hintContributor;
+  }
+  throw new Error("Connect Spotify before loading your library.");
 };
 
 const waitBetweenPages = async (): Promise<void> => {
@@ -167,7 +189,10 @@ const loadSavedTracksPhase = async (
     reportProgress(onProgress, {
       phase: "saved-tracks",
       message: `Loading saved tracks (page ${pageNumber}, ${session.savedItems.length.toLocaleString()} so far)…`,
-      percent: paginatedPhasePercent(pageNumber, 3, 25),
+      percent: computeSpotifyImportPercent({
+        ...session,
+        savedTracksComplete: false,
+      }),
     });
 
     const page = await fetchSpotifyPage<SpotifySavedTrackItem>(
@@ -370,43 +395,41 @@ const loadLibraryInChunks = async (options?: LoadLibraryOptions): Promise<Loaded
   const onProgress = options?.onProgress;
 
   if (options?.fresh) {
-    clearSpotifyImportSession();
+    await clearSpotifyImportSession();
   }
 
-  let session = options?.fresh ? null : loadSpotifyImportSession();
-  let profile: { id: string; name: string };
-
-  if (session) {
-    profile = session.contributor;
+  const cooldownMs = getSpotifyImportRateLimitCooldownMs();
+  if (cooldownMs > 0) {
     reportProgress(onProgress, {
       phase: "profile",
-      message: `Resuming import (${session.savedItems.length.toLocaleString()} saved tracks loaded)…`,
-      percent: 8,
+      message: `Waiting for Spotify rate limit to clear (${Math.ceil(cooldownMs / 1000)}s)…`,
+      percent: 1,
     });
-  } else if (options?.knownContributor?.id) {
-    profile = options.knownContributor;
-    reportProgress(onProgress, {
-      phase: "profile",
-      message: "Starting library import…",
-      percent: 2,
-    });
-  } else {
-    reportProgress(onProgress, {
-      phase: "profile",
-      message: "Verifying Spotify account…",
-      percent: 2,
-    });
-    profile = await fetchJson<{ id: string; name: string }>("/api/spotify/profile");
+    await sleep(cooldownMs);
   }
+
+  let session = options?.fresh ? null : await loadSpotifyImportSession();
+  const profile = resolveImportContributor(session, options);
 
   if (session && session.contributor.id !== profile.id) {
-    clearSpotifyImportSession();
+    await clearSpotifyImportSession();
     session = null;
   }
 
-  if (!session) {
+  if (session) {
+    reportProgress(onProgress, {
+      phase: session.phase,
+      message: `Resuming import (${session.savedItems.length.toLocaleString()} saved tracks loaded)…`,
+      percent: computeSpotifyImportPercent(session),
+    });
+  } else {
     session = createSpotifyImportSession(profile);
     persistSession(session);
+    reportProgress(onProgress, {
+      phase: "saved-tracks",
+      message: "Loading saved tracks…",
+      percent: 3,
+    });
   }
 
   try {
@@ -447,7 +470,7 @@ const loadLibraryInChunks = async (options?: LoadLibraryOptions): Promise<Loaded
       genresByArtistId,
     });
 
-    clearSpotifyImportSession();
+    await clearSpotifyImportSession();
 
     reportProgress(onProgress, {
       phase: "assembling",
@@ -534,6 +557,7 @@ export const isSpotifySong = (song: Song): boolean => /^[A-Za-z0-9]{22}$/.test(s
 
 export {
   clearSpotifyImportSession,
+  getSpotifyImportContributorHint,
   getSpotifyImportResumeLabel,
   hasResumableSpotifyImport,
   SpotifyImportRateLimitError,

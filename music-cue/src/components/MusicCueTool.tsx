@@ -42,6 +42,7 @@ import {
 import { getMusicProvider } from "../lib/providers";
 import {
   clearSpotifyImportSession,
+  getSpotifyImportContributorHint,
   getSpotifyImportResumeLabel,
   hasResumableSpotifyImport,
   SpotifyImportRateLimitError,
@@ -2813,22 +2814,22 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
       return;
     }
     if (options?.fresh) {
-      clearSpotifyImportSession();
+      await clearSpotifyImportSession();
       setImportResumeRevision((revision) => revision + 1);
     }
     setIsImporting(true);
     if (!options?.fresh && hasResumableSpotifyImport()) {
       setImportProgress({
-        phase: "profile",
-        message: "Resuming Spotify import…",
-        percent: 2,
+        phase: "saved-tracks",
+        message: getSpotifyImportResumeLabel() ?? "Resuming Spotify import…",
+        percent: 15,
       });
-      setStatusMessage("Resuming Spotify import…");
+      setStatusMessage(getSpotifyImportResumeLabel() ?? "Resuming Spotify import…");
     } else {
       setImportProgress({
-        phase: "profile",
-        message: "Starting Spotify import…",
-        percent: 0,
+        phase: "saved-tracks",
+        message: "Loading saved tracks…",
+        percent: 3,
       });
     }
     let keepProgress = false;
@@ -2836,11 +2837,9 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
       const loaded = await musicProvider.loadLibrary({
         fresh: options?.fresh,
         knownContributor:
-          spotifyStatus?.userId && spotifyStatus.displayName
-            ? { id: spotifyStatus.userId, name: spotifyStatus.displayName }
-            : spotifyStatus?.userId
-              ? { id: spotifyStatus.userId, name: "Spotify user" }
-              : undefined,
+          spotifyStatus?.userId
+            ? { id: spotifyStatus.userId, name: spotifyStatus.displayName || "Spotify user" }
+            : getSpotifyImportContributorHint() ?? undefined,
         onProgress: (progress) => {
           setImportProgress(progress);
           setStatusMessage(progress.message);

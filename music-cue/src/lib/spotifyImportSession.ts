@@ -3,6 +3,11 @@ import type {
   SpotifyPlaylistSummary,
   SpotifySavedTrackItem,
 } from "../../shared/spotifyLibraryAssembly";
+import {
+  clearImportSessionFromIndexedDb,
+  loadImportSessionFromIndexedDb,
+  saveImportSessionToIndexedDb,
+} from "./spotifyImportStorage";
 
 const SESSION_KEY = "music-cue-spotify-import-session";
 const HINT_KEY = "music-cue-spotify-import-hint";
@@ -30,8 +35,10 @@ export type SpotifyImportSession = {
 
 type SpotifyImportHint = {
   contributorId: string;
+  contributorName: string;
   resumable: boolean;
   label: string;
+  lastRateLimitedAt?: string;
 };
 
 export const createSpotifyImportSession = (contributor: {
@@ -68,10 +75,10 @@ const isSessionResumable = (session: SpotifyImportSession): boolean => {
 
 const buildResumeLabel = (session: SpotifyImportSession): string => {
   const trackEstimate = session.savedItems.length;
-  if (session.phase === "saved-tracks") {
+  if (!session.savedTracksComplete) {
     return `Resume saved tracks (${trackEstimate.toLocaleString()} loaded)`;
   }
-  if (session.phase === "playlists") {
+  if (!session.playlistsListLoaded) {
     return `Resume playlist list (${session.playlists.length} playlists, ${trackEstimate.toLocaleString()} tracks)`;
   }
   if (session.phase === "playlist-tracks") {
@@ -80,11 +87,14 @@ const buildResumeLabel = (session: SpotifyImportSession): string => {
   return "Resume library import";
 };
 
-const saveSpotifyImportHint = (session: SpotifyImportSession): void => {
+const saveSpotifyImportHint = (session: SpotifyImportSession, lastRateLimitedAt?: string): void => {
+  const existing = loadSpotifyImportHint();
   const hint: SpotifyImportHint = {
     contributorId: session.contributor.id,
+    contributorName: session.contributor.name,
     resumable: isSessionResumable(session),
     label: buildResumeLabel(session),
+    lastRateLimitedAt: lastRateLimitedAt ?? existing?.lastRateLimitedAt,
   };
   localStorage.setItem(HINT_KEY, JSON.stringify(hint));
 };
@@ -105,22 +115,39 @@ const loadSpotifyImportHint = (): SpotifyImportHint | null => {
   }
 };
 
-export const loadSpotifyImportSession = (): SpotifyImportSession | null => {
-  try {
-    const raw = localStorage.getItem(SESSION_KEY);
-    if (!raw) {
-      return null;
-    }
-    const parsed = JSON.parse(raw) as SpotifyImportSession;
-    if (parsed?.version !== 1 || !parsed.contributor?.id) {
-      return null;
-    }
-    const session = normalizeSpotifyImportSession(parsed);
-    saveSpotifyImportHint(session);
-    return session;
-  } catch {
+export const getSpotifyImportContributorHint = (): { id: string; name: string } | null => {
+  const hint = loadSpotifyImportHint();
+  if (!hint?.contributorId) {
     return null;
   }
+  return {
+    id: hint.contributorId,
+    name: hint.contributorName || "Spotify user",
+  };
+};
+
+export const markSpotifyImportRateLimited = (): void => {
+  const hint = loadSpotifyImportHint();
+  if (!hint) {
+    return;
+  }
+  localStorage.setItem(
+    HINT_KEY,
+    JSON.stringify({
+      ...hint,
+      lastRateLimitedAt: new Date().toISOString(),
+    })
+  );
+};
+
+export const getSpotifyImportRateLimitCooldownMs = (): number => {
+  const hint = loadSpotifyImportHint();
+  if (!hint?.lastRateLimitedAt) {
+    return 0;
+  }
+  const elapsed = Date.now() - Date.parse(hint.lastRateLimitedAt);
+  const cooldown = 90_000;
+  return Math.max(0, cooldown - elapsed);
 };
 
 const normalizeSpotifyImportSession = (session: SpotifyImportSession): SpotifyImportSession => {
@@ -154,23 +181,72 @@ const normalizeSpotifyImportSession = (session: SpotifyImportSession): SpotifyIm
   };
 };
 
-export const saveSpotifyImportSession = (session: SpotifyImportSession): void => {
+const loadLegacyLocalStorageSession = (): SpotifyImportSession | null => {
+  try {
+    const raw = localStorage.getItem(SESSION_KEY);
+    if (!raw) {
+      return null;
+    }
+    const parsed = JSON.parse(raw) as SpotifyImportSession;
+    if (parsed?.version !== 1 || !parsed.contributor?.id) {
+      return null;
+    }
+    return normalizeSpotifyImportSession(parsed);
+  } catch {
+    return null;
+  }
+};
+
+export const loadSpotifyImportSession = async (): Promise<SpotifyImportSession | null> => {
+  try {
+    const fromIndexedDb = await loadImportSessionFromIndexedDb();
+    if (fromIndexedDb?.version === 1 && fromIndexedDb.contributor?.id) {
+      const session = normalizeSpotifyImportSession(fromIndexedDb);
+      saveSpotifyImportHint(session);
+      return session;
+    }
+  } catch {
+    // Fall back to legacy localStorage below.
+  }
+
+  const legacy = loadLegacyLocalStorageSession();
+  if (legacy) {
+    saveSpotifyImportHint(legacy);
+    try {
+      await saveImportSessionToIndexedDb(legacy);
+    } catch {
+      // IndexedDB may be unavailable; legacy session still works for this run.
+    }
+  }
+  return legacy;
+};
+
+export const saveSpotifyImportSession = async (session: SpotifyImportSession): Promise<void> => {
   const payload = {
     ...session,
     updatedAt: new Date().toISOString(),
   };
+  saveSpotifyImportHint(payload);
+  try {
+    await saveImportSessionToIndexedDb(payload);
+  } catch {
+    // IndexedDB failed; try legacy localStorage as a last resort.
+  }
   try {
     localStorage.setItem(SESSION_KEY, JSON.stringify(payload));
   } catch {
     // Full session can exceed localStorage quota on very large libraries.
-    // Keep the lightweight hint so resume UI still works.
   }
-  saveSpotifyImportHint(payload);
 };
 
-export const clearSpotifyImportSession = (): void => {
+export const clearSpotifyImportSession = async (): Promise<void> => {
   localStorage.removeItem(SESSION_KEY);
   localStorage.removeItem(HINT_KEY);
+  try {
+    await clearImportSessionFromIndexedDb();
+  } catch {
+    // Ignore IndexedDB cleanup failures.
+  }
 };
 
 export const hasResumableSpotifyImport = (contributorId?: string): boolean => {
@@ -193,6 +269,27 @@ export const getSpotifyImportResumeLabel = (): string | null => {
     return "Resume library import";
   }
   return null;
+};
+
+export const computeSpotifyImportPercent = (session: SpotifyImportSession): number => {
+  if (!session.savedTracksComplete) {
+    const pageNumber = Math.max(1, Math.ceil(session.savedItems.length / 50) || 1);
+    const span = 22;
+    const progress = 1 - 1 / (1 + pageNumber / 12);
+    return Math.min(24, 3 + span * progress);
+  }
+  if (!session.playlistsListLoaded) {
+    const pageNumber = Math.max(1, Math.ceil(session.playlists.length / 50) || 1);
+    const span = 5;
+    const progress = 1 - 1 / (1 + pageNumber / 12);
+    return Math.min(29, 25 + span * progress);
+  }
+  if (session.completedPlaylistIds.length < session.readablePlaylistIds.length) {
+    const total = Math.max(1, session.readablePlaylistIds.length);
+    const done = session.completedPlaylistIds.length;
+    return 30 + (done / total) * 58;
+  }
+  return 88;
 };
 
 export class SpotifyImportRateLimitError extends Error {
