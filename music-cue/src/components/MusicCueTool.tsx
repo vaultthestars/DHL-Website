@@ -34,11 +34,9 @@ import {
   type ClusterLayoutSyncMode,
 } from "../lib/collaborativeLayout";
 import {
-  CollaborativeCursorsOverlay,
-  CollaborativeParticipantsPanel,
   CollaborativeSessionProvider,
-  GraphCursorPublisherBridge,
-  type CollaborativeViewSettings,
+  CollaborativeSessionUi,
+  type CollaborativePresenceLayout,
 } from "../lib/collaborativeSession";
 import { getMusicProvider } from "../lib/providers";
 import {
@@ -329,6 +327,7 @@ export type MusicCueToolProps = {
 
 export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) => {
   const graphPanelRef = useRef<HTMLDivElement | null>(null);
+  const participantsHostRef = useRef<HTMLSpanElement | null>(null);
   const svgRef = useRef<SVGSVGElement | null>(null);
   const contentGroupRef = useRef<SVGGElement | null>(null);
   const bgRectRef = useRef<SVGRectElement | null>(null);
@@ -376,6 +375,29 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     mode: "pending" | "pan" | "draw" | "draw-cluster" | "box-select";
   } | null>(null);
   const viewTransformRef = useRef<ViewTransform>(DEFAULT_VIEW_TRANSFORM);
+  const viewTransformRafRef = useRef(0);
+
+  const applyViewTransformLive = useCallback((transform: ViewTransform) => {
+    viewTransformRef.current = transform;
+    const group = contentGroupRef.current;
+    if (group) {
+      group.setAttribute("transform", toViewTransformString(transform));
+    }
+  }, []);
+
+  const flushViewTransformState = useCallback(() => {
+    setViewTransform({ ...viewTransformRef.current });
+  }, []);
+
+  const scheduleViewTransformStateFlush = useCallback(() => {
+    if (viewTransformRafRef.current) {
+      return;
+    }
+    viewTransformRafRef.current = requestAnimationFrame(() => {
+      viewTransformRafRef.current = 0;
+      flushViewTransformState();
+    });
+  }, [flushViewTransformState]);
   const undoStackRef = useRef<
     Array<{
       cue: GeneratedCue | null;
@@ -824,13 +846,15 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
       event.stopPropagation();
       const svg = svgRef.current;
       if (svg) {
-        setViewTransform((current) => zoomAtPoint(current, event.clientX, event.clientY, svg, event.deltaY));
+        const next = zoomAtPoint(viewTransformRef.current, event.clientX, event.clientY, svg, event.deltaY);
+        applyViewTransformLive(next);
+        scheduleViewTransformStateFlush();
       }
     };
 
     document.addEventListener("wheel", handleWheel, { passive: false, capture: true });
     return () => document.removeEventListener("wheel", handleWheel, { capture: true });
-  }, []);
+  }, [applyViewTransformLive, scheduleViewTransformStateFlush]);
 
   useEffect(() => {
     if (songs.length === 0) {
@@ -843,6 +867,12 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
       musicService === "spotify" &&
       (!spotifyStatus?.connected || spotifyUseLocalExport)
     ) {
+      setUnavailableSongIds(new Set());
+      setIsValidatingLibrary(false);
+      return undefined;
+    }
+
+    if (songs.length >= LARGE_LIBRARY_LAYOUT_SNAP_THRESHOLD) {
       setUnavailableSongIds(new Set());
       setIsValidatingLibrary(false);
       return undefined;
@@ -1741,11 +1771,12 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     const graphY = (session.startMidY - session.startPanY) / session.startScale;
     const screenMidX = midClientX - rect.left;
     const screenMidY = midClientY - rect.top;
-    setViewTransform({
+    applyViewTransformLive({
       scale: nextScale,
       panX: screenMidX - graphX * nextScale,
       panY: screenMidY - graphY * nextScale,
     });
+    scheduleViewTransformStateFlush();
   };
 
   const beginNewStroke = (point: GraphPoint) => {
@@ -2488,7 +2519,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
 
     if (session.mode === "pan") {
       event.preventDefault();
-      setViewTransform({
+      applyViewTransformLive({
         scale: viewTransformRef.current.scale,
         panX: session.panX + (event.clientX - session.clientX),
         panY: session.panY + (event.clientY - session.clientY),
@@ -2616,6 +2647,10 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
 
     if (session.mode === "draw-cluster") {
       finishClusterDrawing();
+    }
+
+    if (session.mode === "pan") {
+      flushViewTransformState();
     }
 
     resetPanSession();
@@ -3513,49 +3548,44 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     if (!isWebDeployment) {
       return "off";
     }
-    if (spotifyStatus?.connected) {
-      return "live";
-    }
-    // Guests (and the brief pre-status window): one cluster snapshot, no live updates.
+    // One-time cluster layout from the room; no continuous remote apply/poll.
     return "snapshot";
-  }, [spotifyStatus?.connected]);
+  }, []);
 
-  const collaborativeViewSettings = useMemo<CollaborativeViewSettings>(
+  const presenceLayout = useMemo<CollaborativePresenceLayout>(
     () => ({
       layoutConfig,
       libraryScopeMode,
       songSpaceMode,
       includeMockUsers,
-      viewTransform,
     }),
-    [includeMockUsers, layoutConfig, libraryScopeMode, songSpaceMode, viewTransform]
+    [includeMockUsers, layoutConfig, libraryScopeMode, songSpaceMode]
   );
 
-  const applySyncViewSettings = useCallback(
-    (settings: CollaborativeViewSettings) => {
+  const applySyncPresenceLayout = useCallback(
+    (layout: CollaborativePresenceLayout) => {
       const isSpotifyGuest =
         isWebDeployment && musicService === "spotify" && spotifyStatus !== null && !spotifyStatus.connected;
       const resolvedSongSpaceMode =
-        isSpotifyGuest && settings.songSpaceMode !== "shared" ? "shared" : settings.songSpaceMode;
-      const nextLayoutConfig = normalizeLayoutConfigForService(settings.layoutConfig, musicService);
+        isSpotifyGuest && layout.songSpaceMode !== "shared" ? "shared" : layout.songSpaceMode;
+      const nextLayoutConfig = normalizeLayoutConfigForService(layout.layoutConfig, musicService);
 
       startTransition(() => {
         setLayoutConfig(nextLayoutConfig);
         saveLayoutConfig(nextLayoutConfig);
-        setViewTransform(settings.viewTransform);
 
         if (resolvedSongSpaceMode !== songSpaceMode) {
           clearFrozenIsolateBounds();
           setSongSpaceMode(resolvedSongSpaceMode);
           saveSongSpaceMode(resolvedSongSpaceMode);
         }
-        if (settings.libraryScopeMode !== libraryScopeMode) {
+        if (layout.libraryScopeMode !== libraryScopeMode) {
           clearFrozenIsolateBounds();
-          setLibraryScopeMode(settings.libraryScopeMode);
-          saveLibraryScopeMode(settings.libraryScopeMode);
+          setLibraryScopeMode(layout.libraryScopeMode);
+          saveLibraryScopeMode(layout.libraryScopeMode);
         }
         reloadLayoutCaches(
-          getActiveClusterLayoutScope(resolvedSongSpaceMode, settings.libraryScopeMode)
+          getActiveClusterLayoutScope(resolvedSongSpaceMode, layout.libraryScopeMode)
         );
       });
 
@@ -3580,14 +3610,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
       clusterLayoutSyncMode={clusterLayoutSyncMode}
       enableRemoteClusterPublish={!isSpotifyGuest}
     >
-      <CollaborativeSessionProvider
-        displayName={collaboratorDisplayName}
-        viewSettings={collaborativeViewSettings}
-        onSyncViewSettings={applySyncViewSettings}
-        enabled={!isSpotifyGuest || songs.length > 0}
-      >
       <ClusterLayoutPublisher publishRef={publishClusterLayoutRef} />
-      <GraphCursorPublisherBridge publishRef={setGraphCursorRef} />
       <div className="music-cue-layout">
       {exportDialogOpen && (
         <div className="music-cue-modal-backdrop" onClick={handleCloseExportDialog}>
@@ -3766,7 +3789,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
           <div className="music-cue-toolbar-primary">
             <p className="music-cue-status">
               {statusMessage}
-              <CollaborativeParticipantsPanel />
+              <span ref={participantsHostRef} className="music-cue-live-host" />
             </p>
             <p className="music-cue-meta">
               Showing {visibleSongs.length} of {songs.length} tracks
@@ -4153,12 +4176,6 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
               </svg>
             </button>
           ) : null}
-          <CollaborativeCursorsOverlay
-            graphPanelRef={graphPanelRef}
-            svgRef={svgRef}
-            dimensions={dimensions}
-            viewTransform={viewTransform}
-          />
           <svg
             ref={svgRef}
             className={`music-cue-graph music-cue-graph-${graphTool} ${isPanning ? "music-cue-graph-panning" : ""}`}
@@ -4535,6 +4552,20 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
         ) : null}
       </div>
     </div>
+      <CollaborativeSessionProvider
+        displayName={collaboratorDisplayName}
+        presenceLayout={presenceLayout}
+        onSyncPresenceLayout={applySyncPresenceLayout}
+        enabled={!isSpotifyGuest || songs.length > 0}
+      >
+        <CollaborativeSessionUi
+          publishRef={setGraphCursorRef}
+          graphPanelRef={graphPanelRef}
+          svgRef={svgRef}
+          dimensions={dimensions}
+          viewTransformRef={viewTransformRef}
+          participantsHostRef={participantsHostRef}
+        />
       </CollaborativeSessionProvider>
     </CollaborativeLayoutProvider>
   );

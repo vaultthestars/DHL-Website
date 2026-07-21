@@ -30,45 +30,53 @@ export type CollaborativeViewSettings = {
   viewTransform: ViewTransform;
 };
 
+export type CollaborativePresenceLayout = Omit<CollaborativeViewSettings, "viewTransform">;
+
+export const presenceLayoutKey = (settings: CollaborativePresenceLayout): string =>
+  `${layoutConfigKey(settings.layoutConfig)}|${settings.libraryScopeMode}|${settings.songSpaceMode}|${settings.includeMockUsers}`;
+
 export type SessionPresenceData = {
   displayName: string;
   graphCursor: NormalizedPoint | null;
-  viewSettings: CollaborativeViewSettings;
+  presenceLayout: CollaborativePresenceLayout;
 };
 
-const arraysEqual = (left: string[], right: string[]): boolean =>
-  left.length === right.length && left.every((value, index) => value === right[index]);
+const getSessionData = (presence: Record<string, unknown>): SessionPresenceData | null => {
+  const direct = presence as SessionPresenceData & { viewSettings?: CollaborativePresenceLayout };
+  if (typeof direct.displayName === "string" && (direct.presenceLayout || direct.viewSettings)) {
+    return {
+      displayName: direct.displayName,
+      graphCursor: direct.graphCursor ?? null,
+      presenceLayout: direct.presenceLayout ?? direct.viewSettings!,
+    };
+  }
+  const nested = presence[SESSION_PRESENCE_CHANNEL] as
+    | (SessionPresenceData & { viewSettings?: CollaborativePresenceLayout })
+    | undefined;
+  if (nested && typeof nested.displayName === "string" && (nested.presenceLayout || nested.viewSettings)) {
+    return {
+      displayName: nested.displayName,
+      graphCursor: nested.graphCursor ?? null,
+      presenceLayout: nested.presenceLayout ?? nested.viewSettings!,
+    };
+  }
+  return null;
+};
 
 export const viewSettingsMatch = (
   left: CollaborativeViewSettings,
   right: CollaborativeViewSettings
-): boolean =>
-  layoutConfigKey(left.layoutConfig) === layoutConfigKey(right.layoutConfig) &&
-  left.libraryScopeMode === right.libraryScopeMode &&
-  left.songSpaceMode === right.songSpaceMode &&
-  left.includeMockUsers === right.includeMockUsers;
-
-const getSessionData = (presence: Record<string, unknown>): SessionPresenceData | null => {
-  const direct = presence as SessionPresenceData;
-  if (typeof direct.displayName === "string" && direct.viewSettings) {
-    return direct;
-  }
-  const nested = presence[SESSION_PRESENCE_CHANNEL] as SessionPresenceData | undefined;
-  if (nested && typeof nested.displayName === "string" && nested.viewSettings) {
-    return nested;
-  }
-  return null;
-};
+): boolean => presenceLayoutKey(left) === presenceLayoutKey(right);
 
 type CollaborativeSessionContextValue = {
   participants: Array<{
     id: string;
     displayName: string;
     color: string;
-    viewSettings: CollaborativeViewSettings;
+    presenceLayout: CollaborativePresenceLayout;
     isSynced: boolean;
   }>;
-  myViewSettings: CollaborativeViewSettings;
+  myPresenceLayout: CollaborativePresenceLayout;
   syncWithParticipant: (participantId: string) => void;
   setGraphCursor: (cursor: NormalizedPoint | null) => void;
   isLiveSyncReady: boolean;
@@ -76,12 +84,11 @@ type CollaborativeSessionContextValue = {
 
 const noopSessionContext: CollaborativeSessionContextValue = {
   participants: [],
-  myViewSettings: {
+  myPresenceLayout: {
     layoutConfig: { viewMode: "cluster", clusterMode: "playlist", axisX: "year", axisY: "year" },
     libraryScopeMode: "isolate",
     songSpaceMode: "shared",
     includeMockUsers: false,
-    viewTransform: { scale: 1, panX: 0, panY: 0 },
   },
   syncWithParticipant: () => {},
   setGraphCursor: () => {},
@@ -95,22 +102,22 @@ export const useCollaborativeSession = (): CollaborativeSessionContextValue =>
 
 const CollaborativeSessionBridge = ({
   displayName,
-  viewSettings,
-  onSyncViewSettings,
+  presenceLayout,
+  onSyncPresenceLayout,
   children,
 }: {
   displayName: string;
-  viewSettings: CollaborativeViewSettings;
-  onSyncViewSettings: (settings: CollaborativeViewSettings) => void;
+  presenceLayout: CollaborativePresenceLayout;
+  onSyncPresenceLayout: (layout: CollaborativePresenceLayout) => void;
   children: ReactNode;
 }) => {
-  const { presences, setMyPresence, myIdentity } = usePresence<SessionPresenceData>(SESSION_PRESENCE_CHANNEL);
+  const { presences, setMyPresence } = usePresence<SessionPresenceData>(SESSION_PRESENCE_CHANNEL);
   const { isLoading } = usePlayContext();
-  const viewSettingsRef = useRef(viewSettings);
+  const presenceLayoutRef = useRef(presenceLayout);
   const displayNameRef = useRef(displayName);
   const graphCursorRef = useRef<NormalizedPoint | null>(null);
 
-  viewSettingsRef.current = viewSettings;
+  presenceLayoutRef.current = presenceLayout;
   displayNameRef.current = displayName;
 
   const publishFrameRef = useRef(0);
@@ -119,7 +126,7 @@ const CollaborativeSessionBridge = ({
     setMyPresence({
       displayName: displayNameRef.current,
       graphCursor: graphCursorRef.current,
-      viewSettings: viewSettingsRef.current,
+      presenceLayout: presenceLayoutRef.current,
     });
   }, [setMyPresence]);
 
@@ -140,31 +147,33 @@ const CollaborativeSessionBridge = ({
     [publishPresence]
   );
 
+  const presenceLayoutKeyValue = presenceLayoutKey(presenceLayout);
+
   useEffect(() => {
     publishPresence();
-  }, [publishPresence, viewSettings, displayName]);
+  }, [displayName, presenceLayoutKeyValue, publishPresence]);
 
   const value = useMemo((): CollaborativeSessionContextValue => {
-    const myViewSettings = viewSettings;
+    const myPresenceLayout = presenceLayout;
     const participants = [...presences.entries()]
       .filter(([, presence]) => !presence.isMe)
       .map(([id, presence]) => {
         const session = getSessionData(presence as Record<string, unknown>);
         const color = presence.playerIdentity?.color ?? "#4a90d9";
-        const participantViewSettings = session?.viewSettings ?? myViewSettings;
+        const participantLayout = session?.presenceLayout ?? myPresenceLayout;
         return {
           id,
           displayName: session?.displayName ?? "Guest",
           color,
-          viewSettings: participantViewSettings,
-          isSynced: viewSettingsMatch(myViewSettings, participantViewSettings),
+          presenceLayout: participantLayout,
+          isSynced: presenceLayoutKey(participantLayout) === presenceLayoutKey(myPresenceLayout),
         };
       })
       .sort((left, right) => left.displayName.localeCompare(right.displayName));
 
     return {
       participants,
-      myViewSettings,
+      myPresenceLayout,
       setGraphCursor,
       syncWithParticipant: (participantId: string) => {
         const presence = presences.get(participantId);
@@ -172,25 +181,25 @@ const CollaborativeSessionBridge = ({
         if (!session) {
           return;
         }
-        onSyncViewSettings(session.viewSettings);
+        onSyncPresenceLayout(session.presenceLayout);
       },
       isLiveSyncReady: !isLoading,
     };
-  }, [isLoading, onSyncViewSettings, presences, setGraphCursor, viewSettings]);
+  }, [isLoading, onSyncPresenceLayout, presences, presenceLayout, setGraphCursor]);
 
   return <CollaborativeSessionContext.Provider value={value}>{children}</CollaborativeSessionContext.Provider>;
 };
 
 export const CollaborativeSessionProvider = ({
   displayName,
-  viewSettings,
-  onSyncViewSettings,
+  presenceLayout,
+  onSyncPresenceLayout,
   enabled = true,
   children,
 }: {
   displayName: string;
-  viewSettings: CollaborativeViewSettings;
-  onSyncViewSettings: (settings: CollaborativeViewSettings) => void;
+  presenceLayout: CollaborativePresenceLayout;
+  onSyncPresenceLayout: (layout: CollaborativePresenceLayout) => void;
   enabled?: boolean;
   children: ReactNode;
 }) => {
@@ -201,8 +210,8 @@ export const CollaborativeSessionProvider = ({
   return (
     <CollaborativeSessionBridge
       displayName={displayName}
-      viewSettings={viewSettings}
-      onSyncViewSettings={onSyncViewSettings}
+      presenceLayout={presenceLayout}
+      onSyncPresenceLayout={onSyncPresenceLayout}
     >
       {children}
     </CollaborativeSessionBridge>
@@ -303,12 +312,12 @@ export const CollaborativeCursorsOverlay = ({
   graphPanelRef,
   svgRef,
   dimensions,
-  viewTransform,
+  viewTransformRef,
 }: {
   graphPanelRef: RefObject<HTMLDivElement | null>;
   svgRef: RefObject<SVGSVGElement | null>;
   dimensions: GraphDimensions;
-  viewTransform: ViewTransform;
+  viewTransformRef: RefObject<ViewTransform>;
 }) => {
   if (!isWebDeployment) {
     return null;
@@ -319,7 +328,7 @@ export const CollaborativeCursorsOverlay = ({
       graphPanelRef={graphPanelRef}
       svgRef={svgRef}
       dimensions={dimensions}
-      viewTransform={viewTransform}
+      viewTransformRef={viewTransformRef}
     />
   );
 };
@@ -328,17 +337,18 @@ const CollaborativeCursorsOverlayInner = ({
   graphPanelRef,
   svgRef,
   dimensions,
-  viewTransform,
+  viewTransformRef,
 }: {
   graphPanelRef: RefObject<HTMLDivElement | null>;
   svgRef: RefObject<SVGSVGElement | null>;
   dimensions: GraphDimensions;
-  viewTransform: ViewTransform;
+  viewTransformRef: RefObject<ViewTransform>;
 }) => {
   const { presences } = usePresence<SessionPresenceData>(SESSION_PRESENCE_CHANNEL);
-  const { myViewSettings, syncWithParticipant } = useCollaborativeSession();
+  const { myPresenceLayout, syncWithParticipant } = useCollaborativeSession();
   const panel = graphPanelRef.current;
   const svg = svgRef.current;
+  const viewTransform = viewTransformRef.current;
 
   if (!panel || !svg) {
     return null;
@@ -354,7 +364,8 @@ const CollaborativeCursorsOverlayInner = ({
       }
       const graphPoint = fromNormalizedPosition(session.graphCursor, dimensions);
       const screenPoint = graphPointToPanelPosition(graphPoint, viewTransform, svg);
-      const isSynced = session.viewSettings ? viewSettingsMatch(myViewSettings, session.viewSettings) : false;
+      const isSynced =
+        presenceLayoutKey(session.presenceLayout) === presenceLayoutKey(myPresenceLayout);
       return {
         id,
         displayName: session.displayName,
@@ -389,3 +400,48 @@ const CollaborativeCursorsOverlayInner = ({
     panel
   );
 };
+
+export const CollaborativeParticipantsPortal = ({
+  hostRef,
+}: {
+  hostRef: RefObject<HTMLSpanElement | null>;
+}) => {
+  const [host, setHost] = useState<HTMLSpanElement | null>(null);
+
+  useEffect(() => {
+    setHost(hostRef.current);
+  }, [hostRef]);
+
+  if (!host) {
+    return null;
+  }
+
+  return createPortal(<CollaborativeParticipantsPanel />, host);
+};
+
+export const CollaborativeSessionUi = ({
+  publishRef,
+  graphPanelRef,
+  svgRef,
+  dimensions,
+  viewTransformRef,
+  participantsHostRef,
+}: {
+  publishRef: MutableRefObject<(cursor: NormalizedPoint | null) => void>;
+  graphPanelRef: RefObject<HTMLDivElement | null>;
+  svgRef: RefObject<SVGSVGElement | null>;
+  dimensions: GraphDimensions;
+  viewTransformRef: RefObject<ViewTransform>;
+  participantsHostRef: RefObject<HTMLSpanElement | null>;
+}) => (
+  <>
+    <GraphCursorPublisherBridge publishRef={publishRef} />
+    <CollaborativeParticipantsPortal hostRef={participantsHostRef} />
+    <CollaborativeCursorsOverlay
+      graphPanelRef={graphPanelRef}
+      svgRef={svgRef}
+      dimensions={dimensions}
+      viewTransformRef={viewTransformRef}
+    />
+  </>
+);
