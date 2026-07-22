@@ -41,10 +41,11 @@ export const isPointInGraphViewport = (point: GraphPoint, bounds: GraphViewportB
   point.y >= bounds.minY &&
   point.y <= bounds.maxY;
 
-const hashUnit = (seed: string): number => {
+const hashUnit = (seed: string, salt = ""): number => {
   let hash = 0;
-  for (let index = 0; index < seed.length; index += 1) {
-    hash = (hash << 5) - hash + seed.charCodeAt(index);
+  const value = salt ? `${salt}:${seed}` : seed;
+  for (let index = 0; index < value.length; index += 1) {
+    hash = (hash << 5) - hash + value.charCodeAt(index);
     hash |= 0;
   }
   return (Math.abs(hash) % 1000) / 1000;
@@ -150,6 +151,7 @@ export const buildCulledPositionedSongs = <T extends { id: string }>(
     alwaysIncludeSongIds?: Set<string>;
     enableCulling?: boolean;
     clusterHints?: ClusterViewportHint[];
+    cullSeed?: string;
   }
 ): PositionedGraphNode<T>[] => {
   if (songs.length === 0) {
@@ -163,6 +165,8 @@ export const buildCulledPositionedSongs = <T extends { id: string }>(
 
   const bounds = getGraphViewportBounds(dimensions, transform);
   const alwaysInclude = options?.alwaysIncludeSongIds;
+  const cullSeed = options?.cullSeed;
+  const hashSample = (songId: string): number => hashUnit(songId, cullSeed);
   const songById = new Map(songs.map((song) => [song.id, song]));
   const candidateIds = new Set<string>();
 
@@ -205,7 +209,7 @@ export const buildCulledPositionedSongs = <T extends { id: string }>(
     optionalBudget >= optional.length
       ? optional
       : optional
-          .map((song) => ({ song, unit: hashUnit(song.id) }))
+          .map((song) => ({ song, unit: hashSample(song.id) }))
           .sort((left, right) => left.unit - right.unit)
           .slice(0, optionalBudget)
           .map((entry) => entry.song);

@@ -39,14 +39,15 @@ export type CollaborativePresenceLayout = {
   viewContributorId?: string | null;
 };
 
-export const presenceLayoutKey = (settings: CollaborativePresenceLayout): string =>
-  `${layoutConfigKey(settings.layoutConfig)}|${settings.libraryScopeMode}|${settings.songSpaceMode}|${settings.includeMockUsers}|${settings.songSpaceMode === "mine" ? settings.viewContributorId ?? "" : ""}`;
-
 export type SessionPresenceData = {
   displayName: string;
   graphCursor: NormalizedPoint | null;
   presenceLayout: CollaborativePresenceLayout;
+  viewTransform?: ViewTransform;
 };
+
+export const presenceLayoutKey = (settings: CollaborativePresenceLayout): string =>
+  `${layoutConfigKey(settings.layoutConfig)}|${settings.libraryScopeMode}|${settings.songSpaceMode}|${settings.includeMockUsers}|${settings.songSpaceMode === "mine" ? settings.viewContributorId ?? "" : ""}`;
 
 const getSessionData = (presence: Record<string, unknown>): SessionPresenceData | null => {
   const direct = presence as SessionPresenceData & { viewSettings?: CollaborativePresenceLayout };
@@ -55,6 +56,7 @@ const getSessionData = (presence: Record<string, unknown>): SessionPresenceData 
       displayName: direct.displayName,
       graphCursor: direct.graphCursor ?? null,
       presenceLayout: direct.presenceLayout ?? direct.viewSettings!,
+      viewTransform: direct.viewTransform,
     };
   }
   const nested = presence[SESSION_PRESENCE_CHANNEL] as
@@ -65,6 +67,7 @@ const getSessionData = (presence: Record<string, unknown>): SessionPresenceData 
       displayName: nested.displayName,
       graphCursor: nested.graphCursor ?? null,
       presenceLayout: nested.presenceLayout ?? nested.viewSettings!,
+      viewTransform: nested.viewTransform,
     };
   }
   return null;
@@ -86,6 +89,7 @@ type CollaborativeSessionContextValue = {
   myPresenceLayout: CollaborativePresenceLayout;
   syncWithParticipant: (participantId: string) => void;
   setGraphCursor: (cursor: NormalizedPoint | null) => void;
+  scheduleViewPresencePublish: () => void;
   isLiveSyncReady: boolean;
 };
 
@@ -100,6 +104,7 @@ const noopSessionContext: CollaborativeSessionContextValue = {
   },
   syncWithParticipant: () => {},
   setGraphCursor: () => {},
+  scheduleViewPresencePublish: () => {},
   isLiveSyncReady: false,
 };
 
@@ -112,11 +117,13 @@ const CollaborativeSessionBridge = ({
   displayName,
   presenceLayout,
   onSyncPresenceLayout,
+  viewTransformRef,
   children,
 }: {
   displayName: string;
   presenceLayout: CollaborativePresenceLayout;
-  onSyncPresenceLayout: (layout: CollaborativePresenceLayout) => void;
+  onSyncPresenceLayout: (layout: CollaborativePresenceLayout, viewTransform?: ViewTransform) => void;
+  viewTransformRef?: MutableRefObject<ViewTransform>;
   children: ReactNode;
 }) => {
   const { presences, setMyPresence } = usePresence<SessionPresenceData>(SESSION_PRESENCE_CHANNEL);
@@ -135,8 +142,9 @@ const CollaborativeSessionBridge = ({
       displayName: displayNameRef.current,
       graphCursor: graphCursorRef.current,
       presenceLayout: presenceLayoutRef.current,
+      viewTransform: viewTransformRef?.current,
     });
-  }, [setMyPresence]);
+  }, [setMyPresence, viewTransformRef]);
 
   const setGraphCursor = useCallback(
     (cursor: NormalizedPoint | null) => {
@@ -161,6 +169,30 @@ const CollaborativeSessionBridge = ({
     publishPresence();
   }, [displayName, presenceLayoutKeyValue, publishPresence]);
 
+  const viewPresenceDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const scheduleViewPresencePublish = useCallback(() => {
+    if (!viewTransformRef) {
+      return;
+    }
+    if (viewPresenceDebounceRef.current) {
+      clearTimeout(viewPresenceDebounceRef.current);
+    }
+    viewPresenceDebounceRef.current = setTimeout(() => {
+      viewPresenceDebounceRef.current = null;
+      publishPresence();
+    }, 300);
+  }, [publishPresence, viewTransformRef]);
+
+  useEffect(
+    () => () => {
+      if (viewPresenceDebounceRef.current) {
+        clearTimeout(viewPresenceDebounceRef.current);
+      }
+    },
+    []
+  );
+
   const value = useMemo((): CollaborativeSessionContextValue => {
     const myPresenceLayout = presenceLayout;
     const participants = [...presences.entries()]
@@ -183,17 +215,18 @@ const CollaborativeSessionBridge = ({
       participants,
       myPresenceLayout,
       setGraphCursor,
+      scheduleViewPresencePublish,
       syncWithParticipant: (participantId: string) => {
         const presence = presences.get(participantId);
         const session = presence ? getSessionData(presence as Record<string, unknown>) : null;
         if (!session) {
           return;
         }
-        onSyncPresenceLayout(session.presenceLayout);
+        onSyncPresenceLayout(session.presenceLayout, session.viewTransform);
       },
       isLiveSyncReady: !isLoading,
     };
-  }, [isLoading, onSyncPresenceLayout, presences, presenceLayout, setGraphCursor]);
+  }, [isLoading, onSyncPresenceLayout, presences, presenceLayout, scheduleViewPresencePublish, setGraphCursor]);
 
   return <CollaborativeSessionContext.Provider value={value}>{children}</CollaborativeSessionContext.Provider>;
 };
@@ -202,12 +235,14 @@ export const CollaborativeSessionProvider = ({
   displayName,
   presenceLayout,
   onSyncPresenceLayout,
+  viewTransformRef,
   enabled = true,
   children,
 }: {
   displayName: string;
   presenceLayout: CollaborativePresenceLayout;
-  onSyncPresenceLayout: (layout: CollaborativePresenceLayout) => void;
+  onSyncPresenceLayout: (layout: CollaborativePresenceLayout, viewTransform?: ViewTransform) => void;
+  viewTransformRef?: MutableRefObject<ViewTransform>;
   enabled?: boolean;
   children: ReactNode;
 }) => {
@@ -220,6 +255,7 @@ export const CollaborativeSessionProvider = ({
       displayName={displayName}
       presenceLayout={presenceLayout}
       onSyncPresenceLayout={onSyncPresenceLayout}
+      viewTransformRef={viewTransformRef}
     >
       {children}
     </CollaborativeSessionBridge>
@@ -228,18 +264,27 @@ export const CollaborativeSessionProvider = ({
 
 export const GraphCursorPublisherBridge = ({
   publishRef,
+  viewPresencePublishRef,
 }: {
   publishRef: MutableRefObject<(cursor: NormalizedPoint | null) => void>;
+  viewPresencePublishRef?: MutableRefObject<() => void>;
 }) => {
   if (!isWebDeployment) {
     return null;
   }
 
-  const { setGraphCursor } = useCollaborativeSession();
+  const { setGraphCursor, scheduleViewPresencePublish } = useCollaborativeSession();
 
   useEffect(() => {
     publishRef.current = setGraphCursor;
   }, [publishRef, setGraphCursor]);
+
+  useEffect(() => {
+    if (!viewPresencePublishRef) {
+      return;
+    }
+    viewPresencePublishRef.current = scheduleViewPresencePublish;
+  }, [scheduleViewPresencePublish, viewPresencePublishRef]);
 
   return null;
 };
@@ -406,17 +451,19 @@ export const CollaborativeParticipantsPortal = ({
 
 export const CollaborativeSessionUi = ({
   publishRef,
+  viewPresencePublishRef,
   contentGroupRef,
   dimensions,
   participantsHostRef,
 }: {
   publishRef: MutableRefObject<(cursor: NormalizedPoint | null) => void>;
+  viewPresencePublishRef?: MutableRefObject<() => void>;
   contentGroupRef: RefObject<SVGGElement | null>;
   dimensions: GraphDimensions;
   participantsHostRef: RefObject<HTMLSpanElement | null>;
 }) => (
   <>
-    <GraphCursorPublisherBridge publishRef={publishRef} />
+    <GraphCursorPublisherBridge publishRef={publishRef} viewPresencePublishRef={viewPresencePublishRef} />
     <CollaborativeParticipantsPortal hostRef={participantsHostRef} />
     <CollaborativeGraphCursorsPortal contentGroupRef={contentGroupRef} dimensions={dimensions} />
   </>

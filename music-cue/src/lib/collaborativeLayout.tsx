@@ -46,6 +46,7 @@ const CollaborativeLayoutSync = ({
   const { isLoading } = usePlayContext();
   const localRef = useRef(clusterOverrides);
   const remoteRef = useRef(remoteOverrides);
+  const applyingRemoteRef = useRef(false);
 
   localRef.current = clusterOverrides;
   remoteRef.current = remoteOverrides;
@@ -57,6 +58,7 @@ const CollaborativeLayoutSync = ({
     if (areClusterOverridesEqual(remoteOverrides, localRef.current)) {
       return;
     }
+    applyingRemoteRef.current = true;
     setClusterOverrides(normalizeClusterCenterOverrides(remoteOverrides));
   }, [
     clusterLayoutSyncMode,
@@ -67,7 +69,8 @@ const CollaborativeLayoutSync = ({
   ]);
 
   useEffect(() => {
-    if (!enableRemoteClusterPublish || isLoading) {
+    if (!enableRemoteClusterPublish || isLoading || applyingRemoteRef.current) {
+      applyingRemoteRef.current = false;
       return;
     }
     if (areClusterOverridesEqual(clusterOverrides, remoteOverrides)) {
