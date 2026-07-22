@@ -6,6 +6,7 @@ import {
   songsForOwnerScope,
 } from "./libraryScope";
 import { LARGE_LIBRARY_LAYOUT_SNAP_THRESHOLD } from "./useLayoutTransition";
+import { getCanonicalSongId } from "./isolateScopeSongs";
 import { normalizeClusterCenterOverrides } from "./storage";
 import {
   ClusterCenterOverrides,
@@ -177,7 +178,6 @@ export const computeIsolateOwnerLayoutBounds = (
   return { ...bounds, ownerId };
 };
 
-/** Fast owner bounds from song counts + meta-cluster layout — avoids laying out every song. */
 export const estimateIsolateOwnerBounds = (
   graphSongs: Song[],
   dimensions: GraphDimensions,
@@ -194,6 +194,47 @@ export const estimateIsolateOwnerBounds = (
       centroid: { x: dimensions.width / 2, y: dimensions.height / 2 },
       radius,
     });
+  });
+
+  const metaClusters = getEnabledOwnerMetaClusters(graphSongs, dimensions, enabledOwnerIds, {
+    isAxisView: false,
+    ownerBounds: provisionalBounds,
+  });
+
+  metaClusters.forEach((meta) => {
+    const existing = provisionalBounds.get(meta.id);
+    if (!existing) {
+      return;
+    }
+    provisionalBounds.set(meta.id, {
+      ...existing,
+      radius: Math.max(existing.radius, meta.radius),
+    });
+  });
+
+  return provisionalBounds;
+};
+
+/** Owner bounds from existing conglomerate positions — no per-owner relayout. */
+export const getIsolateOwnerBoundsFromConglomeratePositions = (
+  graphSongs: Song[],
+  conglomeratePositionsBySongId: Map<string, GraphPoint>,
+  dimensions: GraphDimensions,
+  enabledOwnerIds?: string[]
+): Map<string, IsolateOwnerLayoutBounds> => {
+  const provisionalBounds = new Map<string, IsolateOwnerLayoutBounds>();
+
+  getIsolateOwnerIds(graphSongs, enabledOwnerIds).forEach((ownerId) => {
+    const ownerSongs = songsForOwnerScope(graphSongs, ownerId);
+    const points: GraphPoint[] = [];
+    ownerSongs.forEach((song) => {
+      const point = conglomeratePositionsBySongId.get(getCanonicalSongId(song.id));
+      if (point) {
+        points.push(point);
+      }
+    });
+    const bounds = boundsFromPoints(points, dimensions);
+    provisionalBounds.set(ownerId, { ...bounds, ownerId });
   });
 
   const metaClusters = getEnabledOwnerMetaClusters(graphSongs, dimensions, enabledOwnerIds, {

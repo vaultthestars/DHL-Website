@@ -28,6 +28,7 @@ import {
   getIsolateOwnerIds,
   translateSoloLayoutToMetaCluster,
 } from "./isolateClusterLayout";
+import { getCanonicalSongId } from "./isolateScopeSongs";
 import { MusicServiceId } from "./musicProvider";
 import { customClusterPosition } from "./customClusters";
 import { CustomClusterCatalog } from "./types";
@@ -44,6 +45,9 @@ export type LayoutContext = {
   metaClusterCenterForOwner?: (ownerId: string, defaultCenter: GraphPoint) => GraphPoint;
   customClusterCatalog?: CustomClusterCatalog;
   customCatalogForOwner?: (ownerId: string) => CustomClusterCatalog;
+  /** Web perf: reuse conglomerate node positions and only translate into owner metaclusters. */
+  useConglomerateOffsetIsolate?: boolean;
+  conglomeratePositionsBySongId?: Map<string, GraphPoint>;
 };
 
 export type GraphDimensions = {
@@ -452,6 +456,7 @@ export const layoutSongPosition = (
           metaCluster.center;
         const ownerSongs = songsForOwnerScope(allSongs, scopeClusterId);
         const ownerStats = buildLibraryStatsFromSongs(ownerSongs, stats.playlistNames);
+        const bounds = ownerBounds.get(scopeClusterId);
 
         if (!isClusterView(layoutConfig)) {
           const radialMetric = layoutConfig.axisY === "year" ? layoutConfig.axisX : layoutConfig.axisY;
@@ -469,6 +474,18 @@ export const layoutSongPosition = (
         }
 
         const ownerOverrides = getClusterOverridesForOwner(clusterOverrides, scopeClusterId, layoutConfig);
+        if (
+          layoutContext.useConglomerateOffsetIsolate &&
+          layoutContext.conglomeratePositionsBySongId &&
+          bounds &&
+          !layoutContext.skipIsolateCentroidTranslation
+        ) {
+          const conglomeratePosition =
+            layoutContext.conglomeratePositionsBySongId.get(getCanonicalSongId(song.id));
+          if (conglomeratePosition) {
+            return translateSoloLayoutToMetaCluster(conglomeratePosition, bounds, metaCenter);
+          }
+        }
         const soloPosition = layoutSongPositionConglomerate(
           song,
           dimensions,
@@ -479,7 +496,6 @@ export const layoutSongPosition = (
           ownerSongs,
           layoutContext.customCatalogForOwner?.(scopeClusterId) ?? layoutContext.customClusterCatalog
         );
-        const bounds = ownerBounds.get(scopeClusterId);
         if (bounds && !layoutContext.skipIsolateCentroidTranslation) {
           return translateSoloLayoutToMetaCluster(soloPosition, bounds, metaCenter);
         }

@@ -188,6 +188,7 @@ import {
   displayNormalizedToSoloNormalized,
   getClusterDragDisplayNormalizedStart,
   getClusterOverridesForOwner,
+  getIsolateOwnerBoundsFromConglomeratePositions,
   getIsolateOwnerIds,
   parseOwnerScopedRegionId,
   toOwnerScopedOverrideUpdates,
@@ -565,6 +566,14 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     loadClusterCenterOverrides(getActiveClusterLayoutScope(loadSongSpaceMode(), loadLibraryScopeMode()))
   );
   const [customClusterCatalogState, setCustomClusterCatalogState] = useState(() => loadCustomClusterCatalogState());
+  const conglomerateClusterOverridesRef = useRef<ClusterCenterOverrides>(
+    loadClusterCenterOverrides(getActiveClusterLayoutScope(songSpaceMode, "conglomerate", sharedContributorCount))
+  );
+  useEffect(() => {
+    if (activeLayoutScope === "conglomerate") {
+      conglomerateClusterOverridesRef.current = clusterOverrides;
+    }
+  }, [activeLayoutScope, clusterOverrides]);
   const reloadLayoutCaches = useCallback((scope: ClusterLayoutScope) => {
     if (!isSpotifyGuest) {
       setClusterOverrides(loadClusterCenterOverrides(scope));
@@ -1213,6 +1222,44 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     });
   }, [genreFilter, minPlayCount, musicService, searchFilter, songSpaceSongs]);
 
+  const conglomeratePositionBySongId = useMemo(() => {
+    if (!useWebPerformanceOptimizations || !isClusterView(layoutConfig)) {
+      return null;
+    }
+    const positions = new Map<string, GraphPoint>();
+    visibleSongs.forEach((song) => {
+      positions.set(
+        song.id,
+        layoutSongPosition(
+          song,
+          dimensions,
+          layoutConfig,
+          stats,
+          isSquigglyCustomMode ? squigglySongPositions : {},
+          conglomerateClusterOverridesRef.current,
+          visibleSongs,
+          {
+            libraryScopeMode: "conglomerate",
+            enabledOwnerIds: activeContributorIds,
+            customClusterCatalog: customClusterCatalogState.conglomerate,
+          }
+        )
+      );
+    });
+    return positions;
+  }, [
+    activeContributorIds,
+    clusterDragPreviewTick,
+    customClusterCatalogState.conglomerate,
+    dimensions,
+    isSquigglyCustomMode,
+    layoutConfig,
+    squigglySongPositions,
+    stats,
+    useWebPerformanceOptimizations,
+    visibleSongs,
+  ]);
+
   const isolateGraphSongs = useCallback(
     (sourceSongs: Song[]) => {
       if (layoutLibraryScopeMode !== "isolate" || !hasMultipleLibraryOwners(sourceSongs)) {
@@ -1232,6 +1279,14 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     if (layoutLibraryScopeMode !== "isolate" || !isClusterView(layoutConfig)) {
       return undefined;
     }
+    if (useWebPerformanceOptimizations && conglomeratePositionBySongId) {
+      return getIsolateOwnerBoundsFromConglomeratePositions(
+        graphSongs,
+        conglomeratePositionBySongId,
+        dimensions,
+        activeContributorIds
+      );
+    }
     return getIsolateOwnerBoundsForLayout(
       graphSongs,
       dimensions,
@@ -1242,9 +1297,10 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
       customCatalogForOwner
     );
   }, [
+    activeContributorIds,
+    conglomeratePositionBySongId,
     customCatalogForOwner,
     dimensions,
-    activeContributorIds,
     graphSongs,
     layoutConfig,
     layoutLibraryScopeMode,
@@ -1348,12 +1404,16 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
         metaClusterCenterForOwner: getMetaClusterCenter,
         customClusterCatalog: activeCustomCatalog,
         customCatalogForOwner,
+        useConglomerateOffsetIsolate:
+          useWebPerformanceOptimizations && scopeMode === "isolate" && Boolean(conglomeratePositionBySongId),
+        conglomeratePositionsBySongId: conglomeratePositionBySongId ?? undefined,
       });
     },
     [
       activeContributorIds,
       activeCustomCatalog,
       clusterDragPreviewTick,
+      conglomeratePositionBySongId,
       customCatalogForOwner,
       dimensions,
       layoutLibraryScopeMode,
@@ -1366,6 +1426,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
       isSquigglyCustomMode,
       squigglySongPositions,
       stats,
+      useWebPerformanceOptimizations,
       visibleSongs,
     ]
   );
