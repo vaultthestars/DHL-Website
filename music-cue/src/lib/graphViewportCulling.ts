@@ -133,6 +133,122 @@ export const cullPositionedGraphNodes = <T extends { id: string }>(
   return [...required, ...sampledOptional];
 };
 
+const applyNodeRenderBudget = <T extends { id: string }>(
+  inViewport: T[],
+  transform: ViewTransform,
+  options?: {
+    alwaysIncludeSongIds?: Set<string>;
+    cullSeed?: string;
+  }
+): T[] => {
+  const budget = getZoomNodeRenderBudget(transform.scale, inViewport.length);
+  if (inViewport.length <= budget) {
+    return inViewport;
+  }
+
+  const alwaysInclude = options?.alwaysIncludeSongIds;
+  const cullSeed = options?.cullSeed;
+  const hashSample = (songId: string): number => hashUnit(songId, cullSeed);
+  const required: T[] = [];
+  const optional: T[] = [];
+
+  inViewport.forEach((item) => {
+    if (alwaysInclude?.has(item.id)) {
+      required.push(item);
+    } else {
+      optional.push(item);
+    }
+  });
+
+  const optionalBudget = Math.max(0, budget - required.length);
+  if (optionalBudget >= optional.length) {
+    return [...required, ...optional];
+  }
+
+  const sampledOptional = optional
+    .map((item) => ({ item, unit: hashSample(item.id) }))
+    .sort((left, right) => left.unit - right.unit)
+    .slice(0, optionalBudget)
+    .map((entry) => entry.item);
+
+  return [...required, ...sampledOptional];
+};
+
+/** Viewport cull with lazy O(1) position lookup — only materializes positions for rendered nodes. */
+export const cullGraphSongsWithLazyPositions = <T extends { id: string }>(
+  songs: T[],
+  dimensions: GraphDimensions,
+  transform: ViewTransform,
+  getPosition: (song: T) => GraphPoint,
+  options?: {
+    alwaysIncludeSongIds?: Set<string>;
+    enableCulling?: boolean;
+    clusterHints?: ClusterViewportHint[];
+    viewportPaddingPx?: number;
+    cullSeed?: string;
+  }
+): PositionedGraphNode<T>[] => {
+  if (songs.length === 0) {
+    return [];
+  }
+
+  const enableCulling = options?.enableCulling ?? songs.length >= GRAPH_NODE_CULLING_THRESHOLD;
+  if (!enableCulling) {
+    return songs.map((song) => ({ song, position: getPosition(song) }));
+  }
+
+  const paddingPx = options?.viewportPaddingPx ?? getCullingViewportPadding(dimensions);
+  const bounds = getGraphViewportBounds(dimensions, transform, paddingPx);
+  const alwaysInclude = options?.alwaysIncludeSongIds;
+  const songById = new Map(songs.map((song) => [song.id, song]));
+  const clusterHints = options?.clusterHints;
+  let inViewport: T[] = [];
+
+  if (clusterHints && clusterHints.length > 0) {
+    const candidateIds = new Set<string>();
+    alwaysInclude?.forEach((songId) => {
+      if (songById.has(songId)) {
+        candidateIds.add(songId);
+      }
+    });
+    clusterHints.forEach((hint) => {
+      if (!clusterIntersectsViewport(hint.center, hint.songIds.length, bounds)) {
+        return;
+      }
+      hint.songIds.forEach((songId) => candidateIds.add(songId));
+    });
+    inViewport = [];
+    candidateIds.forEach((songId) => {
+      const song = songById.get(songId);
+      if (!song) {
+        return;
+      }
+      const position = getPosition(song);
+      if (isPointInGraphViewport(position, bounds) || alwaysInclude?.has(songId)) {
+        inViewport.push(song);
+      }
+    });
+  } else {
+    inViewport = [];
+    songs.forEach((song) => {
+      if (alwaysInclude?.has(song.id)) {
+        inViewport.push(song);
+        return;
+      }
+      if (isPointInGraphViewport(getPosition(song), bounds)) {
+        inViewport.push(song);
+      }
+    });
+  }
+
+  const selected = applyNodeRenderBudget(inViewport, transform, {
+    alwaysIncludeSongIds: alwaysInclude,
+    cullSeed: options?.cullSeed,
+  });
+
+  return selected.map((song) => ({ song, position: getPosition(song) }));
+};
+
 const clusterIntersectsViewport = (
   center: GraphPoint,
   memberCount: number,

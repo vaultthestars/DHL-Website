@@ -1,5 +1,5 @@
 import { startTransition, useCallback, useDeferredValue, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { buildClusterRegions, buildIsolateScopedClusterRegions, buildOwnerMetaRegions, ClusterRegion } from "../lib/clusterRegions";
+import { buildClusterRegions, buildClusterViewportHints, buildIsolateScopedClusterRegions, buildOwnerMetaRegions, ClusterRegion } from "../lib/clusterRegions";
 import { syncClusterLayoutToServer } from "../lib/clusterLayoutSync";
 import { sanitizeLibraryPayload } from "../../shared/librarySanitize";
 import {
@@ -70,6 +70,7 @@ import {
   zoomAtPoint,
 } from "../lib/graphView";
 import {
+  cullGraphSongsWithLazyPositions,
   cullPositionedGraphNodes,
   getGraphViewportBounds,
   GRAPH_NODE_CULLING_THRESHOLD,
@@ -1245,7 +1246,6 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
 
   const showIsolateContributorView =
     libraryScopeMode === "isolate" && hasMultipleLibraryOwners(visibleSongs);
-  const isWebIsolateDisplayOnly = useWebPerformanceOptimizations && showIsolateContributorView;
 
   const conglomeratePositionBySongId = useMemo(() => {
     if (!useWebPerformanceOptimizations || !isClusterView(layoutConfig)) {
@@ -1305,6 +1305,11 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     useWebPerformanceOptimizations,
     visibleSongs,
   ]);
+
+  const showIsolateContributorViewRef = useRef(showIsolateContributorView);
+  showIsolateContributorViewRef.current = showIsolateContributorView;
+  const ownerTranslationOffsetsRef = useRef(ownerTranslationOffsets);
+  ownerTranslationOffsetsRef.current = ownerTranslationOffsets;
 
   const isolateGraphSongs = useCallback(
     (sourceSongs: Song[]) => {
@@ -1622,25 +1627,20 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
 
   const getPosition = useCallback(
     (song: Song): GraphPoint => {
-      if (isWebIsolateDisplayOnly && ownerTranslationOffsets) {
-        return applyIsolateDisplayTranslation(
-          song,
-          getConglomeratePositionForSong(song),
-          ownerTranslationOffsets
-        );
-      }
       if (useWebPerformanceOptimizations) {
-        return getConglomeratePositionForSong(song);
+        const base = getConglomeratePositionForSong(song);
+        if (showIsolateContributorViewRef.current && ownerTranslationOffsetsRef.current) {
+          return applyIsolateDisplayTranslation(song, base, ownerTranslationOffsetsRef.current);
+        }
+        return base;
       }
       return computeLayoutPosition(song, layoutConfig, layoutLibraryScopeMode, graphSongsRef.current);
     },
     [
       computeLayoutPosition,
       getConglomeratePositionForSong,
-      isWebIsolateDisplayOnly,
       layoutConfig,
       layoutLibraryScopeMode,
-      ownerTranslationOffsets,
       useWebPerformanceOptimizations,
     ]
   );
@@ -1699,29 +1699,59 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
   const enableGraphNodeCulling =
     useWebPerformanceOptimizations && renderGraphSongs.length >= GRAPH_NODE_CULLING_THRESHOLD;
 
+  const useLazyWebNodeCulling = useWebPerformanceOptimizations && enableGraphNodeCulling;
+
   const layoutColdKey = `${layoutConfigKey(coldLayoutConfig)}|${layoutTransitionKey}|${renderGraphSongs.length}|${dimensions.width}x${dimensions.height}|${isolateBoundsRevision}`;
 
-  const bakedPositionedSongs = useMemo(
-    () =>
-      renderGraphSongs.map((song) => ({
-        song,
-        position: useWebPerformanceOptimizations
-          ? getPosition(song)
-          : isLargeLibrary
-            ? computeLayoutPosition(song, coldLayoutConfig)
-            : getRenderablePosition(song),
-      })),
-    [
-      coldLayoutConfig,
-      computeLayoutPosition,
-      getPosition,
-      getRenderablePosition,
-      isLargeLibrary,
-      layoutColdKey,
+  const clusterViewportHints = useMemo(() => {
+    if (!useLazyWebNodeCulling || showIsolateContributorView) {
+      return undefined;
+    }
+    if (!isClusterView(coldLayoutConfig) || coldLayoutConfig.clusterMode === "custom") {
+      return undefined;
+    }
+    return buildClusterViewportHints(
+      coldLayoutConfig.clusterMode,
       renderGraphSongs,
-      useWebPerformanceOptimizations,
-    ]
-  );
+      stats,
+      dimensions,
+      layoutClusterOverrides,
+      activeCustomCatalog
+    );
+  }, [
+    activeCustomCatalog,
+    coldLayoutConfig,
+    dimensions,
+    layoutClusterOverrides,
+    renderGraphSongs,
+    showIsolateContributorView,
+    stats,
+    useLazyWebNodeCulling,
+  ]);
+
+  const bakedPositionedSongs = useMemo(() => {
+    if (useLazyWebNodeCulling) {
+      return [] as { song: Song; position: GraphPoint }[];
+    }
+    return renderGraphSongs.map((song) => ({
+      song,
+      position: useWebPerformanceOptimizations
+        ? getPosition(song)
+        : isLargeLibrary
+          ? computeLayoutPosition(song, coldLayoutConfig)
+          : getRenderablePosition(song),
+    }));
+  }, [
+    coldLayoutConfig,
+    computeLayoutPosition,
+    getPosition,
+    getRenderablePosition,
+    isLargeLibrary,
+    layoutColdKey,
+    renderGraphSongs,
+    useLazyWebNodeCulling,
+    useWebPerformanceOptimizations,
+  ]);
 
   const getSongRenderPosition = useCallback(
     (song: Song, bakedPosition: GraphPoint): GraphPoint => {
@@ -1737,6 +1767,8 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     [dimensions, isSquigglyCustomMode, songDragPreviewTick, squigglySongPositions]
   );
 
+  const renderedPositionedSongsRef = useRef<{ song: Song; position: GraphPoint }[]>([]);
+
   const findHoveredSongAtPoint = useCallback(
     (graphPoint: GraphPoint): string | null => {
       const scale = Math.max(viewTransformRef.current.scale, 0.001);
@@ -1745,7 +1777,8 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
       let bestId: string | null = null;
       let bestDistance = hitRadius;
 
-      bakedPositionedSongs.forEach(({ song, position }) => {
+      const nodes = useLazyWebNodeCulling ? renderedPositionedSongsRef.current : bakedPositionedSongs;
+      nodes.forEach(({ song, position }) => {
         const renderPosition = getSongRenderPosition(song, position);
         if (!isPointInGraphViewport(renderPosition, bounds)) {
           return;
@@ -1759,7 +1792,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
 
       return bestId;
     },
-    [bakedPositionedSongs, dimensions, getSongRenderPosition, songDragPreviewTick]
+    [bakedPositionedSongs, dimensions, getSongRenderPosition, songDragPreviewTick, useLazyWebNodeCulling]
   );
 
   const scheduleHoverProbe = useCallback(
@@ -1786,27 +1819,53 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     setNodeCullRevision((value) => value + 1);
   }, [layoutColdKey]);
 
-  const renderedPositionedSongs = useMemo(
-    () =>
-      cullPositionedGraphNodes(
-        bakedPositionedSongs,
+  useEffect(() => {
+    if (!useWebPerformanceOptimizations) {
+      return;
+    }
+    setNodeCullRevision((value) => value + 1);
+  }, [libraryScopeMode, useWebPerformanceOptimizations]);
+
+  const renderedPositionedSongs = useMemo(() => {
+    if (useLazyWebNodeCulling) {
+      return cullGraphSongsWithLazyPositions(
+        renderGraphSongs,
         dimensions,
         viewTransformForCullRef.current,
+        getPosition,
         {
           alwaysIncludeSongIds: prioritizedNodeIds,
-          enableCulling: enableGraphNodeCulling,
+          enableCulling: true,
+          clusterHints: clusterViewportHints,
           cullSeed: songSpaceMode === "shared" ? PLAYHTML_ROOM : undefined,
         }
-      ),
-    [
+      );
+    }
+    return cullPositionedGraphNodes(
       bakedPositionedSongs,
       dimensions,
-      enableGraphNodeCulling,
-      nodeCullRevision,
-      prioritizedNodeIds,
-      songSpaceMode,
-    ]
-  );
+      viewTransformForCullRef.current,
+      {
+        alwaysIncludeSongIds: prioritizedNodeIds,
+        enableCulling: enableGraphNodeCulling,
+        cullSeed: songSpaceMode === "shared" ? PLAYHTML_ROOM : undefined,
+      }
+    );
+  }, [
+    bakedPositionedSongs,
+    clusterViewportHints,
+    dimensions,
+    enableGraphNodeCulling,
+    getPosition,
+    libraryScopeMode,
+    nodeCullRevision,
+    prioritizedNodeIds,
+    renderGraphSongs,
+    songSpaceMode,
+    useLazyWebNodeCulling,
+  ]);
+
+  renderedPositionedSongsRef.current = renderedPositionedSongs;
 
   const visiblePositionedSongs = useMemo(
     () =>
@@ -1852,7 +1911,9 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     const clusterOverridesForLayout = draggingClusterIdRef.current
       ? resolveLayoutClusterOverrides()
       : layoutClusterOverrides;
-    const showIsolateRegions = isWebIsolateDisplayOnly || layoutLibraryScopeMode === "isolate";
+    const showIsolateRegions = useWebPerformanceOptimizations
+      ? showIsolateContributorView
+      : layoutLibraryScopeMode === "isolate";
     const ownerRegions = showIsolateRegions
         ? buildOwnerMetaRegions(
             graphSongs,
@@ -1903,20 +1964,21 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
 
     return [...ownerRegions, ...innerClusterRegions];
   }, [
+    activeContributorIds,
     activeCustomCatalog,
     clusterDragPreviewTick,
     clusterOverrides,
     coldLayoutConfig,
     customCatalogForOwner,
-    isWebIsolateDisplayOnly,
-    layoutClusterOverrides,
     dimensions,
-    activeContributorIds,
+    layoutClusterOverrides,
     layoutLibraryScopeMode,
+    libraryScopeMode,
     positionForClusterRegions,
     graphSongs,
     isolateOwnerBounds,
     resolveLayoutClusterOverrides,
+    showIsolateContributorView,
     stats,
     useWebPerformanceOptimizations,
   ]);
@@ -4297,12 +4359,8 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     if (!hoveredSong) {
       return null;
     }
-    const baked = bakedPositionedSongs.find((entry) => entry.song.id === hoveredSong.id);
-    if (baked) {
-      return getSongRenderPosition(hoveredSong, baked.position);
-    }
-    return getDisplayPosition(hoveredSong);
-  }, [bakedPositionedSongs, getDisplayPosition, getSongRenderPosition, hoveredSong, songDragPreviewTick]);
+    return getSongRenderPosition(hoveredSong, getPosition(hoveredSong));
+  }, [getPosition, getSongRenderPosition, hoveredSong, libraryScopeMode, songDragPreviewTick]);
 
   const collaboratorDisplayName = spotifyStatus?.displayName?.trim() || "Guest";
   const isSharedSongSpace = songSpaceMode === "shared";
