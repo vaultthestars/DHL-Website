@@ -49,7 +49,7 @@ export const loadMusicService = (): MusicServiceId => {
   if (stored === "spotify" || stored === "apple-music") {
     return stored;
   }
-  return import.meta.env.VITE_APP_MODE === "web" ? "spotify" : "apple-music";
+  return isWebDeployment ? "spotify" : "apple-music";
 };
 
 export const saveMusicService = (serviceId: MusicServiceId): void => {
@@ -83,7 +83,7 @@ export const savePathThreshold = (threshold: number): void => {
 export const loadCueLength = (): number => {
   const stored = Number(localStorage.getItem(CUE_LENGTH_KEY));
   if (!Number.isFinite(stored) || stored < 0) {
-    return 0;
+    return 100;
   }
   return Math.floor(stored);
 };
