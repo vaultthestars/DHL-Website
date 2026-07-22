@@ -1,5 +1,6 @@
 import { isWebDeployment } from "./runtime";
 import { ClusterCenterOverrides } from "./types";
+import { normalizeClusterCenterOverrides } from "./storage";
 
 export const syncClusterLayoutToServer = async (overrides: ClusterCenterOverrides): Promise<void> => {
   if (isWebDeployment) {
@@ -14,5 +15,22 @@ export const syncClusterLayoutToServer = async (overrides: ClusterCenterOverride
     });
   } catch {
     // Local server may not be running during static preview.
+  }
+};
+
+export const fetchClusterLayoutFromServer = async (): Promise<ClusterCenterOverrides | null> => {
+  if (isWebDeployment) {
+    return null;
+  }
+
+  try {
+    const response = await fetch("/api/cluster-layout");
+    if (!response.ok) {
+      return null;
+    }
+    const payload = (await response.json()) as Partial<ClusterCenterOverrides>;
+    return normalizeClusterCenterOverrides(payload);
+  } catch {
+    return null;
   }
 };

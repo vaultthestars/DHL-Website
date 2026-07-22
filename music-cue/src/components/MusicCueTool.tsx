@@ -29,7 +29,7 @@ import {
   buildTerminalPlaySpotifyCueCommand,
   toSpotifyCueTracks,
 } from "../lib/spotifyCueExport";
-import { isWebDeployment, areMockUsersEnabled, useWebPerformanceOptimizations } from "../lib/runtime";
+import { isWebDeployment, areMockUsersEnabled, useWebPerformanceOptimizations, isLocalDesktopApp } from "../lib/runtime";
 import {
   CollaborativeLayoutProvider,
   CollaborativePlayProvider,
@@ -537,7 +537,9 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     () => getEffectiveLibraryScopeMode(songSpaceMode, libraryScopeMode),
     [libraryScopeMode, songSpaceMode]
   );
-  const layoutLibraryScopeMode = useDeferredValue(effectiveLibraryScopeMode);
+  const layoutLibraryScopeMode = useDeferredValue(
+    isLocalDesktopApp ? "conglomerate" : effectiveLibraryScopeMode
+  );
   const activeContributorIds = useMemo(
     () =>
       resolveActiveContributorIds(
@@ -936,19 +938,6 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     setClusterOverrides(overrides);
     invalidatePlaylistOverlapLayoutCache();
     invalidateLayoutPositionCaches();
-  }, []);
-
-  useEffect(() => {
-    if (isWebDeployment) {
-      return;
-    }
-    const hasStoredLayout =
-      localStorage.getItem("music-cue-genre-cluster-layout") ||
-      localStorage.getItem("music-cue-playlist-cluster-layout");
-    if (!hasStoredLayout) {
-      return;
-    }
-    void syncClusterLayoutToServer(clusterOverridesRef.current);
   }, []);
 
   useEffect(() => {
@@ -2916,7 +2905,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     }
 
     if (
-      enableGraphNodeCulling &&
+      (enableGraphNodeCulling || isLocalDesktopApp) &&
       !draggingClusterIdRef.current &&
       !draggingSquigglyClusterRef.current &&
       !draggingSongRef.current &&
@@ -4974,7 +4963,9 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
                 const isSelected = selectedSongId === canonicalId;
                 const nodeFill = songNodeFills.get(song.id) ?? "#000080";
                 const radius = renderGraphSongs.length > 1000 ? 2 : renderGraphSongs.length > 400 ? 2 : 3;
-                const useSpatialHover = enableGraphNodeCulling;
+                const useSpatialHover =
+                  enableGraphNodeCulling ||
+                  (isLocalDesktopApp && renderGraphSongs.length > LABEL_THRESHOLD);
                 return (
                   <g
                     key={song.id}

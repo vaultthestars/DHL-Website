@@ -3,7 +3,7 @@ import { mergeSharedLibrarySnapshots } from "../../shared/sharedLibrary";
 import type { LoadedLibrary } from "./musicProvider";
 import type { LibraryStats, Song } from "./types";
 import { isMockContributorId } from "./libraryScope";
-import { isWebDeployment } from "./runtime";
+import { isWebDeployment, isLocalDesktopApp } from "./runtime";
 
 const GUEST_LIBRARY_SESSION_KEY = "music-cue-shared-library-session";
 
@@ -351,6 +351,9 @@ export const disableMockUsersForWeb = (): void => {
 export type LibraryScopeMode = "conglomerate" | "isolate";
 
 export const loadLibraryScopeMode = (): LibraryScopeMode => {
+  if (isLocalDesktopApp) {
+    return "conglomerate";
+  }
   const stored = localStorage.getItem(LIBRARY_SCOPE_MODE_KEY);
   return stored === "isolate" ? "isolate" : "conglomerate";
 };

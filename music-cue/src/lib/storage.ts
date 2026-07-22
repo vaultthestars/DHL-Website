@@ -16,7 +16,7 @@ import {
   Song,
 } from "./types";
 import { defaultLayoutConfig, migrateLegacyLayoutMode } from "./layoutMetrics";
-import { isWebDeployment } from "./runtime";
+import { isWebDeployment, isLocalDesktopApp } from "./runtime";
 
 const MUSIC_SERVICE_KEY = "music-cue-music-service";
 const libraryKey = (serviceId: MusicServiceId): string => `music-cue-library-${serviceId}`;
@@ -137,14 +137,11 @@ const mergeClusterCenterMaps = (
   ...overrides,
 });
 
-const bundledClusterDefaults = (): ClusterCenterOverrides =>
-  isWebDeployment
-    ? {
-        genre: bundledClusterLayout.genre,
-        playlist: bundledClusterLayout.playlist,
-        custom: {},
-      }
-    : { genre: {}, playlist: {}, custom: {} };
+const bundledClusterDefaults = (): ClusterCenterOverrides => ({
+  genre: bundledClusterLayout.genre ?? {},
+  playlist: bundledClusterLayout.playlist ?? {},
+  custom: {},
+});
 
 const emptyClusterOverrides = (): ClusterCenterOverrides => ({
   genre: {},
@@ -186,17 +183,41 @@ export const loadClusterCenterOverrides = (scope: ClusterLayoutScope = "isolate"
     }
   }
 
+  // Desktop app used unsuffixed keys before layout scopes were added for the website.
+  if (isLocalDesktopApp && scope === "isolate") {
+    if (Object.keys(genreStored).length === 0) {
+      genreStored = loadClusterCenterMap(GENRE_CLUSTER_LAYOUT_KEY);
+    }
+    if (Object.keys(playlistStored).length === 0) {
+      playlistStored = loadClusterCenterMap(PLAYLIST_CLUSTER_LAYOUT_KEY);
+    }
+  }
+
   const stored: ClusterCenterOverrides = {
     genre: genreStored,
     playlist: playlistStored,
     custom: customStored,
   };
   const defaults = bundledClusterDefaults();
-  return normalizeClusterCenterOverrides({
+  const merged = normalizeClusterCenterOverrides({
     genre: mergeClusterCenterMaps(defaults.genre, stored.genre),
     playlist: mergeClusterCenterMaps(defaults.playlist, stored.playlist),
     custom: mergeClusterCenterMaps(defaults.custom, stored.custom),
   });
+
+  if (isLocalDesktopApp && scope === "isolate") {
+    const defaultGenreCount = Object.keys(defaults.genre).length;
+    const storedGenreCount = Object.keys(stored.genre).length;
+    if (defaultGenreCount > 0 && storedGenreCount > 0 && storedGenreCount < defaultGenreCount * 0.5) {
+      return normalizeClusterCenterOverrides({
+        genre: { ...defaults.genre, ...stored.genre },
+        playlist: { ...defaults.playlist, ...stored.playlist },
+        custom: merged.custom,
+      });
+    }
+  }
+
+  return merged;
 };
 
 export const saveClusterCenterOverridesForScope = (

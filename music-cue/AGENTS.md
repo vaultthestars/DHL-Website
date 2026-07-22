@@ -22,3 +22,5 @@ This repo builds **two different products** from the same source:
 4. **Deploying website changes** requires `cd frontend && npm run build` (or at least `npm run build:music-cue`) so `frontend/public/music-cue/` updates. API-only deploys do not update the embedded client.
 
 5. **Local server** (`music-cue/server/`) serves the desktop app. Shared-library and Spotify handler code is synced to `frontend/api/` for Vercel; changes there do not require changing desktop behavior if properly gated.
+
+6. **Desktop cluster layout backup**: committed defaults in `src/data/cluster-layout.json` (bundled into the client). Runtime edits save to `data/cluster-layout.local.json` via `PUT /api/cluster-layout` — never write into `src/` at runtime (that triggers a Vite HMR loop in dev). Legacy browser keys (`music-cue-genre-cluster-layout` without `-isolate`) must keep working on desktop.

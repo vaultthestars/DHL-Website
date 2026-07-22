@@ -40,8 +40,8 @@ type SpotifyPage<T> = {
 const PAGE_REQUEST_DELAY_MS = 750;
 const PHASE_COOLDOWN_MS = 4_000;
 const POST_COOLDOWN_BUFFER_MS = 3_000;
-/** One Spotify API call per loadLibrary() invocation — prevents burst rate limits. */
-const SINGLE_STEP_IMPORT = true;
+/** When true, each loadLibrary() call performs one Spotify request then pauses (manual resume). */
+const SINGLE_STEP_IMPORT = false;
 
 let spotifyImportInFlight = false;
 
@@ -271,8 +271,8 @@ const loadSavedTracksPhase = async (
     pauseImportAfterStep(
       session,
       session.savedTracksComplete
-        ? `Saved tracks complete (${session.savedItems.length.toLocaleString()} tracks) — click Resume to load playlists.`
-        : `Loaded saved tracks page ${pageNumber} (${session.savedItems.length.toLocaleString()} so far) — click Resume for the next page.`,
+        ? `Saved tracks complete (${session.savedItems.length.toLocaleString()} tracks) — loading playlists…`
+        : `Loaded saved tracks page ${pageNumber} (${session.savedItems.length.toLocaleString()} so far)…`,
       onProgress
     );
   }
@@ -353,8 +353,8 @@ const loadPlaylistsPhase = async (
     pauseImportAfterStep(
       session,
       session.playlistsListLoaded
-        ? `Playlist list complete (${session.playlists.length.toLocaleString()} playlists) — click Resume to load playlist tracks.`
-        : `Loaded playlist list page ${pageNumber} (${session.playlists.length.toLocaleString()} playlists) — click Resume for the next page.`,
+        ? `Playlist list complete (${session.playlists.length.toLocaleString()} playlists) — loading playlist tracks…`
+        : `Loaded playlist list page ${pageNumber} (${session.playlists.length.toLocaleString()} playlists)…`,
       onProgress
     );
   }
@@ -461,8 +461,8 @@ const loadOnePlaylist = async (
       pauseImportAfterStep(
         session,
         page.next
-          ? `Loaded ${playlist.name} page ${pageNumber} — click Resume for the next page.`
-          : `Loaded playlist ${playlistIndex + 1}/${totalPlaylists} (${playlist.name}) — click Resume to continue.`,
+          ? `Loaded ${playlist.name} page ${pageNumber}…`
+          : `Loaded playlist ${playlistIndex + 1}/${totalPlaylists} (${playlist.name})…`,
         onProgress
       );
     }
@@ -555,7 +555,7 @@ const loadGenresPhase = async (
     if (SINGLE_STEP_IMPORT && nextIndex < artistIds.length) {
       pauseImportAfterStep(
         session,
-        `Loaded genre batch ${batchIndex}/${genreBatchCount} — click Resume to continue.`,
+        `Loaded genre batch ${batchIndex}/${genreBatchCount}…`,
         onProgress
       );
     }

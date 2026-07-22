@@ -5,3 +5,4 @@ dist-server
 .spotify-tokens.json
 .env
 .data
+data/cluster-layout.local.json
