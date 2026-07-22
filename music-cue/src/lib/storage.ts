@@ -43,6 +43,7 @@ const BUILD_MODE_KEY = "music-cue-build-mode";
 const GRAPH_TOOL_KEY = "music-cue-graph-tool";
 const PLAYLIST_GRAPH_VIEW_KEY = "music-cue-playlist-graph-view";
 export const DEFAULT_PATH_THRESHOLD = 60;
+export const DEFAULT_CUE_LENGTH = 100;
 
 export const loadMusicService = (): MusicServiceId => {
   const stored = localStorage.getItem(MUSIC_SERVICE_KEY);
@@ -81,9 +82,13 @@ export const savePathThreshold = (threshold: number): void => {
 };
 
 export const loadCueLength = (): number => {
-  const stored = Number(localStorage.getItem(CUE_LENGTH_KEY));
+  const raw = localStorage.getItem(CUE_LENGTH_KEY);
+  if (raw === null) {
+    return DEFAULT_CUE_LENGTH;
+  }
+  const stored = Number(raw);
   if (!Number.isFinite(stored) || stored < 0) {
-    return 100;
+    return DEFAULT_CUE_LENGTH;
   }
   return Math.floor(stored);
 };
