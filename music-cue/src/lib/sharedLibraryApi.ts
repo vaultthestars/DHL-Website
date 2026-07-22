@@ -314,6 +314,12 @@ export const filterSongsForSongSpace = (
 export const getAllContributorIds = (contributors: LibraryContributor[]): string[] =>
   contributors.map((contributor) => contributor.id).filter((id) => !isMockContributorId(id));
 
+export const buildSharedContributorFingerprint = (contributors: LibraryContributor[]): string =>
+  contributors
+    .map((contributor) => `${contributor.id}:${contributor.updatedAt}:${contributor.trackCount}`)
+    .sort()
+    .join("|");
+
 export const saveEnabledContributorIds = (contributorIds: string[]): void => {
   localStorage.setItem(ENABLED_CONTRIBUTORS_KEY, JSON.stringify(contributorIds));
 };
