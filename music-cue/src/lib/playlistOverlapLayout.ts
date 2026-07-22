@@ -1,6 +1,8 @@
 import { ClusterCenterOverrides, GraphPoint, LibraryStats, Song } from "./types";
 import { UNASSIGNED_PLAYLIST_CLUSTER_ID } from "./playlistConstants";
 import { GraphDimensions, resolveClusterCenter } from "./graphLayout";
+import { computeSpacedPlaylistCenters } from "./playlistMetaGraphLayout";
+import { loadPlaylistSpaceOut } from "./storage";
 
 const GRAPH_PADDING = 48;
 const OVERLAP_THRESHOLD = 0.28;
@@ -148,22 +150,26 @@ const buildLayoutKey = (
   stats: LibraryStats,
   songs: Song[],
   dimensions: GraphDimensions,
-  clusterOverrides: ClusterCenterOverrides
+  clusterOverrides: ClusterCenterOverrides,
+  spaceOutPlaylists: boolean
 ): string =>
   JSON.stringify({
     playlistIds: stats.playlistIds,
     songCount: songs.length,
     dimensions,
     overrides: clusterOverrides.playlist,
+    spaceOutPlaylists,
   });
 
 export const getPlaylistOverlapLayoutContext = (
   stats: LibraryStats,
   songs: Song[],
   dimensions: GraphDimensions,
-  clusterOverrides: ClusterCenterOverrides
+  clusterOverrides: ClusterCenterOverrides,
+  spaceOutPlaylists?: boolean
 ): PlaylistOverlapLayoutContext => {
-  const layoutKey = buildLayoutKey(stats, songs, dimensions, clusterOverrides);
+  const useSpaceOut = spaceOutPlaylists ?? loadPlaylistSpaceOut();
+  const layoutKey = buildLayoutKey(stats, songs, dimensions, clusterOverrides, useSpaceOut);
   if (cachedLayoutKey === layoutKey && cachedLayoutContext) {
     return cachedLayoutContext;
   }
@@ -172,6 +178,9 @@ export const getPlaylistOverlapLayoutContext = (
   const songSets = buildPlaylistSongSets(playlistIds, songs);
   const groupedPlaylistIds = clusterPlaylistsByOverlap(playlistIds, songSets);
   const playlistCenters = new Map<string, GraphPoint>();
+  const spacedCenters = useSpaceOut
+    ? computeSpacedPlaylistCenters(playlistIds, songs, dimensions)
+    : null;
   const groups: OverlapGroup[] = groupedPlaylistIds.map((members) => ({
     id: members.join("|"),
     playlistIds: members,
@@ -179,11 +188,20 @@ export const getPlaylistOverlapLayoutContext = (
   }));
 
   groups.forEach((group, index) => {
-    group.defaultCenter = getDefaultGroupCenter(index, groups.length, dimensions, group.id);
+    if (spacedCenters) {
+      const memberCenters = group.playlistIds
+        .map((playlistId) => spacedCenters.get(playlistId))
+        .filter((center): center is GraphPoint => Boolean(center));
+      group.defaultCenter =
+        memberCenters.length > 0 ? averagePoints(memberCenters) : getDefaultGroupCenter(index, groups.length, dimensions, group.id);
+    } else {
+      group.defaultCenter = getDefaultGroupCenter(index, groups.length, dimensions, group.id);
+    }
     group.playlistIds.forEach((playlistId) => {
+      const defaultCenter = spacedCenters?.get(playlistId) ?? group.defaultCenter;
       playlistCenters.set(
         playlistId,
-        resolveClusterCenter(group.defaultCenter, clusterOverrides.playlist[playlistId], dimensions)
+        resolveClusterCenter(defaultCenter, clusterOverrides.playlist[playlistId], dimensions)
       );
     });
   });

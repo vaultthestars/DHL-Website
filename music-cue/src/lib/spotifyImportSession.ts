@@ -171,7 +171,7 @@ export const getSpotifyImportRateLimitCooldownMs = (): number => {
     return 0;
   }
   const elapsed = Date.now() - Date.parse(hint.lastRateLimitedAt);
-  const cooldown = 90_000;
+  const cooldown = 120_000;
   return Math.max(0, cooldown - elapsed);
 };
 

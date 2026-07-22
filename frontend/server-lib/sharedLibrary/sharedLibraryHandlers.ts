@@ -63,10 +63,9 @@ export const handleSharedLibraryRoute = async (
 
     if (route === "merge" && req.method === "GET") {
       const contributorsParam = getQueryValue(req.query, "contributors");
-      const index = await listSharedLibraryContributors();
       const contributorIds = contributorsParam
         ? contributorsParam.split(",").map((entry) => entry.trim()).filter(Boolean)
-        : index.contributors.map((contributor) => contributor.id);
+        : (await listSharedLibraryContributors()).contributors.map((contributor) => contributor.id);
 
       if (contributorIds.length === 0) {
         res.status(200).json({
@@ -89,6 +88,17 @@ export const handleSharedLibraryRoute = async (
 
       const snapshots = await getSharedLibrarySnapshots(contributorIds);
       const merged = mergeSharedLibrarySnapshots(snapshots);
+      const index =
+        contributorsParam.length > 0
+          ? {
+              contributors: snapshots.map((snapshot) => ({
+                id: snapshot.contributor.id,
+                name: snapshot.contributor.name,
+                updatedAt: snapshot.updatedAt,
+                trackCount: snapshot.songs.length,
+              })),
+            }
+          : await listSharedLibraryContributors();
       res.status(200).json({
         ...merged,
         contributors: index.contributors.filter((contributor) => contributorIds.includes(contributor.id)),

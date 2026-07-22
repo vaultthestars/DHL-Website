@@ -190,13 +190,15 @@ export const listSharedLibraryContributors = async (): Promise<SharedLibraryInde
     return filterMockContributors(readLocalIndex());
   }
 
-  let index = await remote.readJson<SharedLibraryIndex>(INDEX_KEY);
-  if (!index?.contributors?.length) {
-    const rebuilt = await rebuildIndexFromRemoteSnapshots();
-    if (rebuilt.contributors.length > 0) {
-      await remote.writeJson(INDEX_KEY, rebuilt);
-      index = rebuilt;
-    }
+  const index = await remote.readJson<SharedLibraryIndex>(INDEX_KEY);
+  if (index?.contributors?.length) {
+    return filterMockContributors(index);
+  }
+
+  const rebuilt = await rebuildIndexFromRemoteSnapshots();
+  if (rebuilt.contributors.length > 0) {
+    await remote.writeJson(INDEX_KEY, rebuilt);
+    return filterMockContributors(rebuilt);
   }
 
   return filterMockContributors(index ?? { contributors: [] });

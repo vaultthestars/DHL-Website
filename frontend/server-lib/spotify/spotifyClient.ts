@@ -287,8 +287,8 @@ export const createSpotifyClient = (store: SpotifySessionStore) => {
     if (response.status === 204) {
       return {} as T;
     }
-    if (response.status === 429 && attempt < 2 && Date.now() - startedAt < 20_000) {
-      await sleep(Math.min(parseRetryAfterMs(response.headers.get("Retry-After"), attempt), 4_000));
+    if (response.status === 429 && attempt < 2 && Date.now() - startedAt < 45_000) {
+      await sleep(Math.min(parseRetryAfterMs(response.headers.get("Retry-After"), attempt), 30_000));
       return spotifyFetch<T>(path, init, attempt + 1, startedAt);
     }
     if (!response.ok) {

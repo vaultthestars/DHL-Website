@@ -34,8 +34,8 @@ type SpotifyPage<T> = {
   next: string | null;
 };
 
-const PAGE_REQUEST_DELAY_MS = 750;
-const PHASE_COOLDOWN_MS = 4_000;
+const PAGE_REQUEST_DELAY_MS = 1_000;
+const PHASE_COOLDOWN_MS = 5_000;
 
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 

@@ -53,6 +53,7 @@ import {
   saveConnectedSpotifyUser,
   SpotifyImportRateLimitError,
 } from "../lib/providers/spotifyProvider";
+import { getSpotifyImportRateLimitCooldownMs } from "../lib/spotifyImportSession";
 import type { LibraryLoadProgress } from "../lib/musicProvider";
 import {
   DEFAULT_VIEW_TRANSFORM,
@@ -64,7 +65,9 @@ import {
 } from "../lib/graphView";
 import {
   cullPositionedGraphNodes,
+  getGraphViewportBounds,
   GRAPH_NODE_CULLING_THRESHOLD,
+  isPointInGraphViewport,
 } from "../lib/graphViewportCulling";
 import {
   loadBuildMode,
@@ -78,6 +81,7 @@ import {
   loadMusicService,
   loadPathThreshold,
   loadCustomPositions,
+  loadPlaylistSpaceOut,
   saveCustomPositions,
   saveBuildMode,
   saveClusterCenterOverridesForScope,
@@ -90,6 +94,7 @@ import {
   saveMusicService,
   savePathThreshold,
   savePlaylistClusterCenterOverrides,
+  savePlaylistSpaceOut,
   type ClusterLayoutScope,
 } from "../lib/storage";
 import { getActiveClusterLayoutScope, getEffectiveLibraryScopeMode, isSingleContributorSharedLibrary } from "../lib/clusterLayoutScope";
@@ -646,6 +651,16 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     });
   }, []);
 
+  const scheduleSongDragPreview = useCallback(() => {
+    if (songDragRafRef.current) {
+      return;
+    }
+    songDragRafRef.current = requestAnimationFrame(() => {
+      songDragRafRef.current = 0;
+      setSongDragPreviewTick((value) => value + 1);
+    });
+  }, []);
+
   const updateClusterDraftPath = useCallback(() => {
     const pathEl = clusterDraftPathRef.current;
     if (!pathEl) {
@@ -766,6 +781,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
   const [isDrawingNewPath, setIsDrawingNewPath] = useState(false);
   const [cue, setCue] = useState<GeneratedCue | null>(null);
   const [hoveredSongId, setHoveredSongId] = useState<string | null>(null);
+  const [draggingSongId, setDraggingSongId] = useState<string | null>(null);
   const [activePlaylistName, setActivePlaylistName] = useState<string | null>(null);
   const [activePersistentId, setActivePersistentId] = useState<string | null>(null);
   const [playbackTrackingEnabled, setPlaybackTrackingEnabled] = useState(false);
@@ -802,11 +818,17 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
   const isImportingRef = useRef(false);
   const [importProgress, setImportProgress] = useState<LibraryLoadProgress | null>(null);
   const [importResumeRevision, setImportResumeRevision] = useState(0);
+  const [rateLimitCooldownMs, setRateLimitCooldownMs] = useState(0);
+  const [playlistSpaceOut, setPlaylistSpaceOut] = useState(() => loadPlaylistSpaceOut());
   const [shiftHeld, setShiftHeld] = useState(false);
   const [boxSelectRect, setBoxSelectRect] = useState<BoxSelectRect | null>(null);
   const [selectedClusterIds, setSelectedClusterIds] = useState<Set<string>>(() => new Set());
   const clusterOverridesRef = useRef(clusterOverrides);
   const clusterDragRafRef = useRef(0);
+  const songDragRafRef = useRef(0);
+  const [songDragPreviewTick, setSongDragPreviewTick] = useState(0);
+  const hoverProbeRafRef = useRef(0);
+  const pendingHoverPointRef = useRef<GraphPoint | null>(null);
   const [clusterDragPreviewTick, setClusterDragPreviewTick] = useState(0);
   const [squigglySongPositions, setSquigglySongPositions] = useState<Record<string, NormalizedPoint>>(() =>
     loadCustomPositions()
@@ -1005,6 +1027,17 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     }
     return hasResumableSpotifyImport() ? getSpotifyImportResumeLabel() : null;
   }, [importResumeRevision, musicService]);
+
+  useEffect(() => {
+    if (musicService !== "spotify") {
+      setRateLimitCooldownMs(0);
+      return undefined;
+    }
+    const updateCooldown = () => setRateLimitCooldownMs(getSpotifyImportRateLimitCooldownMs());
+    updateCooldown();
+    const intervalId = window.setInterval(updateCooldown, 1000);
+    return () => window.clearInterval(intervalId);
+  }, [importResumeRevision, isImporting, musicService]);
 
   useEffect(() => {
     songsRef.current = songs;
@@ -1486,16 +1519,19 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     if (selectedSongId) {
       ids.add(selectedSongId);
     }
+    if (draggingSongId) {
+      ids.add(draggingSongId);
+    }
     if (activePersistentId) {
       ids.add(activePersistentId);
     }
     cue?.songs.forEach((song) => ids.add(song.id));
     return ids;
-  }, [activePersistentId, cue, hoveredSongId, selectedSongId]);
+  }, [activePersistentId, cue, draggingSongId, hoveredSongId, selectedSongId]);
 
   const enableGraphNodeCulling = renderGraphSongs.length >= GRAPH_NODE_CULLING_THRESHOLD;
 
-  const layoutColdKey = `${layoutConfigKey(coldLayoutConfig)}|${layoutTransitionKey}|${renderGraphSongs.length}|${dimensions.width}x${dimensions.height}|${isolateBoundsRevision}`;
+  const layoutColdKey = `${layoutConfigKey(coldLayoutConfig)}|${layoutTransitionKey}|${renderGraphSongs.length}|${dimensions.width}x${dimensions.height}|${isolateBoundsRevision}|space:${playlistSpaceOut}`;
 
   const bakedPositionedSongs = useMemo(
     () =>
@@ -1513,6 +1549,64 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
       layoutColdKey,
       renderGraphSongs,
     ]
+  );
+
+  const getSongRenderPosition = useCallback(
+    (song: Song, bakedPosition: GraphPoint): GraphPoint => {
+      if (!isSquigglyCustomMode) {
+        return bakedPosition;
+      }
+      const stored = squigglySongPositionsRef.current[getCanonicalSongId(song.id)];
+      if (!stored) {
+        return bakedPosition;
+      }
+      return fromNormalizedPosition(stored, dimensions);
+    },
+    [dimensions, isSquigglyCustomMode, songDragPreviewTick, squigglySongPositions]
+  );
+
+  const findHoveredSongAtPoint = useCallback(
+    (graphPoint: GraphPoint): string | null => {
+      const scale = Math.max(viewTransformRef.current.scale, 0.001);
+      const hitRadius = 12 / scale;
+      const bounds = getGraphViewportBounds(dimensions, viewTransformRef.current);
+      let bestId: string | null = null;
+      let bestDistance = hitRadius;
+
+      bakedPositionedSongs.forEach(({ song, position }) => {
+        const renderPosition = getSongRenderPosition(song, position);
+        if (!isPointInGraphViewport(renderPosition, bounds)) {
+          return;
+        }
+        const distance = Math.hypot(renderPosition.x - graphPoint.x, renderPosition.y - graphPoint.y);
+        if (distance <= bestDistance) {
+          bestDistance = distance;
+          bestId = song.id;
+        }
+      });
+
+      return bestId;
+    },
+    [bakedPositionedSongs, dimensions, getSongRenderPosition, songDragPreviewTick]
+  );
+
+  const scheduleHoverProbe = useCallback(
+    (graphPoint: GraphPoint) => {
+      pendingHoverPointRef.current = graphPoint;
+      if (hoverProbeRafRef.current) {
+        return;
+      }
+      hoverProbeRafRef.current = requestAnimationFrame(() => {
+        hoverProbeRafRef.current = 0;
+        const point = pendingHoverPointRef.current;
+        if (!point) {
+          return;
+        }
+        const nextHoveredId = findHoveredSongAtPoint(point);
+        setHoveredSongId((current) => (current === nextHoveredId ? current : nextHoveredId));
+      });
+    },
+    [findHoveredSongAtPoint]
   );
 
   useLayoutEffect(() => {
@@ -1542,14 +1636,23 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     ]
   );
 
+  const visiblePositionedSongs = useMemo(
+    () =>
+      renderedPositionedSongs.map(({ song, position }) => ({
+        song,
+        position: getSongRenderPosition(song, position),
+      })),
+    [getSongRenderPosition, renderedPositionedSongs, songDragPreviewTick]
+  );
+
   const culledNodeCount = enableGraphNodeCulling
-    ? Math.max(0, renderGraphSongs.length - renderedPositionedSongs.length)
+    ? Math.max(0, renderGraphSongs.length - visiblePositionedSongs.length)
     : 0;
 
   const songNodeFills = useMemo(() => {
     const fills = new Map<string, string>();
     const songsToFill = enableGraphNodeCulling
-      ? renderedPositionedSongs.map(({ song }) => song)
+      ? visiblePositionedSongs.map(({ song }) => song)
       : renderGraphSongs;
     songsToFill.forEach((song) => {
       fills.set(
@@ -1563,6 +1666,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     enableGraphNodeCulling,
     layoutConfig,
     renderedPositionedSongs,
+    visiblePositionedSongs,
     renderGraphSongs,
     stats,
     visibleSongs,
@@ -2692,6 +2796,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
         if (moved >= DRAG_THRESHOLD) {
           const { clientX: _clientX, clientY: _clientY, pointerId: _pointerId, ...session } = pending;
           draggingSongRef.current = session;
+          setDraggingSongId(session.songId);
           pendingSongDragRef.current = null;
           svgRef.current.setPointerCapture(event.pointerId);
         }
@@ -2726,7 +2831,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
         }
       });
       squigglySongPositionsRef.current = nextPositions;
-      setSquigglySongPositions(nextPositions);
+      scheduleSongDragPreview();
       return;
     }
 
@@ -2746,7 +2851,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
         },
       };
       squigglySongPositionsRef.current = nextPositions;
-      setSquigglySongPositions(nextPositions);
+      scheduleSongDragPreview();
       return;
     }
 
@@ -2773,6 +2878,18 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
       clusterOverridesRef.current = nextOverrides;
       scheduleClusterDragPreview();
       return;
+    }
+
+    if (
+      enableGraphNodeCulling &&
+      !draggingClusterIdRef.current &&
+      !draggingSquigglyClusterRef.current &&
+      !draggingSongRef.current &&
+      !pendingSongDragRef.current &&
+      graphTool === "navigate"
+    ) {
+      const point = getLocalPoint(event, svgRef.current, contentGroupRef.current);
+      scheduleHoverProbe(point);
     }
 
     const session = panSessionRef.current;
@@ -2867,6 +2984,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
       persistCustomCatalog(nextCatalog);
       saveCustomPositions(squigglySongPositionsRef.current);
       draggingSquigglyClusterRef.current = null;
+      setSquigglySongPositions({ ...squigglySongPositionsRef.current });
       setSquigglyHullPreview({});
       setStatusMessage("Squiggly cluster moved.");
       if (event && svgRef.current?.hasPointerCapture(event.pointerId)) {
@@ -2878,6 +2996,8 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     if (draggingSongRef.current) {
       const dragSession = draggingSongRef.current;
       draggingSongRef.current = null;
+      setDraggingSongId(null);
+      setSquigglySongPositions({ ...squigglySongPositionsRef.current });
       const finalPosition = squigglySongPositionsRef.current[dragSession.songId];
       if (finalPosition) {
         saveCustomPositions(squigglySongPositionsRef.current);
@@ -3282,7 +3402,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
       void refreshSharedContributors({ loadLibrary: true });
     };
 
-    const intervalId = window.setInterval(refreshContributors, 30_000);
+    const intervalId = window.setInterval(refreshContributors, 120_000);
     window.addEventListener("focus", refreshContributors);
     return () => {
       window.clearInterval(intervalId);
@@ -3461,6 +3581,13 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     }
     if (!spotifyCanLoadLibrary) {
       setStatusMessage("Connect Spotify before loading your library.");
+      return;
+    }
+    const cooldownMs = getSpotifyImportRateLimitCooldownMs();
+    if (cooldownMs > 0) {
+      setStatusMessage(
+        `Spotify rate limit — wait ${Math.ceil(cooldownMs / 1000)}s before resuming. Progress is saved.`
+      );
       return;
     }
     if (options?.fresh) {
@@ -3940,6 +4067,17 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     ? songs.find((song) => song.id === getCanonicalSongId(hoveredSongId))
     : undefined;
 
+  const hoveredSongRenderPosition = useMemo(() => {
+    if (!hoveredSong) {
+      return null;
+    }
+    const baked = bakedPositionedSongs.find((entry) => entry.song.id === hoveredSong.id);
+    if (baked) {
+      return getSongRenderPosition(hoveredSong, baked.position);
+    }
+    return getDisplayPosition(hoveredSong);
+  }, [bakedPositionedSongs, getDisplayPosition, getSongRenderPosition, hoveredSong, songDragPreviewTick]);
+
   const collaboratorDisplayName = spotifyStatus?.displayName?.trim() || "Guest";
   const isSharedSongSpace = songSpaceMode === "shared";
   const clusterLayoutSyncMode = useMemo((): ClusterLayoutSyncMode => {
@@ -4224,7 +4362,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
                 : unavailableSongIds.size > 0
                   ? ` · ${unavailableSongIds.size} unavailable (red)`
                   : ""}
-              {culledNodeCount > 0 ? ` · showing ${renderedPositionedSongs.length} nodes (zoom/pan for detail)` : ""}
+              {culledNodeCount > 0 ? ` · showing ${visiblePositionedSongs.length} nodes (zoom/pan for detail)` : ""}
               {sharedTrackCount > 0 ? ` · ${sharedTrackCount} in common` : ""}
               {songSpaceMode === "shared" && sharedContributors.length > 0
                 ? ` · ${sharedContributors.map((contributor) => contributor.name).join(" + ")}`
@@ -4304,17 +4442,23 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
               <button
                 type="button"
                 onClick={() => void handleLoadSpotifyLibrary()}
-                disabled={isImporting || spotifyStatusLoading || !spotifyCanLoadLibrary}
+                disabled={
+                  isImporting || spotifyStatusLoading || !spotifyCanLoadLibrary || rateLimitCooldownMs > 0
+                }
                 title={
-                  spotifyStatusLoading
-                    ? "Checking Spotify connection…"
-                    : !spotifyCanLoadLibrary
-                      ? "Connect Spotify first"
-                      : spotifyImportResumeLabel ?? undefined
+                  rateLimitCooldownMs > 0
+                    ? `Spotify rate limit — wait ${Math.ceil(rateLimitCooldownMs / 1000)}s`
+                    : spotifyStatusLoading
+                      ? "Checking Spotify connection…"
+                      : !spotifyCanLoadLibrary
+                        ? "Connect Spotify first"
+                        : spotifyImportResumeLabel ?? undefined
                 }
               >
                 {isImporting
                   ? "Loading…"
+                  : rateLimitCooldownMs > 0
+                    ? `Wait ${Math.ceil(rateLimitCooldownMs / 1000)}s`
                   : spotifyStatusLoading
                     ? "Checking Spotify…"
                     : spotifyImportResumeLabel
@@ -4325,8 +4469,12 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
                 <button
                   type="button"
                   onClick={() => void handleLoadSpotifyLibrary({ fresh: true })}
-                  disabled={!spotifyCanLoadLibrary}
-                  title={spotifyImportResumeLabel}
+                  disabled={!spotifyCanLoadLibrary || rateLimitCooldownMs > 0}
+                  title={
+                    rateLimitCooldownMs > 0
+                      ? `Spotify rate limit — wait ${Math.ceil(rateLimitCooldownMs / 1000)}s`
+                      : spotifyImportResumeLabel
+                  }
                 >
                   Start fresh
                 </button>
@@ -4439,6 +4587,27 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
                   </button>
                 ))}
               </div>
+              {layoutConfig.clusterMode === "playlist" && songSpaceMode === "mine" ? (
+                <label className="music-cue-space-out-toggle">
+                  <input
+                    type="checkbox"
+                    checked={playlistSpaceOut}
+                    onChange={(event) => {
+                      const enabled = event.target.checked;
+                      setPlaylistSpaceOut(enabled);
+                      savePlaylistSpaceOut(enabled);
+                      invalidatePlaylistOverlapLayoutCache();
+                      invalidateLayoutPositionCaches();
+                      setStatusMessage(
+                        enabled
+                          ? "Space out on — playlist clusters spread using overlap graph layout."
+                          : "Space out off — default playlist cluster placement."
+                      );
+                    }}
+                  />
+                  Space out playlists
+                </label>
+              ) : null}
               {layoutConfig.clusterMode === "custom" && isSquigglyCustomMode ? (
                 <span className="music-cue-axis-note">
                   {isGuestViewOnly
@@ -4630,6 +4799,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
             onPointerCancel={(event) => finishPointerInteraction(event)}
             onPointerLeave={(event) => {
               if (event.buttons === 0) {
+                setHoveredSongId(null);
                 finishPointerInteraction(event);
               }
             }}
@@ -4724,24 +4894,23 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
                 </>
               ) : null}
 
-              {renderedPositionedSongs.map(({ song, position }) => {
+              {visiblePositionedSongs.map(({ song, position }) => {
                 const canonicalId = getCanonicalSongId(song.id);
                 const inCue = cue?.songs.some((entry) => entry.id === canonicalId);
                 const isUnavailable = unavailableSongIds.has(canonicalId);
                 const isSelected = selectedSongId === canonicalId;
                 const nodeFill = songNodeFills.get(song.id) ?? "#000080";
                 const radius = renderGraphSongs.length > 1000 ? 2 : renderGraphSongs.length > 400 ? 2 : 3;
-                const isLargeLibrary = renderGraphSongs.length >= 500;
-                const skipNodeHover = isLargeLibrary || enableGraphNodeCulling;
+                const useSpatialHover = enableGraphNodeCulling;
                 return (
                   <g
                     key={song.id}
                     transform={`translate(${position.x}, ${position.y})`}
                     onMouseEnter={
-                      skipNodeHover ? undefined : () => setHoveredSongId(song.id)
+                      useSpatialHover ? undefined : () => setHoveredSongId(song.id)
                     }
                     onMouseLeave={
-                      skipNodeHover
+                      useSpatialHover
                         ? undefined
                         : () => setHoveredSongId((current) => (current === song.id ? null : current))
                     }
@@ -4814,10 +4983,10 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
                   </text>
                 ))}
 
-              {!showLabels && hoveredSong && (
+              {!showLabels && hoveredSong && hoveredSongRenderPosition && (
                 <text
-                  x={getDisplayPosition(hoveredSong).x}
-                  y={getDisplayPosition(hoveredSong).y - 12}
+                  x={hoveredSongRenderPosition.x}
+                  y={hoveredSongRenderPosition.y - 12}
                   className="music-cue-hover-label"
                 >
                   {hoveredSong.artist} — {hoveredSong.title}
