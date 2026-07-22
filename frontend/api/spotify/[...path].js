@@ -739,12 +739,35 @@ var createSpotifyClient = (store) => {
 // api/lib/spotify/sharedLibraryStore.ts
 var import_node_fs = require("node:fs");
 var import_node_path = __toESM(require("node:path"));
-var LOCAL_LIBRARY_DIR = import_node_path.default.resolve(process.cwd(), ".data/shared-libraries");
-var BLOB_PREFIX = "music-cue/libraries";
-var INDEX_PATH = `${BLOB_PREFIX}/index.json`;
-var SHARED_LIBRARY_STORAGE_ERROR = "Shared library storage is not configured. In the Vercel project, open Storage \u2192 Create Blob store \u2192 connect it to this project, then redeploy.";
+
+// api/lib/spotify/sharedLibraryRemoteStore.ts
+var import_client_s3 = require("@aws-sdk/client-s3");
 var isVercelProduction = () => process.env.VERCEL === "1";
+var useS3Storage = () => {
+  const override = process.env.SHARED_LIBRARY_STORAGE?.toLowerCase();
+  if (override === "blob") {
+    return false;
+  }
+  if (override === "s3" || override === "r2") {
+    return Boolean(
+      process.env.SHARED_LIBRARY_S3_BUCKET && process.env.SHARED_LIBRARY_S3_ACCESS_KEY_ID && process.env.SHARED_LIBRARY_S3_SECRET_ACCESS_KEY
+    );
+  }
+  return Boolean(
+    process.env.SHARED_LIBRARY_S3_BUCKET && process.env.SHARED_LIBRARY_S3_ACCESS_KEY_ID && process.env.SHARED_LIBRARY_S3_SECRET_ACCESS_KEY
+  );
+};
 var useBlobStorage = () => {
+  const override = process.env.SHARED_LIBRARY_STORAGE?.toLowerCase();
+  if (override === "s3" || override === "r2") {
+    return false;
+  }
+  if (override === "blob") {
+    return Boolean(process.env.BLOB_READ_WRITE_TOKEN || isVercelProduction() && process.env.BLOB_STORE_ID);
+  }
+  if (useS3Storage()) {
+    return false;
+  }
   if (process.env.BLOB_READ_WRITE_TOKEN) {
     return true;
   }
@@ -753,17 +776,159 @@ var useBlobStorage = () => {
   }
   return false;
 };
+var streamToString = async (body) => {
+  if (!body) {
+    return "";
+  }
+  if (typeof body === "string") {
+    return body;
+  }
+  if (body instanceof Uint8Array) {
+    return new TextDecoder().decode(body);
+  }
+  if (typeof body.transformToByteArray === "function") {
+    const bytes = await body.transformToByteArray();
+    return new TextDecoder().decode(bytes);
+  }
+  return new Response(body).text();
+};
+var s3Client = null;
+var getS3Client = () => {
+  if (s3Client) {
+    return s3Client;
+  }
+  const endpoint = process.env.SHARED_LIBRARY_S3_ENDPOINT;
+  s3Client = new import_client_s3.S3Client({
+    region: process.env.SHARED_LIBRARY_S3_REGION ?? "auto",
+    endpoint: endpoint || void 0,
+    forcePathStyle: Boolean(endpoint),
+    credentials: {
+      accessKeyId: process.env.SHARED_LIBRARY_S3_ACCESS_KEY_ID,
+      secretAccessKey: process.env.SHARED_LIBRARY_S3_SECRET_ACCESS_KEY
+    }
+  });
+  return s3Client;
+};
+var createS3RemoteStore = () => {
+  const bucket = process.env.SHARED_LIBRARY_S3_BUCKET;
+  return {
+    backend: "s3",
+    readJson: async (key) => {
+      try {
+        const result = await getS3Client().send(
+          new import_client_s3.GetObjectCommand({
+            Bucket: bucket,
+            Key: key
+          })
+        );
+        const text = await streamToString(result.Body);
+        if (!text) {
+          return null;
+        }
+        return JSON.parse(text);
+      } catch {
+        return null;
+      }
+    },
+    writeJson: async (key, payload) => {
+      await getS3Client().send(
+        new import_client_s3.PutObjectCommand({
+          Bucket: bucket,
+          Key: key,
+          Body: JSON.stringify(payload),
+          ContentType: "application/json"
+        })
+      );
+    },
+    listJsonKeys: async (prefix) => {
+      const entries = [];
+      let continuationToken;
+      do {
+        const result = await getS3Client().send(
+          new import_client_s3.ListObjectsV2Command({
+            Bucket: bucket,
+            Prefix: prefix,
+            ContinuationToken: continuationToken
+          })
+        );
+        (result.Contents ?? []).forEach((object) => {
+          if (!object.Key) {
+            return;
+          }
+          entries.push({
+            key: object.Key,
+            updatedAt: object.LastModified ?? /* @__PURE__ */ new Date(0)
+          });
+        });
+        continuationToken = result.IsTruncated ? result.NextContinuationToken : void 0;
+      } while (continuationToken);
+      return entries;
+    }
+  };
+};
+var getBlobModule = async () => import("@vercel/blob");
+var createBlobRemoteStore = () => ({
+  backend: "blob",
+  readJson: async (key) => {
+    const { get } = await getBlobModule();
+    try {
+      const result = await get(key, { access: "private", useCache: false });
+      if (!result || result.statusCode !== 200 || !result.stream) {
+        return null;
+      }
+      const text = await new Response(result.stream).text();
+      return JSON.parse(text);
+    } catch {
+      return null;
+    }
+  },
+  writeJson: async (key, payload) => {
+    const { put } = await getBlobModule();
+    await put(key, JSON.stringify(payload), {
+      access: "private",
+      addRandomSuffix: false,
+      allowOverwrite: true,
+      contentType: "application/json"
+    });
+  },
+  listJsonKeys: async (prefix) => {
+    const { list } = await getBlobModule();
+    const { blobs } = await list({ prefix });
+    return blobs.map((blob) => ({
+      key: blob.pathname,
+      updatedAt: blob.uploadedAt
+    }));
+  }
+});
+var getRemoteJsonStore = () => {
+  if (useS3Storage()) {
+    return createS3RemoteStore();
+  }
+  if (useBlobStorage()) {
+    return createBlobRemoteStore();
+  }
+  return null;
+};
+var isRemoteStorageConfigured = () => getRemoteJsonStore() !== null;
+
+// api/lib/spotify/sharedLibraryStore.ts
+var LOCAL_LIBRARY_DIR = import_node_path.default.resolve(process.cwd(), ".data/shared-libraries");
+var STORAGE_PREFIX = "music-cue/libraries";
+var INDEX_KEY = `${STORAGE_PREFIX}/index.json`;
+var SHARED_LIBRARY_STORAGE_ERROR = "Shared library storage is not configured. Set Cloudflare R2 / S3 env vars (SHARED_LIBRARY_S3_*) or reconnect Vercel Blob, then redeploy.";
+var isVercelProduction2 = () => process.env.VERCEL === "1";
 var isSharedLibraryStorageConfigured = () => {
-  if (!isVercelProduction()) {
+  if (!isVercelProduction2()) {
     return true;
   }
-  return useBlobStorage();
+  return isRemoteStorageConfigured();
 };
 var assertSharedLibraryStorageConfigured = () => {
   if (!isSharedLibraryStorageConfigured()) {
     throw new Error(SHARED_LIBRARY_STORAGE_ERROR);
   }
 };
+var snapshotKey = (contributorId) => `${STORAGE_PREFIX}/${contributorId}.json`;
 var readLocalSnapshot = (contributorId) => {
   const filePath = import_node_path.default.join(LOCAL_LIBRARY_DIR, `${contributorId}.json`);
   if (!(0, import_node_fs.existsSync)(filePath)) {
@@ -812,29 +977,6 @@ var writeLocalIndex = (index) => {
   (0, import_node_fs.writeFileSync)(import_node_path.default.join(LOCAL_LIBRARY_DIR, "index.json"), `${JSON.stringify(index, null, 2)}
 `, "utf8");
 };
-var getBlobModule = async () => import("@vercel/blob");
-var readBlobJson = async (pathname) => {
-  const { get } = await getBlobModule();
-  try {
-    const result = await get(pathname, { access: "private", useCache: false });
-    if (!result || result.statusCode !== 200 || !result.stream) {
-      return null;
-    }
-    const text = await new Response(result.stream).text();
-    return JSON.parse(text);
-  } catch {
-    return null;
-  }
-};
-var writeBlobJson = async (pathname, payload) => {
-  const { put } = await getBlobModule();
-  await put(pathname, JSON.stringify(payload), {
-    access: "private",
-    addRandomSuffix: false,
-    allowOverwrite: true,
-    contentType: "application/json"
-  });
-};
 var upsertContributor = (index, snapshot) => {
   const contributor = {
     id: snapshot.contributor.id,
@@ -849,15 +991,16 @@ var upsertContributor = (index, snapshot) => {
 };
 var saveSharedLibrarySnapshot = async (snapshot) => {
   assertSharedLibraryStorageConfigured();
-  if (!useBlobStorage()) {
+  const remote = getRemoteJsonStore();
+  if (!remote) {
     writeLocalSnapshot(snapshot);
     const index = readLocalIndex();
     writeLocalIndex(upsertContributor(index, snapshot));
     return;
   }
-  await writeBlobJson(`${BLOB_PREFIX}/${snapshot.contributor.id}.json`, snapshot);
-  const currentIndex = await readBlobJson(INDEX_PATH) ?? { contributors: [] };
-  await writeBlobJson(INDEX_PATH, upsertContributor(currentIndex, snapshot));
+  await remote.writeJson(snapshotKey(snapshot.contributor.id), snapshot);
+  const currentIndex = await remote.readJson(INDEX_KEY) ?? { contributors: [] };
+  await remote.writeJson(INDEX_KEY, upsertContributor(currentIndex, snapshot));
 };
 
 // api/lib/spotify/spotifyHandlers.ts

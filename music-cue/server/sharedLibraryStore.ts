@@ -1,57 +1,59 @@
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import type { LibraryContributor, SharedLibraryIndex, SharedLibrarySnapshot } from "../shared/sharedLibrary";
+import {
+  getRemoteJsonStore,
+  isRemoteStorageConfigured,
+  useBlobStorage,
+  useS3Storage,
+} from "./sharedLibraryRemoteStore";
 
 const LOCAL_LIBRARY_DIR = path.resolve(process.cwd(), ".data/shared-libraries");
-const BLOB_PREFIX = "music-cue/libraries";
-const INDEX_PATH = `${BLOB_PREFIX}/index.json`;
+const STORAGE_PREFIX = "music-cue/libraries";
+const INDEX_KEY = `${STORAGE_PREFIX}/index.json`;
 
 export const SHARED_LIBRARY_STORAGE_ERROR =
-  "Shared library storage is not configured. In the Vercel project, open Storage → Create Blob store → connect it to this project, then redeploy.";
+  "Shared library storage is not configured. Set Cloudflare R2 / S3 env vars (SHARED_LIBRARY_S3_*) or reconnect Vercel Blob, then redeploy.";
 
 const isVercelProduction = (): boolean => process.env.VERCEL === "1";
 
-/** True when @vercel/blob can authenticate (static token or Vercel OIDC + store id). */
-const useBlobStorage = (): boolean => {
-  if (process.env.BLOB_READ_WRITE_TOKEN) {
-    return true;
-  }
-  if (isVercelProduction() && process.env.BLOB_STORE_ID) {
-    return true;
-  }
-  return false;
-};
-
 export const getSharedLibraryStorageDiagnostics = async (): Promise<{
   vercel: boolean;
+  storageBackend: "local" | "s3" | "blob" | "none";
+  s3Configured: boolean;
   blobConfigured: boolean;
   hasReadWriteToken: boolean;
   hasStoreId: boolean;
-  snapshotBlobCount: number;
+  snapshotCount: number;
   indexContributorCount: number;
 }> => {
+  const remote = getRemoteJsonStore();
   const base = {
     vercel: isVercelProduction(),
+    storageBackend: remote?.backend ?? (isVercelProduction() ? "none" : "local"),
+    s3Configured: useS3Storage(),
     blobConfigured: useBlobStorage(),
     hasReadWriteToken: Boolean(process.env.BLOB_READ_WRITE_TOKEN),
     hasStoreId: Boolean(process.env.BLOB_STORE_ID),
-    snapshotBlobCount: 0,
+    snapshotCount: 0,
     indexContributorCount: 0,
   };
-  if (!useBlobStorage()) {
-    return base;
+
+  if (!remote) {
+    return { ...base };
   }
+
   try {
-    const { list } = await getBlobModule();
-    const { blobs } = await list({ prefix: `${BLOB_PREFIX}/` });
-    base.snapshotBlobCount = blobs.filter(
-      (blob) => blob.pathname !== INDEX_PATH && blob.pathname.endsWith(".json")
+    const objects = await remote.listJsonKeys(`${STORAGE_PREFIX}/`);
+    base.snapshotCount = objects.filter(
+      (entry) => entry.key !== INDEX_KEY && entry.key.endsWith(".json")
     ).length;
-    const index = await readBlobJson<SharedLibraryIndex>(INDEX_PATH);
+    const index = await remote.readJson<SharedLibraryIndex>(INDEX_KEY);
     base.indexContributorCount = index?.contributors?.length ?? 0;
   } catch {
     // Leave counts at zero.
   }
+
   return base;
 };
 
@@ -59,7 +61,7 @@ export const isSharedLibraryStorageConfigured = (): boolean => {
   if (!isVercelProduction()) {
     return true;
   }
-  return useBlobStorage();
+  return isRemoteStorageConfigured();
 };
 
 export const assertSharedLibraryStorageConfigured = (): void => {
@@ -67,6 +69,8 @@ export const assertSharedLibraryStorageConfigured = (): void => {
     throw new Error(SHARED_LIBRARY_STORAGE_ERROR);
   }
 };
+
+const snapshotKey = (contributorId: string): string => `${STORAGE_PREFIX}/${contributorId}.json`;
 
 const readLocalSnapshot = (contributorId: string): SharedLibrarySnapshot | null => {
   const filePath = path.join(LOCAL_LIBRARY_DIR, `${contributorId}.json`);
@@ -118,32 +122,6 @@ const writeLocalIndex = (index: SharedLibraryIndex): void => {
   writeFileSync(path.join(LOCAL_LIBRARY_DIR, "index.json"), `${JSON.stringify(index, null, 2)}\n`, "utf8");
 };
 
-const getBlobModule = async () => import("@vercel/blob");
-
-const readBlobJson = async <T>(pathname: string): Promise<T | null> => {
-  const { get } = await getBlobModule();
-  try {
-    const result = await get(pathname, { access: "private", useCache: false });
-    if (!result || result.statusCode !== 200 || !result.stream) {
-      return null;
-    }
-    const text = await new Response(result.stream).text();
-    return JSON.parse(text) as T;
-  } catch {
-    return null;
-  }
-};
-
-const writeBlobJson = async (pathname: string, payload: unknown): Promise<void> => {
-  const { put } = await getBlobModule();
-  await put(pathname, JSON.stringify(payload), {
-    access: "private",
-    addRandomSuffix: false,
-    allowOverwrite: true,
-    contentType: "application/json",
-  });
-};
-
 const upsertContributor = (index: SharedLibraryIndex, snapshot: SharedLibrarySnapshot): SharedLibraryIndex => {
   const contributor: LibraryContributor = {
     id: snapshot.contributor.id,
@@ -163,23 +141,24 @@ const filterMockContributors = (index: SharedLibraryIndex): SharedLibraryIndex =
   contributors: index.contributors.filter((contributor) => !isMockContributorId(contributor.id)),
 });
 
-const rebuildIndexFromBlobSnapshots = async (): Promise<SharedLibraryIndex> => {
-  const { list } = await getBlobModule();
-  const { blobs } = await list({ prefix: `${BLOB_PREFIX}/` });
+const rebuildIndexFromRemoteSnapshots = async (): Promise<SharedLibraryIndex> => {
+  const remote = getRemoteJsonStore();
+  if (!remote) {
+    return { contributors: [] };
+  }
+
+  const objects = await remote.listJsonKeys(`${STORAGE_PREFIX}/`);
   const contributors: LibraryContributor[] = [];
 
-  for (const blob of blobs) {
-    if (blob.pathname === INDEX_PATH) {
+  for (const object of objects) {
+    if (object.key === INDEX_KEY || !object.key.endsWith(".json")) {
       continue;
     }
-    if (!blob.pathname.startsWith(`${BLOB_PREFIX}/`) || !blob.pathname.endsWith(".json")) {
-      continue;
-    }
-    const contributorId = blob.pathname.slice(`${BLOB_PREFIX}/`.length, -".json".length);
+    const contributorId = object.key.slice(`${STORAGE_PREFIX}/`.length, -".json".length);
     if (!contributorId) {
       continue;
     }
-    const snapshot = await readBlobJson<SharedLibrarySnapshot>(blob.pathname);
+    const snapshot = await remote.readJson<SharedLibrarySnapshot>(object.key);
     if (snapshot?.contributor?.id) {
       contributors.push({
         id: snapshot.contributor.id,
@@ -192,7 +171,7 @@ const rebuildIndexFromBlobSnapshots = async (): Promise<SharedLibraryIndex> => {
     contributors.push({
       id: contributorId,
       name: contributorId,
-      updatedAt: blob.uploadedAt.toISOString(),
+      updatedAt: object.updatedAt.toISOString(),
       trackCount: 0,
     });
   }
@@ -204,15 +183,16 @@ const rebuildIndexFromBlobSnapshots = async (): Promise<SharedLibraryIndex> => {
 export const listSharedLibraryContributors = async (): Promise<SharedLibraryIndex> => {
   assertSharedLibraryStorageConfigured();
 
-  if (!useBlobStorage()) {
+  const remote = getRemoteJsonStore();
+  if (!remote) {
     return filterMockContributors(readLocalIndex());
   }
 
-  let index = await readBlobJson<SharedLibraryIndex>(INDEX_PATH);
+  let index = await remote.readJson<SharedLibraryIndex>(INDEX_KEY);
   if (!index?.contributors?.length) {
-    const rebuilt = await rebuildIndexFromBlobSnapshots();
+    const rebuilt = await rebuildIndexFromRemoteSnapshots();
     if (rebuilt.contributors.length > 0) {
-      await writeBlobJson(INDEX_PATH, rebuilt);
+      await remote.writeJson(INDEX_KEY, rebuilt);
       index = rebuilt;
     }
   }
@@ -224,10 +204,13 @@ export const getSharedLibrarySnapshot = async (contributorId: string): Promise<S
   if (isMockContributorId(contributorId)) {
     return null;
   }
-  if (!useBlobStorage()) {
+
+  const remote = getRemoteJsonStore();
+  if (!remote) {
     return readLocalSnapshot(contributorId);
   }
-  return readBlobJson<SharedLibrarySnapshot>(`${BLOB_PREFIX}/${contributorId}.json`);
+
+  return remote.readJson<SharedLibrarySnapshot>(snapshotKey(contributorId));
 };
 
 export const getSharedLibrarySnapshots = async (contributorIds: string[]): Promise<SharedLibrarySnapshot[]> => {
@@ -238,14 +221,15 @@ export const getSharedLibrarySnapshots = async (contributorIds: string[]): Promi
 export const saveSharedLibrarySnapshot = async (snapshot: SharedLibrarySnapshot): Promise<void> => {
   assertSharedLibraryStorageConfigured();
 
-  if (!useBlobStorage()) {
+  const remote = getRemoteJsonStore();
+  if (!remote) {
     writeLocalSnapshot(snapshot);
     const index = readLocalIndex();
     writeLocalIndex(upsertContributor(index, snapshot));
     return;
   }
 
-  await writeBlobJson(`${BLOB_PREFIX}/${snapshot.contributor.id}.json`, snapshot);
-  const currentIndex = (await readBlobJson<SharedLibraryIndex>(INDEX_PATH)) ?? { contributors: [] };
-  await writeBlobJson(INDEX_PATH, upsertContributor(currentIndex, snapshot));
+  await remote.writeJson(snapshotKey(snapshot.contributor.id), snapshot);
+  const currentIndex = (await remote.readJson<SharedLibraryIndex>(INDEX_KEY)) ?? { contributors: [] };
+  await remote.writeJson(INDEX_KEY, upsertContributor(currentIndex, snapshot));
 };

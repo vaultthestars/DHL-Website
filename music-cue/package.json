@@ -13,6 +13,7 @@
     "export:cluster-layout": "node scripts/export-cluster-layout.mjs"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.758.0",
     "@playhtml/common": "^0.8.1",
     "@playhtml/react": "^2.0.1",
     "@vercel/blob": "^2.6.1",
