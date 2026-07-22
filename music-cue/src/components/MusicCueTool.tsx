@@ -73,6 +73,7 @@ import {
 import {
   cullGraphSongsWithLazyPositions,
   cullPositionedGraphNodes,
+  getCullingViewportPadding,
   getGraphViewportBounds,
   GRAPH_NODE_CULLING_THRESHOLD,
   isPointInGraphViewport,
@@ -1876,14 +1877,21 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     (graphPoint: GraphPoint): string | null => {
       const scale = Math.max(viewTransformRef.current.scale, 0.001);
       const hitRadius = 12 / scale;
-      const bounds = getGraphViewportBounds(dimensions, viewTransformRef.current);
       let bestId: string | null = null;
       let bestDistance = hitRadius;
 
       const nodes = useLazyWebNodeCulling ? renderedPositionedSongsRef.current : bakedPositionedSongs;
+      const bounds = useLazyWebNodeCulling
+        ? null
+        : getGraphViewportBounds(
+            dimensions,
+            viewTransformRef.current,
+            getCullingViewportPadding(dimensions)
+          );
+
       nodes.forEach(({ song, position }) => {
         const renderPosition = getSongRenderPosition(song, position);
-        if (!isPointInGraphViewport(renderPosition, bounds)) {
+        if (bounds && !isPointInGraphViewport(renderPosition, bounds)) {
           return;
         }
         const distance = Math.hypot(renderPosition.x - graphPoint.x, renderPosition.y - graphPoint.y);
@@ -2291,11 +2299,11 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     }
     return cue.songs
       .map((song, index) => {
-        const position = getDisplayPosition(song);
+        const position = getPosition(song);
         return `${index === 0 ? "M" : "L"} ${position.x.toFixed(1)} ${position.y.toFixed(1)}`;
       })
       .join(" ");
-  }, [cue, getDisplayPosition]);
+  }, [cue, getPosition]);
 
   const regenerateCueFromStroke = useCallback(
     (currentStroke: GraphPoint[], threshold: number) => {
@@ -4530,11 +4538,28 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     : undefined;
 
   const hoveredSongRenderPosition = useMemo(() => {
+    if (!hoveredSongId) {
+      return null;
+    }
+    const canonicalId = getCanonicalSongId(hoveredSongId);
+    const visibleEntry = visiblePositionedSongs.find(
+      (entry) => getCanonicalSongId(entry.song.id) === canonicalId
+    );
+    if (visibleEntry) {
+      return visibleEntry.position;
+    }
     if (!hoveredSong) {
       return null;
     }
     return getSongRenderPosition(hoveredSong, getPosition(hoveredSong));
-  }, [getPosition, getSongRenderPosition, hoveredSong, libraryScopeMode, songDragPreviewTick]);
+  }, [
+    getPosition,
+    getSongRenderPosition,
+    hoveredSong,
+    hoveredSongId,
+    songDragPreviewTick,
+    visiblePositionedSongs,
+  ]);
 
   const collaboratorDisplayName = spotifyStatus?.displayName?.trim() || "Guest";
   const isSharedSongSpace = songSpaceMode === "shared";
