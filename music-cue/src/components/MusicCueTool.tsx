@@ -399,11 +399,13 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
   const [viewCullRevision, setViewCullRevision] = useState(0);
 
   const scheduleViewCullUpdate = useCallback(() => {
-    setViewCullRevision((value) => value + 1);
+    startTransition(() => {
+      setViewCullRevision((value) => value + 1);
+    });
   }, []);
 
   const scheduleViewCullUpdateDebounced = useCallback(
-    (delayMs = 150) => {
+    (delayMs = 300) => {
       if (viewCullDebounceRef.current) {
         clearTimeout(viewCullDebounceRef.current);
       }
@@ -1006,7 +1008,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
       if (svg) {
         const next = zoomAtPoint(viewTransformRef.current, event.clientX, event.clientY, svg, event.deltaY);
         applyViewTransformLive(next);
-        scheduleViewCullUpdateDebounced();
+        scheduleViewCullUpdateDebounced(400);
       }
     };
 
@@ -1936,7 +1938,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     panSessionRef.current = null;
     setGraphPanningClass(false);
     if (wasPanning) {
-      scheduleViewCullUpdate();
+      scheduleViewCullUpdateDebounced(350);
     }
   };
 
@@ -1972,11 +1974,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
   const releasePointer = (event: React.PointerEvent<Element>) => {
     pointerPositionsRef.current.delete(event.pointerId);
     if (pointerPositionsRef.current.size < 2) {
-      const hadPinch = pinchSessionRef.current !== null;
       pinchSessionRef.current = null;
-      if (hadPinch) {
-        scheduleViewCullUpdate();
-      }
     }
   };
 
@@ -2001,7 +1999,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
       panX: screenMidX - graphX * nextScale,
       panY: screenMidY - graphY * nextScale,
     });
-    scheduleViewCullUpdateDebounced(200);
+    scheduleViewCullUpdateDebounced(400);
   };
 
   const beginNewStroke = (point: GraphPoint) => {

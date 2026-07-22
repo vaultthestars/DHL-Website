@@ -3,6 +3,7 @@ import type { ViewTransform } from "./graphView";
 import type { GraphPoint } from "./types";
 
 export const GRAPH_NODE_CULLING_THRESHOLD = 200;
+export const ABSOLUTE_MAX_RENDERED_NODES = 350;
 
 export type GraphViewportBounds = {
   minX: number;
@@ -52,16 +53,19 @@ export const getZoomNodeRenderBudget = (scale: number, inViewportCount: number):
   if (inViewportCount <= 0) {
     return 0;
   }
-  if (scale >= 0.9) {
-    return inViewportCount;
+
+  let budget = inViewportCount;
+  if (scale >= 0.85) {
+    budget = Math.min(inViewportCount, 320);
+  } else if (scale >= 0.65) {
+    budget = Math.min(inViewportCount, Math.floor(inViewportCount * scale * 0.85));
+  } else if (scale >= 0.45) {
+    budget = Math.min(inViewportCount, Math.floor(inViewportCount * scale * 0.7));
+  } else {
+    budget = Math.min(inViewportCount, Math.floor(inViewportCount * scale * 0.5));
   }
-  if (scale >= 0.7) {
-    return Math.min(inViewportCount, Math.max(350, Math.floor(inViewportCount * scale)));
-  }
-  if (scale >= 0.5) {
-    return Math.min(inViewportCount, Math.max(220, Math.floor(inViewportCount * scale * 0.85)));
-  }
-  return Math.min(inViewportCount, Math.max(120, Math.floor(inViewportCount * scale * 0.65)));
+
+  return Math.min(Math.max(budget, scale < 0.45 ? 60 : 100), ABSOLUTE_MAX_RENDERED_NODES);
 };
 
 export const cullPositionedGraphNodes = <T extends { id: string }>(
