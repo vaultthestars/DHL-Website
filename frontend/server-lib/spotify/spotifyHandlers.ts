@@ -2,6 +2,7 @@ import {
   createCookieSessionStore,
   createSpotifyClient,
   isSpotifyConfigured,
+  SpotifyRateLimitError,
   type SpotifyLibraryPayload,
 } from "./spotifyClient";
 import { saveSharedLibrarySnapshot } from "./sharedLibraryStore";
@@ -249,9 +250,16 @@ export const handleSpotifyRoute = async (
 
     finish(404, { error: `Unknown Spotify route: ${route}` });
   } catch (error) {
+    if (error instanceof SpotifyRateLimitError) {
+      finish(429, { error: error.message, retryAfterSeconds: error.retryAfterSeconds });
+      return;
+    }
     const message = error instanceof Error ? error.message : "Spotify request failed.";
     const rateLimited = message.toLowerCase().includes("rate limit");
     const timedOut = message.toLowerCase().includes("timed out") || message.toLowerCase().includes("timeout");
-    finish(rateLimited ? 429 : timedOut ? 504 : 500, { error: message });
+    finish(rateLimited ? 429 : timedOut ? 504 : 500, {
+      error: message,
+      ...(rateLimited ? { retryAfterSeconds: 300 } : {}),
+    });
   }
 };

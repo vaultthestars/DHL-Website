@@ -193,6 +193,13 @@ var buildSpotifySessionSetCookie = (tokens) => {
 };
 
 // server-lib/spotify/spotifyClient.ts
+var SpotifyRateLimitError = class extends Error {
+  constructor(message, retryAfterSeconds) {
+    super(message);
+    this.name = "SpotifyRateLimitError";
+    this.retryAfterSeconds = retryAfterSeconds;
+  }
+};
 var SPOTIFY_ACCOUNTS_URL = "https://accounts.spotify.com";
 var SPOTIFY_API_URL = "https://api.spotify.com/v1";
 var SPOTIFY_NOW_PLAYING_PLAYLIST_NAME = "MusicCue \u2014 Now Playing";
@@ -257,7 +264,7 @@ var resolveSpotifyPagePath = (nextPath, defaultPath, allowedPrefixes) => {
 var formatSpotifyApiError = (status, path2, spotifyMessage) => {
   const normalizedMessage = spotifyMessage?.toLowerCase() ?? "";
   if (status === 429) {
-    return "Spotify rate limit reached. Progress saved \u2014 wait a minute, then click Resume load & share.";
+    return "Spotify rate limit reached. Progress saved \u2014 wait for the countdown, then click Resume load & share.";
   }
   if (status === 504) {
     return "Spotify library import timed out. Try again in a moment.";
@@ -410,7 +417,13 @@ var createSpotifyClient = (store) => {
     }
     if (response.status === 429) {
       const payload = await response.json().catch(() => ({}));
-      throw new Error(formatSpotifyApiError(429, path2, payload.error?.message));
+      const retryAfterRaw = response.headers.get("Retry-After");
+      const parsedRetryAfter = retryAfterRaw ? Number.parseInt(retryAfterRaw, 10) : Number.NaN;
+      const retryAfterSeconds = Number.isFinite(parsedRetryAfter) && parsedRetryAfter > 0 ? parsedRetryAfter : 300;
+      throw new SpotifyRateLimitError(
+        formatSpotifyApiError(429, path2, payload.error?.message),
+        retryAfterSeconds
+      );
     }
     if (!response.ok) {
       const payload = await response.json().catch(() => ({}));
@@ -1233,10 +1246,17 @@ var handleSpotifyRoute = async (route, req, res) => {
     }
     finish(404, { error: `Unknown Spotify route: ${route}` });
   } catch (error) {
+    if (error instanceof SpotifyRateLimitError) {
+      finish(429, { error: error.message, retryAfterSeconds: error.retryAfterSeconds });
+      return;
+    }
     const message = error instanceof Error ? error.message : "Spotify request failed.";
     const rateLimited = message.toLowerCase().includes("rate limit");
     const timedOut = message.toLowerCase().includes("timed out") || message.toLowerCase().includes("timeout");
-    finish(rateLimited ? 429 : timedOut ? 504 : 500, { error: message });
+    finish(rateLimited ? 429 : timedOut ? 504 : 500, {
+      error: message,
+      ...rateLimited ? { retryAfterSeconds: 300 } : {}
+    });
   }
 };
 

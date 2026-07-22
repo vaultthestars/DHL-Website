@@ -12,6 +12,12 @@ import {
 const CONNECTED_USER_KEY = "music-cue-spotify-connected-user";
 const SESSION_KEY = "music-cue-spotify-import-session";
 const HINT_KEY = "music-cue-spotify-import-hint";
+const RATE_LIMIT_UNTIL_KEY = "music-cue-spotify-rate-limit-until-ms";
+const RATE_LIMIT_STREAK_KEY = "music-cue-spotify-rate-limit-streak";
+
+const DEFAULT_RATE_LIMIT_SECONDS = 300;
+const MIN_RATE_LIMIT_SECONDS = 120;
+const MAX_RATE_LIMIT_SECONDS = 1_800;
 
 export const saveConnectedSpotifyUser = (contributor: { id: string; name: string }): void => {
   localStorage.setItem(CONNECTED_USER_KEY, JSON.stringify(contributor));
@@ -151,28 +157,49 @@ export const getSpotifyImportContributorHint = (): { id: string; name: string } 
   };
 };
 
-export const markSpotifyImportRateLimited = (): void => {
-  const hint = loadSpotifyImportHint();
-  if (!hint) {
-    return;
+export const formatSpotifyRateLimitCooldown = (cooldownMs: number): string => {
+  const seconds = Math.ceil(cooldownMs / 1000);
+  if (seconds >= 120) {
+    return `${Math.ceil(seconds / 60)} min`;
   }
-  localStorage.setItem(
-    HINT_KEY,
-    JSON.stringify({
-      ...hint,
-      lastRateLimitedAt: new Date().toISOString(),
-    })
+  return `${seconds}s`;
+};
+
+export const markSpotifyImportRateLimited = (retryAfterSeconds?: number): void => {
+  const streak = Number.parseInt(localStorage.getItem(RATE_LIMIT_STREAK_KEY) ?? "0", 10) + 1;
+  localStorage.setItem(RATE_LIMIT_STREAK_KEY, String(streak));
+
+  const baseSeconds = Math.max(
+    retryAfterSeconds ?? DEFAULT_RATE_LIMIT_SECONDS,
+    MIN_RATE_LIMIT_SECONDS
   );
+  const backoffSeconds = Math.min(baseSeconds * 2 ** (streak - 1), MAX_RATE_LIMIT_SECONDS);
+  const rateLimitUntilMs = Date.now() + backoffSeconds * 1000;
+  localStorage.setItem(RATE_LIMIT_UNTIL_KEY, String(rateLimitUntilMs));
+
+  const hint = loadSpotifyImportHint();
+  if (hint) {
+    localStorage.setItem(
+      HINT_KEY,
+      JSON.stringify({
+        ...hint,
+        lastRateLimitedAt: new Date().toISOString(),
+      })
+    );
+  }
+};
+
+export const clearSpotifyRateLimitCooldown = (): void => {
+  localStorage.removeItem(RATE_LIMIT_UNTIL_KEY);
+  localStorage.removeItem(RATE_LIMIT_STREAK_KEY);
 };
 
 export const getSpotifyImportRateLimitCooldownMs = (): number => {
-  const hint = loadSpotifyImportHint();
-  if (!hint?.lastRateLimitedAt) {
+  const until = Number.parseInt(localStorage.getItem(RATE_LIMIT_UNTIL_KEY) ?? "0", 10);
+  if (!Number.isFinite(until) || until <= 0) {
     return 0;
   }
-  const elapsed = Date.now() - Date.parse(hint.lastRateLimitedAt);
-  const cooldown = 120_000;
-  return Math.max(0, cooldown - elapsed);
+  return Math.max(0, until - Date.now());
 };
 
 const normalizeSpotifyImportSession = (session: SpotifyImportSession): SpotifyImportSession => {

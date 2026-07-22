@@ -15,6 +15,16 @@ import {
 
 export type { SpotifyLibraryPayload, SpotifyLibrarySong, SpotifyLibraryStats } from "../shared/spotifyLibraryAssembly.js";
 
+export class SpotifyRateLimitError extends Error {
+  readonly retryAfterSeconds: number;
+
+  constructor(message: string, retryAfterSeconds: number) {
+    super(message);
+    this.name = "SpotifyRateLimitError";
+    this.retryAfterSeconds = retryAfterSeconds;
+  }
+}
+
 const SPOTIFY_ACCOUNTS_URL = "https://accounts.spotify.com";
 const SPOTIFY_API_URL = "https://api.spotify.com/v1";
 export const SPOTIFY_NOW_PLAYING_PLAYLIST_NAME = "MusicCue — Now Playing";
@@ -114,7 +124,7 @@ const resolveSpotifyPagePath = (
 const formatSpotifyApiError = (status: number, path: string, spotifyMessage?: string): string => {
   const normalizedMessage = spotifyMessage?.toLowerCase() ?? "";
   if (status === 429) {
-    return "Spotify rate limit reached. Progress saved — wait a minute, then click Resume load & share.";
+    return "Spotify rate limit reached. Progress saved — wait for the countdown, then click Resume load & share.";
   }
   if (status === 504) {
     return "Spotify library import timed out. Try again in a moment.";
@@ -304,7 +314,13 @@ export const createSpotifyClient = (store: SpotifySessionStore) => {
     }
     if (response.status === 429) {
       const payload = (await response.json().catch(() => ({}))) as { error?: { message?: string } };
-      throw new Error(formatSpotifyApiError(429, path, payload.error?.message));
+      const retryAfterRaw = response.headers.get("Retry-After");
+      const parsedRetryAfter = retryAfterRaw ? Number.parseInt(retryAfterRaw, 10) : Number.NaN;
+      const retryAfterSeconds = Number.isFinite(parsedRetryAfter) && parsedRetryAfter > 0 ? parsedRetryAfter : 300;
+      throw new SpotifyRateLimitError(
+        formatSpotifyApiError(429, path, payload.error?.message),
+        retryAfterSeconds
+      );
     }
     if (!response.ok) {
       const payload = (await response.json().catch(() => ({}))) as { error?: { message?: string } };

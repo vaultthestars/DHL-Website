@@ -54,7 +54,10 @@ import {
   saveConnectedSpotifyUser,
   SpotifyImportRateLimitError,
 } from "../lib/providers/spotifyProvider";
-import { getSpotifyImportRateLimitCooldownMs } from "../lib/spotifyImportSession";
+import {
+  formatSpotifyRateLimitCooldown,
+  getSpotifyImportRateLimitCooldownMs,
+} from "../lib/spotifyImportSession";
 import type { LibraryLoadProgress } from "../lib/musicProvider";
 import {
   DEFAULT_VIEW_TRANSFORM,
@@ -3615,7 +3618,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     const cooldownMs = getSpotifyImportRateLimitCooldownMs();
     if (cooldownMs > 0) {
       setStatusMessage(
-        `Spotify rate limit — wait ${Math.ceil(cooldownMs / 1000)}s before resuming. Progress is saved.`
+        `Spotify rate limit — wait ${formatSpotifyRateLimitCooldown(cooldownMs)} before resuming. Progress is saved.`
       );
       return;
     }
@@ -3685,7 +3688,13 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     } catch (error) {
       if (error instanceof SpotifyImportRateLimitError) {
         keepProgress = true;
-        setStatusMessage(error.message);
+        const cooldownMs = getSpotifyImportRateLimitCooldownMs();
+        setRateLimitCooldownMs(cooldownMs);
+        setStatusMessage(
+          cooldownMs > 0
+            ? `Spotify rate limit reached. Wait ${formatSpotifyRateLimitCooldown(cooldownMs)} before resuming — progress is saved.`
+            : error.message
+        );
       } else {
         setStatusMessage(error instanceof Error ? error.message : "Could not load Spotify library.");
       }
@@ -4476,7 +4485,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
                 }
                 title={
                   rateLimitCooldownMs > 0
-                    ? `Spotify rate limit — wait ${Math.ceil(rateLimitCooldownMs / 1000)}s`
+                    ? `Spotify rate limit — wait ${formatSpotifyRateLimitCooldown(rateLimitCooldownMs)}`
                     : spotifyStatusLoading
                       ? "Checking Spotify connection…"
                       : !spotifyCanLoadLibrary
@@ -4487,7 +4496,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
                 {isImporting
                   ? "Loading…"
                   : rateLimitCooldownMs > 0
-                    ? `Wait ${Math.ceil(rateLimitCooldownMs / 1000)}s`
+                    ? `Wait ${formatSpotifyRateLimitCooldown(rateLimitCooldownMs)}`
                   : spotifyStatusLoading
                     ? "Checking Spotify…"
                     : spotifyImportResumeLabel
@@ -4501,7 +4510,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
                   disabled={!spotifyCanLoadLibrary || rateLimitCooldownMs > 0}
                   title={
                     rateLimitCooldownMs > 0
-                      ? `Spotify rate limit — wait ${Math.ceil(rateLimitCooldownMs / 1000)}s`
+                      ? `Spotify rate limit — wait ${formatSpotifyRateLimitCooldown(rateLimitCooldownMs)}`
                       : spotifyImportResumeLabel
                   }
                 >

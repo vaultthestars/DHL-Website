@@ -10,6 +10,8 @@ import {
   clearSpotifyImportSession,
   computeSpotifyImportPercent,
   createSpotifyImportSession,
+  clearSpotifyRateLimitCooldown,
+  formatSpotifyRateLimitCooldown,
   getSpotifyImportContributorHint,
   getSpotifyImportRateLimitCooldownMs,
   loadConnectedSpotifyUser,
@@ -36,6 +38,7 @@ type SpotifyPage<T> = {
 
 const PAGE_REQUEST_DELAY_MS = 750;
 const PHASE_COOLDOWN_MS = 4_000;
+const POST_COOLDOWN_BUFFER_MS = 3_000;
 
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -82,16 +85,25 @@ const fetchJson = async <T>(url: string, init?: RequestInit, attempt = 0): Promi
     throw new Error("Network error while talking to Spotify. Check your connection and try again.");
   }
 
-  const payload = (await response.json().catch(() => ({}))) as T & { error?: string };
+  const payload = (await response.json().catch(() => ({}))) as T & {
+    error?: string;
+    retryAfterSeconds?: number;
+  };
 
   if (!response.ok) {
     const errorMessage = typeof payload.error === "string" ? payload.error : "";
     const rateLimited = response.status === 429 || isRateLimitMessage(errorMessage);
 
     if (rateLimited) {
-      markSpotifyImportRateLimited();
+      const retryAfterSeconds =
+        typeof payload.retryAfterSeconds === "number" && payload.retryAfterSeconds > 0
+          ? payload.retryAfterSeconds
+          : undefined;
+      markSpotifyImportRateLimited(retryAfterSeconds);
+      const cooldownMs = getSpotifyImportRateLimitCooldownMs();
       throw new SpotifyImportRateLimitError(
-        errorMessage || "Spotify rate limit reached. Progress saved — wait a minute, then click Resume load & share."
+        errorMessage ||
+          `Spotify rate limit reached. Wait ${formatSpotifyRateLimitCooldown(cooldownMs)} before resuming — progress is saved.`
       );
     }
 
@@ -101,17 +113,15 @@ const fetchJson = async <T>(url: string, init?: RequestInit, attempt = 0): Promi
       );
     }
 
-    if ((response.status === 502 || response.status === 503) && attempt < 3) {
+    if ((response.status === 502 || response.status === 503) && attempt < 2) {
       await sleep(2_000 * (attempt + 1));
       return fetchJson<T>(url, init, attempt + 1);
     }
 
-    if (response.status === 504) {
-      throw new Error("Spotify import timed out. Progress was saved — click Load again to resume.");
-    }
     throw new Error(errorMessage || `Request failed (${response.status}).`);
   }
 
+  clearSpotifyRateLimitCooldown();
   return payload;
 };
 
@@ -135,51 +145,6 @@ const fetchSpotifyPage = async <T>(
 
 const warmupSpotifyApi = async (): Promise<void> => {
   await fetchJson<{ ok: true }>("/api/spotify/warmup");
-};
-
-const fetchSpotifyPageResilient = async <T>(
-  endpoint: string,
-  next: string | null,
-  options: {
-    bodyFields?: Record<string, string>;
-    onProgress?: LoadLibraryOptions["onProgress"];
-    progressMessage: string;
-    warmupBeforeRetry?: boolean;
-  }
-): Promise<SpotifyPage<T>> => {
-  const maxAttempts = 5;
-  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
-    try {
-      if (options.warmupBeforeRetry && attempt > 0) {
-        await warmupSpotifyApi();
-      }
-      return await fetchSpotifyPage<T>(endpoint, next, options.bodyFields);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "";
-      const retryable =
-        message.includes("timed out") ||
-        message.includes("timeout") ||
-        message.includes("504") ||
-        message.includes("502") ||
-        message.includes("503") ||
-        message.includes("Network error") ||
-        message.includes("Vercel Hobby");
-      if (!retryable || attempt >= maxAttempts - 1) {
-        if (message.toLowerCase().includes("rate limit")) {
-          markSpotifyImportRateLimited();
-          throw new SpotifyImportRateLimitError(message);
-        }
-        throw error;
-      }
-      reportProgress(options.onProgress, {
-        phase: "playlists",
-        message: `${options.progressMessage} (retry ${attempt + 2}/${maxAttempts} in ${attempt + 2}s)…`,
-        percent: 25,
-      });
-      await sleep(1_000 * (attempt + 1));
-    }
-  }
-  throw new Error("Spotify request failed after multiple retries.");
 };
 
 const persistSession = (session: SpotifyImportSession): void => {
@@ -290,8 +255,6 @@ const loadPlaylistsPhase = async (
   let pageNumber = Math.max(1, Math.ceil(session.playlists.length / 50) || 1);
   let nextCursor = session.playlistsNext;
 
-  await warmupSpotifyApi();
-
   while (true) {
     const progressMessage = `Loading playlist list (page ${pageNumber}, ${session.playlists.length.toLocaleString()} playlists)`;
     reportProgress(onProgress, {
@@ -300,14 +263,9 @@ const loadPlaylistsPhase = async (
       percent: paginatedPhasePercent(pageNumber, 25, 30),
     });
 
-    const page = await fetchSpotifyPageResilient<SpotifyPlaylistSummary>(
+    const page = await fetchSpotifyPage<SpotifyPlaylistSummary>(
       "/api/spotify/playlists-page",
-      nextCursor,
-      {
-        onProgress,
-        progressMessage,
-        warmupBeforeRetry: true,
-      }
+      nextCursor
     );
     session.playlists.push(...page.items);
     session.playlistsNext = page.next;
@@ -472,10 +430,11 @@ const loadLibraryInChunks = async (options?: LoadLibraryOptions): Promise<Loaded
   if (cooldownMs > 0) {
     reportProgress(onProgress, {
       phase: "profile",
-      message: `Waiting for Spotify rate limit to clear (${Math.ceil(cooldownMs / 1000)}s)…`,
+      message: `Waiting for Spotify rate limit to clear (${formatSpotifyRateLimitCooldown(cooldownMs)})…`,
       percent: 1,
     });
     await sleep(cooldownMs);
+    await sleep(POST_COOLDOWN_BUFFER_MS);
   }
 
   let session = options?.fresh ? null : await loadSpotifyImportSession();
