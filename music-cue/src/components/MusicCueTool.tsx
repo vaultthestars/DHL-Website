@@ -52,6 +52,7 @@ import {
   getSpotifyImportResumeLabel,
   hasResumableSpotifyImport,
   saveConnectedSpotifyUser,
+  SpotifyImportPausedError,
   SpotifyImportRateLimitError,
 } from "../lib/providers/spotifyProvider";
 import {
@@ -3686,13 +3687,21 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
         }
       }
     } catch (error) {
-      if (error instanceof SpotifyImportRateLimitError) {
+      if (error instanceof SpotifyImportPausedError) {
+        keepProgress = true;
+        setImportProgress({
+          phase: "saved-tracks",
+          message: error.message,
+          percent: error.percent,
+        });
+        setStatusMessage(error.message);
+      } else if (error instanceof SpotifyImportRateLimitError) {
         keepProgress = true;
         const cooldownMs = getSpotifyImportRateLimitCooldownMs();
         setRateLimitCooldownMs(cooldownMs);
         setStatusMessage(
           cooldownMs > 0
-            ? `Spotify rate limit reached. Wait ${formatSpotifyRateLimitCooldown(cooldownMs)} before resuming — progress is saved.`
+            ? `Spotify is rate-limiting this app. Wait ${formatSpotifyRateLimitCooldown(cooldownMs)} before resuming — progress is saved.`
             : error.message
         );
       } else {

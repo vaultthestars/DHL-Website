@@ -18,9 +18,11 @@ import {
   loadSpotifyImportSession,
   markSpotifyImportRateLimited,
   saveSpotifyImportSession,
+  SpotifyImportPausedError,
   SpotifyImportRateLimitError,
   type SpotifyImportSession,
 } from "../spotifyImportSession";
+import { isWebDeployment } from "../runtime";
 import {
   ConnectionStatus,
   CuePlaylistResult,
@@ -39,6 +41,12 @@ type SpotifyPage<T> = {
 const PAGE_REQUEST_DELAY_MS = 750;
 const PHASE_COOLDOWN_MS = 4_000;
 const POST_COOLDOWN_BUFFER_MS = 3_000;
+const SINGLE_STEP_IMPORT = isWebDeployment;
+
+type SpotifyFetchOptions = {
+  /** Only successful library-import calls should clear a Spotify rate-limit cooldown. */
+  clearsRateLimit?: boolean;
+};
 
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -70,7 +78,13 @@ const isNetworkError = (error: unknown): boolean => {
   );
 };
 
-const fetchJson = async <T>(url: string, init?: RequestInit, attempt = 0): Promise<T> => {
+const fetchJson = async <T>(
+  url: string,
+  init?: RequestInit,
+  attempt = 0,
+  options: SpotifyFetchOptions = {}
+): Promise<T> => {
+  const clearsRateLimit = options.clearsRateLimit ?? true;
   let response: Response;
   try {
     response = await fetch(url, {
@@ -80,7 +94,7 @@ const fetchJson = async <T>(url: string, init?: RequestInit, attempt = 0): Promi
   } catch (error) {
     if (isNetworkError(error) && attempt < 3) {
       await sleep(1_500 * (attempt + 1));
-      return fetchJson<T>(url, init, attempt + 1);
+      return fetchJson<T>(url, init, attempt + 1, options);
     }
     throw new Error("Network error while talking to Spotify. Check your connection and try again.");
   }
@@ -103,7 +117,7 @@ const fetchJson = async <T>(url: string, init?: RequestInit, attempt = 0): Promi
       const cooldownMs = getSpotifyImportRateLimitCooldownMs();
       throw new SpotifyImportRateLimitError(
         errorMessage ||
-          `Spotify rate limit reached. Wait ${formatSpotifyRateLimitCooldown(cooldownMs)} before resuming — progress is saved.`
+          `Spotify is rate-limiting this app. Wait ${formatSpotifyRateLimitCooldown(cooldownMs)} before resuming — progress is saved.`
       );
     }
 
@@ -115,13 +129,15 @@ const fetchJson = async <T>(url: string, init?: RequestInit, attempt = 0): Promi
 
     if ((response.status === 502 || response.status === 503) && attempt < 2) {
       await sleep(2_000 * (attempt + 1));
-      return fetchJson<T>(url, init, attempt + 1);
+      return fetchJson<T>(url, init, attempt + 1, options);
     }
 
     throw new Error(errorMessage || `Request failed (${response.status}).`);
   }
 
-  clearSpotifyRateLimitCooldown();
+  if (clearsRateLimit) {
+    clearSpotifyRateLimitCooldown();
+  }
   return payload;
 };
 
@@ -144,7 +160,21 @@ const fetchSpotifyPage = async <T>(
 };
 
 const warmupSpotifyApi = async (): Promise<void> => {
-  await fetchJson<{ ok: true }>("/api/spotify/warmup");
+  await fetchJson<{ ok: true }>("/api/spotify/warmup", undefined, 0, { clearsRateLimit: false });
+};
+
+const pauseImportAfterStep = (
+  session: SpotifyImportSession,
+  message: string,
+  onProgress?: LoadLibraryOptions["onProgress"]
+): never => {
+  const percent = computeSpotifyImportPercent(session);
+  reportProgress(onProgress, {
+    phase: session.phase,
+    message,
+    percent,
+  });
+  throw new SpotifyImportPausedError(message, percent);
 };
 
 const persistSession = (session: SpotifyImportSession): void => {
@@ -210,8 +240,47 @@ const loadSavedTracksPhase = async (
 
   session.phase = "saved-tracks";
   let pageNumber = Math.max(1, Math.ceil(session.savedItems.length / 50) || 1);
-  let nextCursor = session.savedTracksNext;
+  const nextCursor = session.savedTracksNext;
 
+  reportProgress(onProgress, {
+    phase: "saved-tracks",
+    message: `Loading saved tracks (page ${pageNumber}, ${session.savedItems.length.toLocaleString()} so far)…`,
+    percent: computeSpotifyImportPercent({
+      ...session,
+      savedTracksComplete: false,
+    }),
+  });
+
+  const page = await fetchSpotifyPage<SpotifySavedTrackItem>(
+    "/api/spotify/saved-tracks-page",
+    nextCursor,
+  );
+  session.savedItems.push(...page.items);
+  session.savedTracksNext = page.next;
+  persistSession(session);
+
+  if (!page.next) {
+    session.savedTracksNext = null;
+    session.savedTracksComplete = true;
+    persistSession(session);
+  }
+
+  if (SINGLE_STEP_IMPORT) {
+    pauseImportAfterStep(
+      session,
+      session.savedTracksComplete
+        ? `Saved tracks complete (${session.savedItems.length.toLocaleString()} tracks) — click Resume to load playlists.`
+        : `Loaded saved tracks page ${pageNumber} (${session.savedItems.length.toLocaleString()} so far) — click Resume for the next page.`,
+      onProgress
+    );
+  }
+
+  if (!page.next) {
+    return;
+  }
+
+  let cursor = page.next;
+  pageNumber += 1;
   while (true) {
     reportProgress(onProgress, {
       phase: "saved-tracks",
@@ -222,22 +291,22 @@ const loadSavedTracksPhase = async (
       }),
     });
 
-    const page = await fetchSpotifyPage<SpotifySavedTrackItem>(
+    const nextPage = await fetchSpotifyPage<SpotifySavedTrackItem>(
       "/api/spotify/saved-tracks-page",
-      nextCursor,
+      cursor,
     );
-    session.savedItems.push(...page.items);
-    session.savedTracksNext = page.next;
+    session.savedItems.push(...nextPage.items);
+    session.savedTracksNext = nextPage.next;
     persistSession(session);
 
-    if (!page.next) {
+    if (!nextPage.next) {
       session.savedTracksNext = null;
       session.savedTracksComplete = true;
       persistSession(session);
       break;
     }
 
-    nextCursor = page.next;
+    cursor = nextPage.next;
     pageNumber += 1;
     await waitBetweenPages();
   }
@@ -253,37 +322,95 @@ const loadPlaylistsPhase = async (
 
   session.phase = "playlists";
   let pageNumber = Math.max(1, Math.ceil(session.playlists.length / 50) || 1);
-  let nextCursor = session.playlistsNext;
+  const nextCursor = session.playlistsNext;
 
-  while (true) {
-    const progressMessage = `Loading playlist list (page ${pageNumber}, ${session.playlists.length.toLocaleString()} playlists)`;
-    reportProgress(onProgress, {
-      phase: "playlists",
-      message: `${progressMessage}…`,
-      percent: paginatedPhasePercent(pageNumber, 25, 30),
-    });
+  const progressMessage = `Loading playlist list (page ${pageNumber}, ${session.playlists.length.toLocaleString()} playlists)`;
+  reportProgress(onProgress, {
+    phase: "playlists",
+    message: `${progressMessage}…`,
+    percent: paginatedPhasePercent(pageNumber, 25, 30),
+  });
 
-    const page = await fetchSpotifyPage<SpotifyPlaylistSummary>(
-      "/api/spotify/playlists-page",
-      nextCursor
-    );
-    session.playlists.push(...page.items);
-    session.playlistsNext = page.next;
+  const page = await fetchSpotifyPage<SpotifyPlaylistSummary>(
+    "/api/spotify/playlists-page",
+    nextCursor
+  );
+  session.playlists.push(...page.items);
+  session.playlistsNext = page.next;
+  persistSession(session);
+
+  if (!page.next) {
+    session.playlistsNext = null;
+    session.playlistsListLoaded = true;
+    const readable = filterReadablePlaylists(session.playlists, session.contributor.id);
+    session.readablePlaylistIds = readable.map((playlist) => playlist.id);
     persistSession(session);
-
-    if (!page.next) {
-      session.playlistsNext = null;
-      session.playlistsListLoaded = true;
-      const readable = filterReadablePlaylists(session.playlists, session.contributor.id);
-      session.readablePlaylistIds = readable.map((playlist) => playlist.id);
-      persistSession(session);
-      break;
-    }
-
-    nextCursor = page.next;
-    pageNumber += 1;
-    await waitBetweenPages();
   }
+
+  if (SINGLE_STEP_IMPORT) {
+    pauseImportAfterStep(
+      session,
+      session.playlistsListLoaded
+        ? `Playlist list complete (${session.playlists.length.toLocaleString()} playlists) — click Resume to load playlist tracks.`
+        : `Loaded playlist list page ${pageNumber} (${session.playlists.length.toLocaleString()} playlists) — click Resume for the next page.`,
+      onProgress
+    );
+  }
+
+  if (page.next) {
+    let cursor = page.next;
+    pageNumber += 1;
+    while (true) {
+      const nextProgressMessage = `Loading playlist list (page ${pageNumber}, ${session.playlists.length.toLocaleString()} playlists)`;
+      reportProgress(onProgress, {
+        phase: "playlists",
+        message: `${nextProgressMessage}…`,
+        percent: paginatedPhasePercent(pageNumber, 25, 30),
+      });
+
+      const nextPage = await fetchSpotifyPage<SpotifyPlaylistSummary>(
+        "/api/spotify/playlists-page",
+        cursor
+      );
+      session.playlists.push(...nextPage.items);
+      session.playlistsNext = nextPage.next;
+      persistSession(session);
+
+      if (!nextPage.next) {
+        session.playlistsNext = null;
+        session.playlistsListLoaded = true;
+        const readable = filterReadablePlaylists(session.playlists, session.contributor.id);
+        session.readablePlaylistIds = readable.map((playlist) => playlist.id);
+        persistSession(session);
+        break;
+      }
+
+      cursor = nextPage.next;
+      pageNumber += 1;
+      await waitBetweenPages();
+    }
+  }
+};
+
+const completeActivePlaylist = (
+  session: SpotifyImportSession,
+  playlist: SpotifyPlaylistSummary,
+  playlistIndex: number,
+  totalPlaylists: number,
+  onProgress?: LoadLibraryOptions["onProgress"]
+): void => {
+  session.playlistItemsByPlaylistId[playlist.id] = session.activePlaylistItems;
+  session.completedPlaylistIds.push(playlist.id);
+  session.activePlaylistId = null;
+  session.activePlaylistItems = [];
+  session.activePlaylistNext = null;
+  persistSession(session);
+
+  reportProgress(onProgress, {
+    phase: "playlist-tracks",
+    message: `Loaded playlist ${playlistIndex + 1} of ${totalPlaylists}`,
+    percent: 30 + ((playlistIndex + 1) / Math.max(1, totalPlaylists)) * 58,
+  });
 };
 
 const loadOnePlaylist = async (
@@ -305,8 +432,9 @@ const loadOnePlaylist = async (
   }
 
   let pageNumber = Math.max(1, Math.ceil(session.activePlaylistItems.length / 50));
+  let pageNext: string | null = session.activePlaylistNext;
 
-  while (session.activePlaylistNext !== null || session.activePlaylistItems.length === 0) {
+  while (pageNext !== null || session.activePlaylistItems.length === 0) {
     reportProgress(onProgress, {
       phase: "playlist-tracks",
       message: `Playlist ${playlistIndex + 1}/${totalPlaylists}: ${playlist.name} (page ${pageNumber}, ${session.activePlaylistItems.length} tracks)`,
@@ -315,12 +443,27 @@ const loadOnePlaylist = async (
 
     const page = await fetchSpotifyPage<SpotifyPlaylistItem>(
       "/api/spotify/playlist-tracks-page",
-      session.activePlaylistNext,
+      pageNext,
       { playlistId: playlist.id }
     );
     session.activePlaylistItems.push(...page.items);
     session.activePlaylistNext = page.next;
+    pageNext = page.next;
     persistSession(session);
+
+    if (!page.next) {
+      completeActivePlaylist(session, playlist, playlistIndex, totalPlaylists, onProgress);
+    }
+
+    if (SINGLE_STEP_IMPORT) {
+      pauseImportAfterStep(
+        session,
+        page.next
+          ? `Loaded ${playlist.name} page ${pageNumber} — click Resume for the next page.`
+          : `Loaded playlist ${playlistIndex + 1}/${totalPlaylists} (${playlist.name}) — click Resume to continue.`,
+        onProgress
+      );
+    }
 
     if (!page.next) {
       break;
@@ -329,19 +472,6 @@ const loadOnePlaylist = async (
     pageNumber += 1;
     await waitBetweenPages();
   }
-
-  session.playlistItemsByPlaylistId[playlist.id] = session.activePlaylistItems;
-  session.completedPlaylistIds.push(playlist.id);
-  session.activePlaylistId = null;
-  session.activePlaylistItems = [];
-  session.activePlaylistNext = null;
-  persistSession(session);
-
-  reportProgress(onProgress, {
-    phase: "playlist-tracks",
-    message: `Loaded playlist ${playlistIndex + 1} of ${totalPlaylists}`,
-    percent: 30 + ((playlistIndex + 1) / Math.max(1, totalPlaylists)) * 58,
-  });
 
   await waitBetweenPages();
 };
@@ -378,17 +508,21 @@ const loadGenresPhase = async (
   onProgress?: LoadLibraryOptions["onProgress"]
 ): Promise<Record<string, string[]>> => {
   session.phase = "genres";
-  persistSession(session);
-
-  let genresByArtistId: Record<string, string[]> = {};
+  const genresByArtistId = { ...(session.genresByArtistId ?? {}) };
   const artistIds = collectArtistIds(session.savedItems, session.playlistItemsByPlaylistId);
+  session.genresArtistCount = artistIds.length;
+  let nextIndex = session.genresNextArtistIndex ?? 0;
+
   if (artistIds.length === 0) {
+    session.genresNextArtistIndex = 0;
+    persistSession(session);
     return genresByArtistId;
   }
 
   const genreBatchCount = Math.ceil(artistIds.length / 50);
-  for (let index = 0; index < artistIds.length; index += 50) {
-    const batchIndex = Math.floor(index / 50) + 1;
+
+  while (nextIndex < artistIds.length) {
+    const batchIndex = Math.floor(nextIndex / 50) + 1;
     reportProgress(onProgress, {
       phase: "genres",
       message: `Looking up genres (batch ${batchIndex} of ${genreBatchCount})…`,
@@ -401,19 +535,34 @@ const loadGenresPhase = async (
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ artistIds: artistIds.slice(index, index + 50) }),
+          body: JSON.stringify({ artistIds: artistIds.slice(nextIndex, nextIndex + 50) }),
         }
       );
-      genresByArtistId = { ...genresByArtistId, ...(genresPayload.genresByArtistId ?? {}) };
+      Object.assign(genresByArtistId, genresPayload.genresByArtistId ?? {});
     } catch (error) {
       if (error instanceof SpotifyImportRateLimitError) {
         throw error;
       }
     }
 
-    if (batchIndex < genreBatchCount) {
-      await waitBetweenPages();
+    nextIndex = Math.min(nextIndex + 50, artistIds.length);
+    session.genresByArtistId = genresByArtistId;
+    session.genresNextArtistIndex = nextIndex;
+    persistSession(session);
+
+    if (SINGLE_STEP_IMPORT && nextIndex < artistIds.length) {
+      pauseImportAfterStep(
+        session,
+        `Loaded genre batch ${batchIndex}/${genreBatchCount} — click Resume to continue.`,
+        onProgress
+      );
     }
+
+    if (nextIndex >= artistIds.length) {
+      break;
+    }
+
+    await waitBetweenPages();
   }
 
   return genresByArtistId;
@@ -463,7 +612,9 @@ const loadLibraryInChunks = async (options?: LoadLibraryOptions): Promise<Loaded
 
   try {
     if (!session.savedTracksComplete) {
-      await warmupSpotifyApi();
+      if (!SINGLE_STEP_IMPORT && session.savedItems.length === 0) {
+        await warmupSpotifyApi();
+      }
       await loadSavedTracksPhase(session, onProgress);
       await waitBetweenPhases();
     }
@@ -515,7 +666,7 @@ const loadLibraryInChunks = async (options?: LoadLibraryOptions): Promise<Loaded
     };
   } catch (error) {
     persistSession(session);
-    if (error instanceof SpotifyImportRateLimitError) {
+    if (error instanceof SpotifyImportRateLimitError || error instanceof SpotifyImportPausedError) {
       throw error;
     }
     throw error;
@@ -529,7 +680,7 @@ export const spotifyProvider: MusicProvider = {
   supportsPlaybackTracking: true,
 
   async getConnectionStatus(): Promise<ConnectionStatus> {
-    return fetchJson<ConnectionStatus>("/api/spotify/status");
+    return fetchJson<ConnectionStatus>("/api/spotify/status", undefined, 0, { clearsRateLimit: false });
   },
 
   async connect() {
@@ -539,7 +690,7 @@ export const spotifyProvider: MusicProvider = {
   },
 
   async disconnect() {
-    await fetchJson("/api/spotify/disconnect", { method: "POST" });
+    await fetchJson("/api/spotify/disconnect", { method: "POST" }, 0, { clearsRateLimit: false });
   },
 
   async loadLibrary(options?: LoadLibraryOptions): Promise<LoadedLibrary> {
@@ -591,5 +742,6 @@ export {
   getSpotifyImportResumeLabel,
   hasResumableSpotifyImport,
   saveConnectedSpotifyUser,
+  SpotifyImportPausedError,
   SpotifyImportRateLimitError,
 } from "../spotifyImportSession";

@@ -13,11 +13,9 @@ const CONNECTED_USER_KEY = "music-cue-spotify-connected-user";
 const SESSION_KEY = "music-cue-spotify-import-session";
 const HINT_KEY = "music-cue-spotify-import-hint";
 const RATE_LIMIT_UNTIL_KEY = "music-cue-spotify-rate-limit-until-ms";
-const RATE_LIMIT_STREAK_KEY = "music-cue-spotify-rate-limit-streak";
 
-const DEFAULT_RATE_LIMIT_SECONDS = 300;
-const MIN_RATE_LIMIT_SECONDS = 120;
-const MAX_RATE_LIMIT_SECONDS = 1_800;
+const DEFAULT_RATE_LIMIT_SECONDS = 60;
+const MIN_RATE_LIMIT_SECONDS = 60;
 
 export const saveConnectedSpotifyUser = (contributor: { id: string; name: string }): void => {
   localStorage.setItem(CONNECTED_USER_KEY, JSON.stringify(contributor));
@@ -62,6 +60,9 @@ export type SpotifyImportSession = {
   activePlaylistId: string | null;
   activePlaylistItems: SpotifyPlaylistItem[];
   activePlaylistNext: string | null;
+  genresByArtistId?: Record<string, string[]>;
+  genresNextArtistIndex?: number;
+  genresArtistCount?: number;
 };
 
 type SpotifyImportHint = {
@@ -101,7 +102,16 @@ const isSessionResumable = (session: SpotifyImportSession): boolean => {
   if (!session.playlistsListLoaded) {
     return true;
   }
-  return session.completedPlaylistIds.length < session.readablePlaylistIds.length;
+  if (session.completedPlaylistIds.length < session.readablePlaylistIds.length) {
+    return true;
+  }
+  if (
+    typeof session.genresArtistCount === "number" &&
+    (session.genresNextArtistIndex ?? 0) < session.genresArtistCount
+  ) {
+    return true;
+  }
+  return false;
 };
 
 const buildResumeLabel = (session: SpotifyImportSession): string => {
@@ -114,6 +124,12 @@ const buildResumeLabel = (session: SpotifyImportSession): string => {
   }
   if (session.phase === "playlist-tracks") {
     return `Resume playlists (${session.completedPlaylistIds.length}/${session.readablePlaylistIds.length} done)`;
+  }
+  if (
+    typeof session.genresArtistCount === "number" &&
+    (session.genresNextArtistIndex ?? 0) < session.genresArtistCount
+  ) {
+    return "Resume genre lookup";
   }
   return "Resume library import";
 };
@@ -166,15 +182,13 @@ export const formatSpotifyRateLimitCooldown = (cooldownMs: number): string => {
 };
 
 export const markSpotifyImportRateLimited = (retryAfterSeconds?: number): void => {
-  const streak = Number.parseInt(localStorage.getItem(RATE_LIMIT_STREAK_KEY) ?? "0", 10) + 1;
-  localStorage.setItem(RATE_LIMIT_STREAK_KEY, String(streak));
-
-  const baseSeconds = Math.max(
-    retryAfterSeconds ?? DEFAULT_RATE_LIMIT_SECONDS,
-    MIN_RATE_LIMIT_SECONDS
+  const waitSeconds = Math.max(retryAfterSeconds ?? DEFAULT_RATE_LIMIT_SECONDS, MIN_RATE_LIMIT_SECONDS);
+  const proposedUntil = Date.now() + waitSeconds * 1000;
+  const existingUntil = Number.parseInt(localStorage.getItem(RATE_LIMIT_UNTIL_KEY) ?? "0", 10);
+  const rateLimitUntilMs = Math.max(
+    proposedUntil,
+    Number.isFinite(existingUntil) ? existingUntil : 0
   );
-  const backoffSeconds = Math.min(baseSeconds * 2 ** (streak - 1), MAX_RATE_LIMIT_SECONDS);
-  const rateLimitUntilMs = Date.now() + backoffSeconds * 1000;
   localStorage.setItem(RATE_LIMIT_UNTIL_KEY, String(rateLimitUntilMs));
 
   const hint = loadSpotifyImportHint();
@@ -191,7 +205,6 @@ export const markSpotifyImportRateLimited = (retryAfterSeconds?: number): void =
 
 export const clearSpotifyRateLimitCooldown = (): void => {
   localStorage.removeItem(RATE_LIMIT_UNTIL_KEY);
-  localStorage.removeItem(RATE_LIMIT_STREAK_KEY);
 };
 
 export const getSpotifyImportRateLimitCooldownMs = (): number => {
@@ -199,7 +212,12 @@ export const getSpotifyImportRateLimitCooldownMs = (): number => {
   if (!Number.isFinite(until) || until <= 0) {
     return 0;
   }
-  return Math.max(0, until - Date.now());
+  const remaining = until - Date.now();
+  if (remaining <= 0) {
+    clearSpotifyRateLimitCooldown();
+    return 0;
+  }
+  return remaining;
 };
 
 const normalizeSpotifyImportSession = (session: SpotifyImportSession): SpotifyImportSession => {
@@ -375,5 +393,15 @@ export class SpotifyImportRateLimitError extends Error {
   constructor(message: string) {
     super(message);
     this.name = "SpotifyImportRateLimitError";
+  }
+}
+
+export class SpotifyImportPausedError extends Error {
+  readonly percent: number;
+
+  constructor(message: string, percent: number) {
+    super(message);
+    this.name = "SpotifyImportPausedError";
+    this.percent = percent;
   }
 }
