@@ -38,15 +38,29 @@ export const isMockContributorId = (contributorId: string): boolean => contribut
 export const getSongOwnerIds = (song: { owners?: Array<{ id: string }> }): string[] =>
   (song.owners ?? []).map((owner) => owner.id);
 
-export const getSongScopeClusterId = (song: { id: string; owners?: Array<{ id: string }> }): string => {
+/** Pick one contributor wedge for display (shared tracks use first owner name, then id). */
+export const resolveIsolateDisplayOwnerId = (
+  song: { id: string; owners?: Array<{ id: string; name: string }> },
+  enabledOwnerIds?: string[]
+): string => {
   const isolateOwnerId = getIsolateScopeOwnerIdFromSongId(song.id);
   if (isolateOwnerId) {
     return isolateOwnerId;
   }
 
-  const owners = song.owners ?? [];
-  return owners[0]?.id ?? "unknown";
+  const enabled = new Set(enabledOwnerIds ?? []);
+  const owners = (song.owners ?? []).filter((owner) => enabled.size === 0 || enabled.has(owner.id));
+  if (owners.length === 0) {
+    return "unknown";
+  }
+  const sorted = [...owners].sort(
+    (left, right) => left.name.localeCompare(right.name) || left.id.localeCompare(right.id)
+  );
+  return sorted[0].id;
 };
+
+export const getSongScopeClusterId = (song: { id: string; owners?: Array<{ id: string; name: string }> }): string =>
+  resolveIsolateDisplayOwnerId(song);
 
 const countSongsForOwner = (songs: Array<{ id: string; owners?: Array<{ id: string }> }>, ownerId: string): number =>
   songs.filter((song) => getSongScopeClusterId(song) === ownerId).length;

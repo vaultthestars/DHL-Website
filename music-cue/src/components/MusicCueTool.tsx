@@ -199,7 +199,7 @@ import {
   buildWebDisplayPositionCache,
   computeIsolateDisplayContext,
 } from "../lib/isolateDisplayTransform";
-import { getEnabledOwnerMetaClusters, hasMultipleLibraryOwners } from "../lib/libraryScope";
+import { getEnabledOwnerMetaClusters, hasMultipleLibraryOwners, resolveIsolateDisplayOwnerId } from "../lib/libraryScope";
 
 const getGraphDimensions = (panel: HTMLDivElement | null): GraphDimensions => ({
   width: Math.max(320, panel?.clientWidth ?? 800),
@@ -2027,10 +2027,9 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
 
     const byOwner = new Map<string, ClusterRegion[]>();
     ownerIds.forEach((ownerId) => {
-      const ownerSongs = graphSongs.filter((song) => {
-        const owners = song.owners ?? [];
-        return owners.length === 1 && owners[0].id === ownerId;
-      });
+      const ownerSongs = graphSongs.filter(
+        (song) => resolveIsolateDisplayOwnerId(song, activeContributorIds) === ownerId
+      );
       if (ownerSongs.length === 0) {
         return;
       }

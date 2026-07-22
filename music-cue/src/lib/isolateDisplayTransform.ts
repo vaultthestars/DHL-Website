@@ -1,6 +1,6 @@
 import {
   getEnabledOwnerMetaClusters,
-  songsForOwnerScope,
+  resolveIsolateDisplayOwnerId,
   wedgeIsolateAxisPosition,
   type OwnerMetaCluster,
 } from "./libraryScope";
@@ -12,6 +12,7 @@ export type IsolateDisplayContext = {
   offsets: Map<string, GraphPoint>;
   metaClustersByOwner: Map<string, OwnerMetaCluster>;
   isAxisView: boolean;
+  enabledOwnerIds?: string[];
   /** Axis isolate: precomputed once per layout, not per song lookup. */
   radialMetric?: AxisMetric;
   metricRange?: { min: number; max: number };
@@ -66,7 +67,14 @@ export const computeIsolateDisplayContext = (
     metricRange = getMetricRange(songs, radialMetric, stats);
     ownerSongsByOwnerId = new Map();
     metaClusters.forEach((meta) => {
-      ownerSongsByOwnerId!.set(meta.id, songsForOwnerScope(songs, meta.id));
+      ownerSongsByOwnerId!.set(meta.id, []);
+    });
+    songs.forEach((song) => {
+      const ownerId = resolveIsolateDisplayOwnerId(song, enabledOwnerIds);
+      const bucket = ownerSongsByOwnerId!.get(ownerId);
+      if (bucket) {
+        bucket.push(song);
+      }
     });
   }
 
@@ -74,6 +82,7 @@ export const computeIsolateDisplayContext = (
     offsets,
     metaClustersByOwner,
     isAxisView,
+    enabledOwnerIds,
     radialMetric,
     metricRange,
     ownerSongsByOwnerId,
@@ -83,13 +92,14 @@ export const computeIsolateDisplayContext = (
 export const applyIsolateDisplayTranslation = (
   song: Song,
   conglomeratePosition: GraphPoint,
-  offsets: Map<string, GraphPoint>
+  offsets: Map<string, GraphPoint>,
+  enabledOwnerIds?: string[]
 ): GraphPoint => {
-  const owners = song.owners ?? [];
-  if (owners.length !== 1) {
+  const ownerId = resolveIsolateDisplayOwnerId(song, enabledOwnerIds);
+  if (ownerId === "unknown") {
     return conglomeratePosition;
   }
-  const offset = offsets.get(owners[0].id);
+  const offset = offsets.get(ownerId);
   if (!offset) {
     return conglomeratePosition;
   }
@@ -107,12 +117,10 @@ export const applyIsolateDisplayPosition = (
   stats: LibraryStats,
   allSongs: Song[]
 ): GraphPoint => {
-  const owners = song.owners ?? [];
-  if (owners.length !== 1) {
+  const ownerId = resolveIsolateDisplayOwnerId(song, context.enabledOwnerIds);
+  if (ownerId === "unknown") {
     return conglomeratePosition;
   }
-
-  const ownerId = owners[0].id;
 
   if (context.isAxisView) {
     const meta = context.metaClustersByOwner.get(ownerId);
@@ -124,7 +132,7 @@ export const applyIsolateDisplayPosition = (
       (layoutConfig.axisY === "year" ? layoutConfig.axisX : layoutConfig.axisY);
     const metricValue = getMetricValue(song, radialMetric) ?? song.year;
     const metricRange = context.metricRange ?? getMetricRange(allSongs, radialMetric, stats);
-    const ownerSongs = context.ownerSongsByOwnerId?.get(ownerId) ?? songsForOwnerScope(allSongs, ownerId);
+    const ownerSongs = context.ownerSongsByOwnerId?.get(ownerId) ?? [];
     return wedgeIsolateAxisPosition(
       song,
       metricValue,
@@ -136,7 +144,12 @@ export const applyIsolateDisplayPosition = (
     );
   }
 
-  return applyIsolateDisplayTranslation(song, conglomeratePosition, context.offsets);
+  return applyIsolateDisplayTranslation(
+    song,
+    conglomeratePosition,
+    context.offsets,
+    context.enabledOwnerIds
+  );
 };
 
 /** One-shot position map for web rendering — O(1) lookup during pan/zoom culling. */
@@ -165,7 +178,7 @@ export const buildWebDisplayPositionCache = (
       const base = conglomeratePositions.get(song.id) ?? fallbackPosition(song);
       positions.set(
         song.id,
-        applyIsolateDisplayTranslation(song, base, isolateContext.offsets)
+        applyIsolateDisplayTranslation(song, base, isolateContext.offsets, isolateContext.enabledOwnerIds)
       );
     });
     return positions;
