@@ -1,6 +1,7 @@
 import { startTransition, useCallback, useDeferredValue, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { buildClusterRegions, buildIsolateScopedClusterRegions, buildOwnerMetaRegions, ClusterRegion } from "../lib/clusterRegions";
 import { syncClusterLayoutToServer } from "../lib/clusterLayoutSync";
+import { sanitizeLibraryPayload } from "../../shared/librarySanitize";
 import {
   fromNormalizedPosition,
   getIsolateOwnerBoundsForLayout,
@@ -12,7 +13,7 @@ import {
 } from "../lib/graphLayout";
 import { invalidatePlaylistOverlapLayoutCache } from "../lib/playlistOverlapLayout";
 import { buildPlaylistMetaGraphEdges, buildPlaylistMetaGraphSegments } from "../lib/playlistMetaGraph";
-import { UNASSIGNED_PLAYLIST_CLUSTER_ID, EXCLUDED_PLAYLIST_NAMES } from "../lib/playlistConstants";
+import { UNASSIGNED_PLAYLIST_CLUSTER_ID, isExcludedPlaylistName } from "../lib/playlistConstants";
 import { applyPlaybackAdvance } from "../lib/cuePlaybackTracking";
 import { formatDuration, sumDuration } from "../lib/formatDuration";
 import { getSongNodeFill } from "../lib/graphColors";
@@ -293,7 +294,7 @@ const getSongPlaylists = (song: Song): string[] => song.playlists ?? [];
 
 const filterExcludedPlaylists = (stats: LibraryStats): LibraryStats => {
   const playlistIds = (stats.playlistIds ?? []).filter(
-    (playlistId) => !EXCLUDED_PLAYLIST_NAMES.has(stats.playlistNames?.[playlistId] ?? "")
+    (playlistId) => !isExcludedPlaylistName(stats.playlistNames?.[playlistId] ?? "")
   );
   const playlistNames: Record<string, string> = {};
   const playlistCounts: Record<string, number> = {};
@@ -3540,10 +3541,11 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     }
     setIsImporting(true);
     try {
+      const sanitized = sanitizeLibraryPayload({ songs, stats });
       const published = await publishSharedLibrary({
         contributor,
-        songs,
-        stats,
+        songs: sanitized.songs,
+        stats: sanitized.stats,
       });
       saveLocalContributorId(published.contributor.id);
       await refreshSharedContributors({ loadLibrary: songSpaceMode === "shared" });

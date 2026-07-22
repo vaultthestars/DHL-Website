@@ -1,8 +1,3 @@
-export const UNASSIGNED_PLAYLIST_CLUSTER_ID = "__unassigned__";
+export { EXCLUDED_PLAYLIST_NAMES, isExcludedPlaylistName } from "../../shared/playlistNames";
 
-export const EXCLUDED_PLAYLIST_NAMES = new Set([
-  "Library",
-  "Music",
-  "Downloaded",
-  "every song in my library atm",
-]);
+export const UNASSIGNED_PLAYLIST_CLUSTER_ID = "__unassigned__";

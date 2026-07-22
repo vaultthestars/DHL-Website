@@ -96,11 +96,31 @@ const toSpotifyNextCursor = (next: string | null | undefined): string | null => 
     return null;
   }
   try {
-    const relative = toSpotifyRelativePath(next);
+    const relative = sanitizeSpotifyPagePath(toSpotifyRelativePath(next));
     return relative || null;
   } catch {
     return null;
   }
+};
+
+const sanitizeSpotifyPagePath = (path: string): string => {
+  const queryIndex = path.indexOf("?");
+  if (queryIndex === -1) {
+    return path;
+  }
+  const pathname = path.slice(0, queryIndex);
+  const params = new URLSearchParams(path.slice(queryIndex + 1));
+  params.delete("locale");
+  const query = params.toString();
+  return query ? `${pathname}?${query}` : pathname;
+};
+
+const isTransientSpotifyError = (status: number, message?: string): boolean => {
+  if (status === 500 || status === 502 || status === 503) {
+    return true;
+  }
+  const normalized = message?.toLowerCase() ?? "";
+  return normalized.includes("unexpected error") || normalized.includes("try again later");
 };
 
 const resolveSpotifyPagePath = (
@@ -108,7 +128,7 @@ const resolveSpotifyPagePath = (
   defaultPath: string,
   allowedPrefixes: string[]
 ): string => {
-  const normalized = toSpotifyRelativePath(nextPath);
+  const normalized = sanitizeSpotifyPagePath(toSpotifyRelativePath(nextPath));
   if (!normalized) {
     return defaultPath;
   }
@@ -287,7 +307,7 @@ export const createSpotifyClient = (store: SpotifySessionStore) => {
     return refreshed.accessToken;
   };
 
-  const spotifyFetch = async <T>(path: string, init?: RequestInit): Promise<T> => {
+  const spotifyFetch = async <T>(path: string, init?: RequestInit, attempt = 0): Promise<T> => {
     const accessToken = await getAccessToken();
     let response: Response;
     try {
@@ -304,6 +324,10 @@ export const createSpotifyClient = (store: SpotifySessionStore) => {
       const timedOut =
         error instanceof Error &&
         (error.name === "TimeoutError" || error.name === "AbortError" || error.message.includes("timeout"));
+      if (timedOut && attempt < 2) {
+        await sleep(2_000 * (attempt + 1));
+        return spotifyFetch<T>(path, init, attempt + 1);
+      }
       if (timedOut) {
         throw new Error("Spotify API timed out. Progress saved — wait a moment, then click Resume load & share.");
       }
@@ -326,7 +350,12 @@ export const createSpotifyClient = (store: SpotifySessionStore) => {
     }
     if (!response.ok) {
       const payload = (await response.json().catch(() => ({}))) as { error?: { message?: string } };
-      throw new Error(formatSpotifyApiError(response.status, path, payload.error?.message));
+      const spotifyMessage = payload.error?.message;
+      if (isTransientSpotifyError(response.status, spotifyMessage) && attempt < 3) {
+        await sleep(parseRetryAfterMs(response.headers.get("Retry-After"), attempt));
+        return spotifyFetch<T>(path, init, attempt + 1);
+      }
+      throw new Error(formatSpotifyApiError(response.status, path, spotifyMessage));
     }
     return (await response.json()) as T;
   };

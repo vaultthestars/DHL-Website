@@ -1,5 +1,5 @@
 import { LibraryStats, Song } from "./types";
-import { EXCLUDED_PLAYLIST_NAMES } from "./playlistConstants";
+import { isExcludedPlaylistName } from "../../shared/playlistNames";
 
 const getText = (track: Record<string, unknown>, key: string): string => {
   const value = track[key];
@@ -91,17 +91,12 @@ const deriveArtist = (track: Record<string, unknown>): string => {
 
 const deriveAlbum = (track: Record<string, unknown>): string => getText(track, "Album") || "Unknown Album";
 
-const SYSTEM_PLAYLIST_NAMES = EXCLUDED_PLAYLIST_NAMES;
-
 const isExcludedPlaylist = (playlist: Record<string, unknown>): boolean => {
   if (getBoolean(playlist, "Master")) {
     return true;
   }
   const name = getText(playlist, "Name");
-  if (!name || SYSTEM_PLAYLIST_NAMES.has(name)) {
-    return true;
-  }
-  if (name.startsWith("MusicCue-") || name.startsWith("MusicCue —")) {
+  if (!name || isExcludedPlaylistName(name)) {
     return true;
   }
   return false;

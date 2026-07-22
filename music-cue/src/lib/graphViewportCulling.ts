@@ -4,7 +4,7 @@ import type { ViewTransform } from "./graphView";
 import type { GraphPoint } from "./types";
 
 export const GRAPH_NODE_CULLING_THRESHOLD = 120;
-export const ABSOLUTE_MAX_RENDERED_NODES = 360;
+export const ABSOLUTE_MAX_RENDERED_NODES = 720;
 
 export type GraphViewportBounds = {
   minX: number;
@@ -62,11 +62,11 @@ export const getZoomNodeRenderBudget = (scale: number, inViewportCount: number):
 
   const clampedScale = Math.min(Math.max(scale, 0.12), 3);
   // Zoomed out: sparse sample. Zoomed in: show most in-viewport nodes.
-  const fillRatio = Math.min(1, 0.1 + clampedScale * 0.42);
+  const fillRatio = Math.min(1, 0.1 + clampedScale * 0.55);
   const budget = Math.floor(inViewportCount * fillRatio);
-  const floor = clampedScale < 0.35 ? 50 : clampedScale < 0.65 ? 80 : 110;
+  const floor = clampedScale < 0.35 ? 100 : clampedScale < 0.65 ? 160 : 220;
   const ceiling =
-    clampedScale >= 1.4 ? ABSOLUTE_MAX_RENDERED_NODES : clampedScale >= 1 ? 300 : 240;
+    clampedScale >= 1.4 ? ABSOLUTE_MAX_RENDERED_NODES : clampedScale >= 1 ? 600 : 480;
 
   return Math.min(Math.max(budget, floor), ceiling);
 };

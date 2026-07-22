@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import type { LibraryContributor, SharedLibraryIndex, SharedLibrarySnapshot } from "../shared/sharedLibrary";
+import { sanitizeLibraryPayload } from "../shared/librarySanitize";
 import {
   getRemoteJsonStore,
   isRemoteStorageConfigured,
@@ -225,15 +226,25 @@ export const getSharedLibrarySnapshots = async (contributorIds: string[]): Promi
 export const saveSharedLibrarySnapshot = async (snapshot: SharedLibrarySnapshot): Promise<void> => {
   assertSharedLibraryStorageConfigured();
 
+  const sanitized = sanitizeLibraryPayload({
+    songs: snapshot.songs,
+    stats: snapshot.stats,
+  });
+  const cleanedSnapshot: SharedLibrarySnapshot = {
+    ...snapshot,
+    songs: sanitized.songs,
+    stats: sanitized.stats,
+  };
+
   const remote = getRemoteJsonStore();
   if (!remote) {
-    writeLocalSnapshot(snapshot);
+    writeLocalSnapshot(cleanedSnapshot);
     const index = readLocalIndex();
-    writeLocalIndex(upsertContributor(index, snapshot));
+    writeLocalIndex(upsertContributor(index, cleanedSnapshot));
     return;
   }
 
-  await remote.writeJson(snapshotKey(snapshot.contributor.id), snapshot);
+  await remote.writeJson(snapshotKey(cleanedSnapshot.contributor.id), cleanedSnapshot);
   const currentIndex = (await remote.readJson<SharedLibraryIndex>(INDEX_KEY)) ?? { contributors: [] };
-  await remote.writeJson(INDEX_KEY, upsertContributor(currentIndex, snapshot));
+  await remote.writeJson(INDEX_KEY, upsertContributor(currentIndex, cleanedSnapshot));
 };

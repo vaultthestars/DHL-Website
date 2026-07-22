@@ -52,6 +52,8 @@ export type SpotifyLibraryStats = {
   playlistCounts: Record<string, number>;
 };
 
+import { isExcludedPlaylistName } from "./playlistNames";
+
 export type SpotifyLibraryPayload = {
   contributor: {
     id: string;
@@ -76,7 +78,10 @@ export const filterReadablePlaylists = (
   playlists: SpotifyPlaylistSummary[],
   profileId: string
 ): SpotifyPlaylistSummary[] =>
-  playlists.filter((playlist) => playlist.owner.id === profileId || playlist.collaborative);
+  playlists.filter(
+    (playlist) =>
+      (playlist.owner.id === profileId || playlist.collaborative) && !isExcludedPlaylistName(playlist.name)
+  );
 
 export const assembleSpotifyLibrary = (input: {
   contributor: SpotifyLibraryPayload["contributor"];

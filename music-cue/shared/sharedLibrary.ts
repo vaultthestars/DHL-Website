@@ -1,4 +1,5 @@
 import type { LibraryStats, Song } from "../src/lib/types";
+import { sanitizeLibraryPayload } from "./librarySanitize";
 
 export type LibraryContributor = {
   id: string;
@@ -143,9 +144,20 @@ const tagSongsForContributor = (
 export const mergeSharedLibrarySnapshots = (snapshots: SharedLibrarySnapshot[]): MergedLibrary => {
   const songMap = new Map<string, Song>();
   const playlistNames: Record<string, string> = {};
-  const playlistOwners = buildPlaylistOwnersFromSnapshots(snapshots);
+  const sanitizedSnapshots = snapshots.map((snapshot) => {
+    const sanitized = sanitizeLibraryPayload({
+      songs: snapshot.songs,
+      stats: snapshot.stats,
+    });
+    return {
+      ...snapshot,
+      songs: sanitized.songs,
+      stats: sanitized.stats,
+    };
+  });
+  const playlistOwners = buildPlaylistOwnersFromSnapshots(sanitizedSnapshots);
 
-  snapshots.forEach((snapshot) => {
+  sanitizedSnapshots.forEach((snapshot) => {
     Object.assign(playlistNames, snapshot.stats.playlistNames ?? {});
     const taggedSongs = tagSongsForContributor(snapshot.songs, snapshot.contributor);
     taggedSongs.forEach((song) => {

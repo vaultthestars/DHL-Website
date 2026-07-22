@@ -211,6 +211,16 @@ var SPOTIFY_SCOPES = [
   "user-modify-playback-state"
 ].join(" ");
 var NO_DEVICES_MESSAGE = "No Spotify devices found. Open the Spotify app, play any song once, then try Play again.";
+var sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+var parseRetryAfterMs = (retryAfterHeader, attempt) => {
+  if (retryAfterHeader) {
+    const seconds = Number.parseInt(retryAfterHeader, 10);
+    if (Number.isFinite(seconds) && seconds > 0) {
+      return seconds * 1e3;
+    }
+  }
+  return Math.min(1e3 * 2 ** attempt, 1e4);
+};
 var SPOTIFY_API_ORIGIN = "https://api.spotify.com";
 var SPOTIFY_REQUEST_TIMEOUT_MS = 6e3;
 var SPOTIFY_TOKEN_TIMEOUT_MS = 4e3;
@@ -242,14 +252,32 @@ var toSpotifyNextCursor = (next) => {
     return null;
   }
   try {
-    const relative = toSpotifyRelativePath(next);
+    const relative = sanitizeSpotifyPagePath(toSpotifyRelativePath(next));
     return relative || null;
   } catch {
     return null;
   }
 };
+var sanitizeSpotifyPagePath = (path2) => {
+  const queryIndex = path2.indexOf("?");
+  if (queryIndex === -1) {
+    return path2;
+  }
+  const pathname = path2.slice(0, queryIndex);
+  const params = new URLSearchParams(path2.slice(queryIndex + 1));
+  params.delete("locale");
+  const query = params.toString();
+  return query ? `${pathname}?${query}` : pathname;
+};
+var isTransientSpotifyError = (status, message) => {
+  if (status === 500 || status === 502 || status === 503) {
+    return true;
+  }
+  const normalized = message?.toLowerCase() ?? "";
+  return normalized.includes("unexpected error") || normalized.includes("try again later");
+};
 var resolveSpotifyPagePath = (nextPath, defaultPath, allowedPrefixes) => {
-  const normalized = toSpotifyRelativePath(nextPath);
+  const normalized = sanitizeSpotifyPagePath(toSpotifyRelativePath(nextPath));
   if (!normalized) {
     return defaultPath;
   }
@@ -392,7 +420,7 @@ var createSpotifyClient = (store) => {
     const refreshed = await refreshAccessToken(tokens.refreshToken);
     return refreshed.accessToken;
   };
-  const spotifyFetch = async (path2, init) => {
+  const spotifyFetch = async (path2, init, attempt = 0) => {
     const accessToken = await getAccessToken();
     let response;
     try {
@@ -407,6 +435,10 @@ var createSpotifyClient = (store) => {
       });
     } catch (error) {
       const timedOut = error instanceof Error && (error.name === "TimeoutError" || error.name === "AbortError" || error.message.includes("timeout"));
+      if (timedOut && attempt < 2) {
+        await sleep(2e3 * (attempt + 1));
+        return spotifyFetch(path2, init, attempt + 1);
+      }
       if (timedOut) {
         throw new Error("Spotify API timed out. Progress saved \u2014 wait a moment, then click Resume load & share.");
       }
@@ -427,7 +459,12 @@ var createSpotifyClient = (store) => {
     }
     if (!response.ok) {
       const payload = await response.json().catch(() => ({}));
-      throw new Error(formatSpotifyApiError(response.status, path2, payload.error?.message));
+      const spotifyMessage = payload.error?.message;
+      if (isTransientSpotifyError(response.status, spotifyMessage) && attempt < 3) {
+        await sleep(parseRetryAfterMs(response.headers.get("Retry-After"), attempt));
+        return spotifyFetch(path2, init, attempt + 1);
+      }
+      throw new Error(formatSpotifyApiError(response.status, path2, spotifyMessage));
     }
     return await response.json();
   };

@@ -6,6 +6,7 @@ import {
   type SpotifyPlaylistSummary,
   type SpotifySavedTrackItem,
 } from "../../../shared/spotifyLibraryAssembly";
+import { sanitizeLibraryPayload } from "../../../shared/librarySanitize";
 import {
   clearSpotifyImportSession,
   computeSpotifyImportPercent,
@@ -478,6 +479,45 @@ const loadOnePlaylist = async (
   await waitBetweenPages();
 };
 
+/** Re-fetch the Spotify playlist list so deleted playlists drop off before assembly. */
+const refreshSessionPlaylistCatalog = async (session: SpotifyImportSession): Promise<void> => {
+  const playlists: SpotifyPlaylistSummary[] = [];
+  let cursor: string | null = null;
+
+  while (true) {
+    const page = await fetchSpotifyPage<SpotifyPlaylistSummary>("/api/spotify/playlists-page", cursor);
+    playlists.push(...page.items);
+    if (!page.next) {
+      break;
+    }
+    cursor = page.next;
+    await waitBetweenPages();
+  }
+
+  session.playlists = playlists;
+  session.playlistsNext = null;
+  session.playlistsListLoaded = true;
+
+  const readable = filterReadablePlaylists(playlists, session.contributor.id);
+  const readableIds = new Set(readable.map((playlist) => playlist.id));
+  session.readablePlaylistIds = readable.map((playlist) => playlist.id);
+
+  Object.keys(session.playlistItemsByPlaylistId).forEach((playlistId) => {
+    if (!readableIds.has(playlistId)) {
+      delete session.playlistItemsByPlaylistId[playlistId];
+    }
+  });
+  session.completedPlaylistIds = session.completedPlaylistIds.filter((playlistId) => readableIds.has(playlistId));
+
+  if (session.activePlaylistId && !readableIds.has(session.activePlaylistId)) {
+    session.activePlaylistId = null;
+    session.activePlaylistItems = [];
+    session.activePlaylistNext = null;
+  }
+
+  persistSession(session);
+};
+
 const loadPlaylistTracksPhase = async (
   session: SpotifyImportSession,
   onProgress?: LoadLibraryOptions["onProgress"]
@@ -638,6 +678,8 @@ const loadLibraryInChunks = async (options?: LoadLibraryOptions): Promise<Loaded
       await waitBetweenPhases();
     }
 
+    await refreshSessionPlaylistCatalog(session);
+
     const genresByArtistId = await loadGenresPhase(session, onProgress);
 
     reportProgress(onProgress, {
@@ -658,17 +700,19 @@ const loadLibraryInChunks = async (options?: LoadLibraryOptions): Promise<Loaded
       genresByArtistId,
     });
 
+    const sanitized = sanitizeLibraryPayload(library);
+
     await clearSpotifyImportSession();
 
     reportProgress(onProgress, {
       phase: "assembling",
-      message: `Loaded ${library.songs.length.toLocaleString()} tracks.`,
+      message: `Loaded ${sanitized.songs.length.toLocaleString()} tracks.`,
       percent: 100,
     });
 
     return {
-      songs: library.songs,
-      stats: library.stats,
+      songs: sanitized.songs,
+      stats: sanitized.stats,
       contributor: library.contributor,
     };
   } catch (error) {
