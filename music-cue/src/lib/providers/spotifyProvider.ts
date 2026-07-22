@@ -127,6 +127,50 @@ const fetchSpotifyPage = async <T>(
   });
 };
 
+const warmupSpotifyApi = async (): Promise<void> => {
+  await fetchJson<{ ok: true }>("/api/spotify/warmup");
+};
+
+const fetchSpotifyPageResilient = async <T>(
+  endpoint: string,
+  next: string | null,
+  options: {
+    bodyFields?: Record<string, string>;
+    onProgress?: LoadLibraryOptions["onProgress"];
+    progressMessage: string;
+    warmupBeforeRetry?: boolean;
+  }
+): Promise<SpotifyPage<T>> => {
+  const maxAttempts = 5;
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+    try {
+      if (options.warmupBeforeRetry && attempt > 0) {
+        await warmupSpotifyApi();
+      }
+      return await fetchSpotifyPage<T>(endpoint, next, options.bodyFields);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "";
+      const retryable =
+        message.includes("timed out") ||
+        message.includes("timeout") ||
+        message.includes("504") ||
+        message.includes("502") ||
+        message.includes("503") ||
+        message.includes("Network error");
+      if (!retryable || attempt >= maxAttempts - 1) {
+        throw error;
+      }
+      reportProgress(options.onProgress, {
+        phase: "playlists",
+        message: `${options.progressMessage} (retry ${attempt + 2}/${maxAttempts})…`,
+        percent: 25,
+      });
+      await sleep(1_500 * (attempt + 1));
+    }
+  }
+  throw new Error("Spotify request failed after multiple retries.");
+};
+
 const persistSession = (session: SpotifyImportSession): void => {
   void saveSpotifyImportSession(session);
 };
@@ -235,16 +279,24 @@ const loadPlaylistsPhase = async (
   let pageNumber = Math.max(1, Math.ceil(session.playlists.length / 50) || 1);
   let nextCursor = session.playlistsNext;
 
+  await warmupSpotifyApi();
+
   while (true) {
+    const progressMessage = `Loading playlist list (page ${pageNumber}, ${session.playlists.length.toLocaleString()} playlists)`;
     reportProgress(onProgress, {
       phase: "playlists",
-      message: `Loading playlist list (page ${pageNumber}, ${session.playlists.length.toLocaleString()} playlists)…`,
+      message: `${progressMessage}…`,
       percent: paginatedPhasePercent(pageNumber, 25, 30),
     });
 
-    const page = await fetchSpotifyPage<SpotifyPlaylistSummary>(
+    const page = await fetchSpotifyPageResilient<SpotifyPlaylistSummary>(
       "/api/spotify/playlists-page",
       nextCursor,
+      {
+        onProgress,
+        progressMessage,
+        warmupBeforeRetry: true,
+      }
     );
     session.playlists.push(...page.items);
     session.playlistsNext = page.next;
@@ -441,6 +493,7 @@ const loadLibraryInChunks = async (options?: LoadLibraryOptions): Promise<Loaded
 
   try {
     if (!session.savedTracksComplete) {
+      await warmupSpotifyApi();
       await loadSavedTracksPhase(session, onProgress);
       await waitBetweenPhases();
     }

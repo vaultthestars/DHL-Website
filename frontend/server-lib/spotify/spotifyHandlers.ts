@@ -124,6 +124,11 @@ export const handleSpotifyRoute = async (
       return;
     }
 
+    if (route === "warmup" && req.method === "GET") {
+      finish(200, await client.warmupAccessToken());
+      return;
+    }
+
     if (route === "playlists-page" && (req.method === "GET" || req.method === "POST")) {
       finish(200, await client.fetchPlaylistsPage(readNextCursor(req)));
       return;

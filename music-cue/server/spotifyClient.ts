@@ -52,6 +52,11 @@ const parseRetryAfterMs = (retryAfterHeader: string | null, attempt: number): nu
 };
 
 const SPOTIFY_API_ORIGIN = "https://api.spotify.com";
+const SPOTIFY_REQUEST_TIMEOUT_MS = 7_000;
+const SPOTIFY_TOKEN_TIMEOUT_MS = 5_000;
+const PLAYLISTS_PAGE_FIELDS =
+  "items(id,name,owner(id,display_name),public,collaborative,snapshot_id),next";
+const PLAYLISTS_PAGE_DEFAULT_PATH = `/me/playlists?limit=50&fields=${encodeURIComponent(PLAYLISTS_PAGE_FIELDS)}`;
 
 const tryDecodeURIComponent = (value: string): string => {
   try {
@@ -114,6 +119,9 @@ const formatSpotifyApiError = (status: number, path: string, spotifyMessage?: st
   }
   if (status === 504) {
     return "Spotify library import timed out. Try again in a moment.";
+  }
+  if (normalizedMessage.includes("timed out") || normalizedMessage.includes("timeout")) {
+    return "Spotify API timed out. Progress saved — wait a moment, then click Resume load & share.";
   }
   if (
     status === 403 &&
@@ -210,6 +218,7 @@ export const createSpotifyClient = (store: SpotifySessionStore) => {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
       body,
+      signal: AbortSignal.timeout(SPOTIFY_TOKEN_TIMEOUT_MS),
     });
     if (!response.ok) {
       store.setTokens(null);
@@ -276,14 +285,30 @@ export const createSpotifyClient = (store: SpotifySessionStore) => {
     startedAt = Date.now()
   ): Promise<T> => {
     const accessToken = await getAccessToken();
-    const response = await fetch(`${SPOTIFY_API_URL}${path}`, {
-      ...init,
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        "Content-Type": "application/json",
-        ...(init?.headers ?? {}),
-      },
-    });
+    let response: Response;
+    try {
+      response = await fetch(`${SPOTIFY_API_URL}${path}`, {
+        ...init,
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json",
+          ...(init?.headers ?? {}),
+        },
+        signal: AbortSignal.timeout(SPOTIFY_REQUEST_TIMEOUT_MS),
+      });
+    } catch (error) {
+      const timedOut =
+        error instanceof Error &&
+        (error.name === "TimeoutError" || error.name === "AbortError" || error.message.includes("timeout"));
+      if (timedOut && attempt < 1) {
+        await sleep(750);
+        return spotifyFetch<T>(path, init, attempt + 1, startedAt);
+      }
+      if (timedOut) {
+        throw new Error("Spotify API timed out. Progress saved — wait a moment, then click Resume load & share.");
+      }
+      throw error;
+    }
     if (response.status === 204) {
       return {} as T;
     }
@@ -385,7 +410,7 @@ export const createSpotifyClient = (store: SpotifySessionStore) => {
 
   const fetchPlaylistSummaries = async (): Promise<SpotifyPlaylistSummary[]> =>
     (await fetchAllPages<{ items: SpotifyPlaylistSummary[]; next: string | null }>(
-      "/me/playlists?limit=50",
+      PLAYLISTS_PAGE_DEFAULT_PATH,
       (payload) => payload.items,
       (payload) => toSpotifyNextCursor(payload.next)
     )) as SpotifyPlaylistSummary[];
@@ -393,12 +418,17 @@ export const createSpotifyClient = (store: SpotifySessionStore) => {
   const fetchPlaylistsPage = async (
     nextPath?: string | null
   ): Promise<{ items: SpotifyPlaylistSummary[]; next: string | null }> => {
-    const path = resolveSpotifyPagePath(nextPath, "/me/playlists?limit=50", ["/me/playlists"]);
+    const path = resolveSpotifyPagePath(nextPath, PLAYLISTS_PAGE_DEFAULT_PATH, ["/me/playlists"]);
     const payload = await spotifyFetch<{ items: SpotifyPlaylistSummary[]; next: string | null }>(path);
     return {
-      items: payload.items,
+      items: payload.items ?? [],
       next: toSpotifyNextCursor(payload.next),
     };
+  };
+
+  const warmupAccessToken = async (): Promise<{ ok: true }> => {
+    await getAccessToken();
+    return { ok: true };
   };
 
   const fetchPlaylistTrackItems = async (playlistId: string): Promise<SpotifyPlaylistItem[]> =>
@@ -669,6 +699,7 @@ export const createSpotifyClient = (store: SpotifySessionStore) => {
     fetchPlaylistTracksPage,
     fetchArtistGenres,
     fetchArtistGenreBatch,
+    warmupAccessToken,
     buildLibraryPayload,
     verifyContributorId,
     createPlaylist,

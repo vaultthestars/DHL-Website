@@ -215,6 +215,10 @@ var parseRetryAfterMs = (retryAfterHeader, attempt) => {
   return Math.min(1e3 * 2 ** attempt, 1e4);
 };
 var SPOTIFY_API_ORIGIN = "https://api.spotify.com";
+var SPOTIFY_REQUEST_TIMEOUT_MS = 7e3;
+var SPOTIFY_TOKEN_TIMEOUT_MS = 5e3;
+var PLAYLISTS_PAGE_FIELDS = "items(id,name,owner(id,display_name),public,collaborative,snapshot_id),next";
+var PLAYLISTS_PAGE_DEFAULT_PATH = `/me/playlists?limit=50&fields=${encodeURIComponent(PLAYLISTS_PAGE_FIELDS)}`;
 var tryDecodeURIComponent = (value) => {
   try {
     return decodeURIComponent(value);
@@ -268,6 +272,9 @@ var formatSpotifyApiError = (status, path2, spotifyMessage) => {
   }
   if (status === 504) {
     return "Spotify library import timed out. Try again in a moment.";
+  }
+  if (normalizedMessage.includes("timed out") || normalizedMessage.includes("timeout")) {
+    return "Spotify API timed out. Progress saved \u2014 wait a moment, then click Resume load & share.";
   }
   if (status === 403 && (normalizedMessage.includes("not registered") || normalizedMessage.includes("developer dashboard") || normalizedMessage.includes("check settings on developer.spotify.com"))) {
     return "This Spotify account is not allowlisted for this app yet. The site owner must add your Spotify email in the Spotify Developer Dashboard (User Management), then you can disconnect and connect again.";
@@ -336,7 +343,8 @@ var createSpotifyClient = (store) => {
     const response = await fetch(`${SPOTIFY_ACCOUNTS_URL}/api/token`, {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body
+      body,
+      signal: AbortSignal.timeout(SPOTIFY_TOKEN_TIMEOUT_MS)
     });
     if (!response.ok) {
       store.setTokens(null);
@@ -390,19 +398,33 @@ var createSpotifyClient = (store) => {
   };
   const spotifyFetch = async (path2, init, attempt = 0, startedAt = Date.now()) => {
     const accessToken = await getAccessToken();
-    const response = await fetch(`${SPOTIFY_API_URL}${path2}`, {
-      ...init,
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        "Content-Type": "application/json",
-        ...init?.headers ?? {}
+    let response;
+    try {
+      response = await fetch(`${SPOTIFY_API_URL}${path2}`, {
+        ...init,
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json",
+          ...init?.headers ?? {}
+        },
+        signal: AbortSignal.timeout(SPOTIFY_REQUEST_TIMEOUT_MS)
+      });
+    } catch (error) {
+      const timedOut = error instanceof Error && (error.name === "TimeoutError" || error.name === "AbortError" || error.message.includes("timeout"));
+      if (timedOut && attempt < 1) {
+        await sleep(750);
+        return spotifyFetch(path2, init, attempt + 1, startedAt);
       }
-    });
+      if (timedOut) {
+        throw new Error("Spotify API timed out. Progress saved \u2014 wait a moment, then click Resume load & share.");
+      }
+      throw error;
+    }
     if (response.status === 204) {
       return {};
     }
-    if (response.status === 429 && attempt < 2 && Date.now() - startedAt < 2e4) {
-      await sleep(Math.min(parseRetryAfterMs(response.headers.get("Retry-After"), attempt), 4e3));
+    if (response.status === 429 && attempt < 2 && Date.now() - startedAt < 45e3) {
+      await sleep(Math.min(parseRetryAfterMs(response.headers.get("Retry-After"), attempt), 3e4));
       return spotifyFetch(path2, init, attempt + 1, startedAt);
     }
     if (!response.ok) {
@@ -479,17 +501,21 @@ var createSpotifyClient = (store) => {
     };
   };
   const fetchPlaylistSummaries = async () => await fetchAllPages(
-    "/me/playlists?limit=50",
+    PLAYLISTS_PAGE_DEFAULT_PATH,
     (payload) => payload.items,
     (payload) => toSpotifyNextCursor(payload.next)
   );
   const fetchPlaylistsPage = async (nextPath) => {
-    const path2 = resolveSpotifyPagePath(nextPath, "/me/playlists?limit=50", ["/me/playlists"]);
+    const path2 = resolveSpotifyPagePath(nextPath, PLAYLISTS_PAGE_DEFAULT_PATH, ["/me/playlists"]);
     const payload = await spotifyFetch(path2);
     return {
-      items: payload.items,
+      items: payload.items ?? [],
       next: toSpotifyNextCursor(payload.next)
     };
+  };
+  const warmupAccessToken = async () => {
+    await getAccessToken();
+    return { ok: true };
   };
   const fetchPlaylistTrackItems = async (playlistId) => await fetchAllPages(
     `/playlists/${playlistId}/items?limit=50`,
@@ -727,6 +753,7 @@ var createSpotifyClient = (store) => {
     fetchPlaylistTracksPage,
     fetchArtistGenres,
     fetchArtistGenreBatch,
+    warmupAccessToken,
     buildLibraryPayload,
     verifyContributorId,
     createPlaylist,
@@ -1105,6 +1132,10 @@ var handleSpotifyRoute = async (route, req, res) => {
     }
     if (route === "saved-tracks-page" && (req.method === "GET" || req.method === "POST")) {
       finish(200, await client.fetchSavedTracksPage(readNextCursor(req)));
+      return;
+    }
+    if (route === "warmup" && req.method === "GET") {
+      finish(200, await client.warmupAccessToken());
       return;
     }
     if (route === "playlists-page" && (req.method === "GET" || req.method === "POST")) {

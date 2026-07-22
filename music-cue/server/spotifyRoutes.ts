@@ -15,6 +15,7 @@ spotifyRouter.get("/library", forward("library"));
 spotifyRouter.get("/profile", forward("profile"));
 spotifyRouter.get("/saved-tracks-page", forward("saved-tracks-page"));
 spotifyRouter.post("/saved-tracks-page", forward("saved-tracks-page"));
+spotifyRouter.get("/warmup", forward("warmup"));
 spotifyRouter.get("/playlists-page", forward("playlists-page"));
 spotifyRouter.post("/playlists-page", forward("playlists-page"));
 spotifyRouter.get("/playlist-tracks-page", forward("playlist-tracks-page"));
