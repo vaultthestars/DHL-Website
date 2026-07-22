@@ -1,5 +1,11 @@
 import { GeneratedCue, GraphPoint, LayoutConfig, PositionResolver, Song } from "./types";
 
+type PathCandidate = {
+  song: Song;
+  distance: number;
+  t: number;
+};
+
 const distancePointToSegment = (
   point: GraphPoint,
   start: GraphPoint,
@@ -74,6 +80,110 @@ const projectionParameter = (point: GraphPoint, stroke: GraphPoint[]): number =>
   return bestT;
 };
 
+const getStrokeLength = (stroke: GraphPoint[]): number => {
+  let length = 0;
+  for (let index = 0; index < stroke.length - 1; index += 1) {
+    length += Math.hypot(stroke[index + 1].x - stroke[index].x, stroke[index + 1].y - stroke[index].y);
+  }
+  return length;
+};
+
+const distanceAndParameterOnStrokes = (
+  point: GraphPoint,
+  strokes: GraphPoint[][]
+): { distance: number; t: number } => {
+  const drawableStrokes = strokes.filter((stroke) => stroke.length >= 2);
+  if (drawableStrokes.length === 0) {
+    const pointStroke = strokes.find((stroke) => stroke.length === 1);
+    if (!pointStroke) {
+      return { distance: Number.POSITIVE_INFINITY, t: 0 };
+    }
+    return {
+      distance: Math.hypot(point.x - pointStroke[0].x, point.y - pointStroke[0].y),
+      t: 0,
+    };
+  }
+
+  const strokeLengths = drawableStrokes.map(getStrokeLength);
+  const totalLength = strokeLengths.reduce((sum, length) => sum + length, 0) || 1;
+
+  let bestDistance = Number.POSITIVE_INFINITY;
+  let bestT = 0;
+  let accumulated = 0;
+
+  drawableStrokes.forEach((stroke, index) => {
+    const distance = distancePointToPolyline(point, stroke);
+    const localT = projectionParameter(point, stroke);
+    if (distance < bestDistance) {
+      bestDistance = distance;
+      bestT = (accumulated + localT * strokeLengths[index]) / totalLength;
+    }
+    accumulated += strokeLengths[index];
+  });
+
+  return { distance: bestDistance, t: bestT };
+};
+
+const dedupeConsecutiveCandidates = (candidates: PathCandidate[]): PathCandidate[] =>
+  candidates.filter((entry, index) => index === 0 || entry.song.id !== candidates[index - 1].song.id);
+
+const sampleCandidatesEvenly = (candidates: PathCandidate[], maxCount: number): PathCandidate[] => {
+  if (maxCount <= 0 || candidates.length <= maxCount) {
+    return candidates;
+  }
+
+  const minT = candidates[0].t;
+  const maxT = candidates[candidates.length - 1].t;
+  const span = maxT - minT;
+  const selected: PathCandidate[] = [];
+  const usedSongIds = new Set<string>();
+
+  for (let index = 0; index < maxCount; index += 1) {
+    const targetT = span === 0 || maxCount === 1 ? minT : minT + (index / (maxCount - 1)) * span;
+
+    let best: PathCandidate | null = null;
+    let bestDelta = Number.POSITIVE_INFINITY;
+    candidates.forEach((entry) => {
+      if (usedSongIds.has(entry.song.id)) {
+        return;
+      }
+      const delta = Math.abs(entry.t - targetT);
+      if (delta < bestDelta) {
+        bestDelta = delta;
+        best = entry;
+      }
+    });
+
+    if (!best) {
+      break;
+    }
+    usedSongIds.add(best.song.id);
+    selected.push(best);
+  }
+
+  return selected.sort((left, right) => left.t - right.t);
+};
+
+const buildCueCandidates = (
+  songs: Song[],
+  strokes: GraphPoint[][],
+  getPosition: PositionResolver,
+  proximityThreshold: number
+): PathCandidate[] =>
+  songs
+    .map((song) => {
+      const position = getPosition(song);
+      const { distance, t } = distanceAndParameterOnStrokes(position, strokes);
+      return { song, distance, t };
+    })
+    .filter((entry) => entry.distance <= proximityThreshold)
+    .sort((left, right) => left.t - right.t || left.distance - right.distance);
+
+const finalizeCueSelection = (candidates: PathCandidate[], cueLength: number): PathCandidate[] => {
+  const deduped = dedupeConsecutiveCandidates(candidates);
+  return cueLength > 0 ? sampleCandidatesEvenly(deduped, cueLength) : deduped;
+};
+
 export const findNearestSong = (
   point: GraphPoint,
   songs: Song[],
@@ -103,32 +213,22 @@ export const generateCueFromStroke = (
   stroke: GraphPoint[],
   getPosition: PositionResolver,
   proximityThreshold: number,
-  layoutConfig: LayoutConfig
+  layoutConfig: LayoutConfig,
+  cueLength = 0
 ): GeneratedCue | null => {
   if (stroke.length < 2) {
     return null;
   }
 
-  const candidates = songs
-    .map((song) => {
-      const position = getPosition(song);
-      const distance = distancePointToPolyline(position, stroke);
-      return {
-        song,
-        distance,
-        t: projectionParameter(position, stroke),
-      };
-    })
-    .filter((entry) => entry.distance <= proximityThreshold)
-    .sort((a, b) => a.t - b.t || a.distance - b.distance);
-
+  const candidates = buildCueCandidates(songs, [stroke], getPosition, proximityThreshold);
   if (candidates.length === 0) {
     return null;
   }
 
-  const selected = candidates.filter(
-    (entry, index) => index === 0 || entry.song.id !== candidates[index - 1].song.id
-  );
+  const selected = finalizeCueSelection(candidates, cueLength);
+  if (selected.length === 0) {
+    return null;
+  }
 
   const seed = selected.reduce((sum, entry, index) => sum + entry.song.id.charCodeAt(0) * (index + 1), 0);
 
@@ -138,6 +238,7 @@ export const generateCueFromStroke = (
     stroke,
     layoutConfig,
     pathThreshold: proximityThreshold,
+    cueLength: cueLength > 0 ? cueLength : undefined,
   };
 };
 
@@ -146,37 +247,33 @@ export const generateCueFromStrokes = (
   strokes: GraphPoint[][],
   getPosition: PositionResolver,
   proximityThreshold: number,
-  layoutConfig: LayoutConfig
+  layoutConfig: LayoutConfig,
+  cueLength = 0
 ): GeneratedCue | null => {
-  const mergedSongs: Song[] = [];
-  const seen = new Set<string>();
+  const drawableStrokes = strokes.filter((stroke) => stroke.length >= 2);
+  if (drawableStrokes.length === 0) {
+    return null;
+  }
 
-  strokes.forEach((stroke) => {
-    const cue = generateCueFromStroke(songs, stroke, getPosition, proximityThreshold, layoutConfig);
-    if (!cue) {
-      return;
-    }
-    cue.songs.forEach((song) => {
-      if (seen.has(song.id)) {
-        return;
-      }
-      seen.add(song.id);
-      mergedSongs.push(song);
-    });
-  });
+  const candidates = buildCueCandidates(songs, strokes, getPosition, proximityThreshold);
+  if (candidates.length === 0) {
+    return null;
+  }
 
-  if (mergedSongs.length === 0) {
+  const selected = finalizeCueSelection(candidates, cueLength);
+  if (selected.length === 0) {
     return null;
   }
 
   const flatStroke = strokes.flat();
-  const seed = mergedSongs.reduce((sum, song, index) => sum + song.id.charCodeAt(0) * (index + 1), 0);
+  const seed = selected.reduce((sum, entry, index) => sum + entry.song.id.charCodeAt(0) * (index + 1), 0);
 
   return {
     seed,
-    songs: mergedSongs,
+    songs: selected.map((entry) => entry.song),
     stroke: flatStroke,
     layoutConfig,
     pathThreshold: proximityThreshold,
+    cueLength: cueLength > 0 ? cueLength : undefined,
   };
 };

@@ -38,6 +38,7 @@ const customClusterCatalogKey = (scope: ClusterLayoutScope): string =>
 const LAYOUT_CONFIG_KEY = "music-cue-layout-config";
 const LAYOUT_MODE_KEY = "music-cue-layout-mode";
 const PATH_THRESHOLD_KEY = "music-cue-path-threshold";
+const CUE_LENGTH_KEY = "music-cue-cue-length";
 const BUILD_MODE_KEY = "music-cue-build-mode";
 const GRAPH_TOOL_KEY = "music-cue-graph-tool";
 const PLAYLIST_GRAPH_VIEW_KEY = "music-cue-playlist-graph-view";
@@ -77,6 +78,18 @@ export const loadPathThreshold = (): number => {
 
 export const savePathThreshold = (threshold: number): void => {
   localStorage.setItem(PATH_THRESHOLD_KEY, String(threshold));
+};
+
+export const loadCueLength = (): number => {
+  const stored = Number(localStorage.getItem(CUE_LENGTH_KEY));
+  if (!Number.isFinite(stored) || stored < 0) {
+    return 0;
+  }
+  return Math.floor(stored);
+};
+
+export const saveCueLength = (cueLength: number): void => {
+  localStorage.setItem(CUE_LENGTH_KEY, String(Math.max(0, Math.floor(cueLength))));
 };
 
 export const loadBuildMode = (): CueBuildMode => {

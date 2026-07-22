@@ -85,6 +85,8 @@ export type GeneratedCue = {
   /** @deprecated Use layoutConfig. Kept for in-session cue compatibility. */
   layoutMode?: LayoutMode;
   pathThreshold?: number;
+  /** Max songs sampled along the drawn path. Omitted or 0 keeps every match. */
+  cueLength?: number;
   buildMode?: CueBuildMode;
 };
 

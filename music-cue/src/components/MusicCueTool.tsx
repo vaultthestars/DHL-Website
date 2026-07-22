@@ -89,6 +89,7 @@ import {
   loadPersonalSpotifyLibrary,
   loadMusicService,
   loadPathThreshold,
+  loadCueLength,
   loadCustomPositions,
   loadPlaylistGraphView,
   saveCustomPositions,
@@ -102,6 +103,7 @@ import {
   saveLibrary,
   saveMusicService,
   savePathThreshold,
+  saveCueLength,
   savePlaylistClusterCenterOverrides,
   savePlaylistGraphView,
   type ClusterLayoutScope,
@@ -818,6 +820,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     [activeLayoutScope, localContributorId]
   );
   const [pathThreshold, setPathThreshold] = useState(() => loadPathThreshold());
+  const [cueLength, setCueLength] = useState(() => loadCueLength());
   const [completedStrokes, setCompletedStrokes] = useState<NormalizedPoint[][]>([]);
   const [activeStroke, setActiveStroke] = useState<NormalizedPoint[]>([]);
   const [strokeLayoutConfig, setStrokeLayoutConfig] = useState<LayoutConfig | null>(null);
@@ -2324,20 +2327,20 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
   }, [cue, getPosition]);
 
   const regenerateCueFromStroke = useCallback(
-    (currentStroke: GraphPoint[], threshold: number) => {
+    (currentStroke: GraphPoint[], threshold: number, length: number = cueLength) => {
       if (currentStroke.length < 2) {
         return null;
       }
       return canonicalizeGeneratedCue(
-        generateCueFromStroke(graphSongs, currentStroke, getPosition, threshold, layoutConfig),
+        generateCueFromStroke(graphSongs, currentStroke, getPosition, threshold, layoutConfig, length),
         songs
       );
     },
-    [getPosition, graphSongs, layoutConfig, songs]
+    [cueLength, getPosition, graphSongs, layoutConfig, songs]
   );
 
   const regenerateCueFromStrokes = useCallback(
-    (strokes: NormalizedPoint[][], threshold: number) => {
+    (strokes: NormalizedPoint[][], threshold: number, length: number = cueLength) => {
       if (strokes.length === 0) {
         return null;
       }
@@ -2345,11 +2348,11 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
         segment.map((point) => fromNormalizedPosition(point, dimensions))
       );
       return canonicalizeGeneratedCue(
-        generateCueFromStrokes(graphSongs, graphStrokes, getPosition, threshold, layoutConfig),
+        generateCueFromStrokes(graphSongs, graphStrokes, getPosition, threshold, layoutConfig, length),
         songs
       );
     },
-    [dimensions, getPosition, graphSongs, layoutConfig, songs]
+    [cueLength, dimensions, getPosition, graphSongs, layoutConfig, songs]
   );
 
   const selectedSong = useMemo(() => {
@@ -2367,9 +2370,10 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
       stroke: strokeRef.current.map((point) => fromNormalizedPosition(point, dimensions)),
       layoutConfig,
       pathThreshold,
+      cueLength: cueLength > 0 ? cueLength : undefined,
       buildMode,
     }),
-    [buildMode, dimensions, layoutConfig, pathThreshold]
+    [buildMode, cueLength, dimensions, layoutConfig, pathThreshold]
   );
 
   const applyUndoEntry = useCallback((entry: {
@@ -2989,46 +2993,28 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     }
 
     const nextCompleted = [...completedStrokesRef.current, currentStroke];
-    const segmentGraphStroke = currentStroke.map((point) => fromNormalizedPosition(point, dimensions));
-    const segmentCue = canonicalizeGeneratedCue(
-      generateCueFromStroke(graphSongs, segmentGraphStroke, getPosition, pathThreshold, layoutConfig),
-      songs
-    );
+    completedStrokesRef.current = nextCompleted;
+    setCompletedStrokes(nextCompleted);
+    strokeRef.current = [];
+    setActiveStroke([]);
 
-    if (!segmentCue || segmentCue.songs.length === 0) {
-      strokeRef.current = [];
-      setActiveStroke([]);
+    const generated = regenerateCueFromStrokes(nextCompleted, pathThreshold, cueLength);
+    if (!generated || generated.songs.length === 0) {
+      completedStrokesRef.current = completedStrokesRef.current.slice(0, -1);
+      setCompletedStrokes(completedStrokesRef.current);
       setStatusMessage("No songs matched that path. Widen the path threshold or draw closer to nodes.");
       return;
     }
 
     pushUndo(cue, { includeStrokes: true, action: "stroke" });
 
-    completedStrokesRef.current = nextCompleted;
-    setCompletedStrokes(nextCompleted);
-    strokeRef.current = [];
-    setActiveStroke([]);
-
-    const existingSongs = cue?.songs ?? [];
-    const mergedSongs = [...existingSongs];
-    segmentCue.songs.forEach((song) => {
-      if (!mergedSongs.some((entry) => entry.id === song.id)) {
-        mergedSongs.push(song);
-      }
-    });
-
     setCue({
-      ...(cue ?? createBaseCue()),
-      songs: mergedSongs,
-      stroke: [...(cue?.stroke ?? []), ...segmentGraphStroke],
-      layoutConfig,
-      pathThreshold,
+      ...generated,
       buildMode: "path",
-      seed: mergedSongs.reduce((sum, entry, index) => sum + entry.id.charCodeAt(0) * (index + 1), 0),
     });
     setStrokeLayoutConfig(layoutConfig);
     setStatusMessage(
-      `Added segment · ${mergedSongs.length} songs in cue. Draw another path or click nodes. ⌘Z to undo.`
+      `Added segment · ${generated.songs.length} song${generated.songs.length === 1 ? "" : "s"} in cue. Draw another path or click nodes. ⌘Z to undo.`
     );
   };
 
@@ -3557,10 +3543,24 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     setPathThreshold(value);
     savePathThreshold(value);
     if (completedStrokesRef.current.length > 0) {
-      const generated = regenerateCueFromStrokes(completedStrokesRef.current, value);
+      const generated = regenerateCueFromStrokes(completedStrokesRef.current, value, cueLength);
       if (generated) {
-        setCue(generated);
+        setCue({ ...generated, buildMode: "path" });
         setStatusMessage(`Path threshold ${value}px · ${generated.songs.length} songs in cue.`);
+      }
+    }
+  };
+
+  const handleCueLengthChange = (value: number) => {
+    const nextLength = Number.isFinite(value) ? Math.max(0, Math.floor(value)) : 0;
+    setCueLength(nextLength);
+    saveCueLength(nextLength);
+    if (completedStrokesRef.current.length > 0) {
+      const generated = regenerateCueFromStrokes(completedStrokesRef.current, pathThreshold, nextLength);
+      if (generated) {
+        setCue({ ...generated, buildMode: "path" });
+        const lengthLabel = nextLength > 0 ? `${nextLength} songs` : "all matching songs";
+        setStatusMessage(`Cue length ${lengthLabel} · ${generated.songs.length} in cue.`);
       }
     }
   };
@@ -5615,6 +5615,20 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
                 value={pathThreshold}
                 onChange={(event) => handlePathThresholdChange(Number(event.target.value))}
               />
+            </label>
+
+          <label className="music-cue-slider-label music-cue-cue-path-slider music-cue-cue-path-slider-sidebar">
+              Cue length
+              <input
+                type="number"
+                className="music-cue-cue-length-input"
+                min={0}
+                step={1}
+                value={cueLength}
+                placeholder="All"
+                onChange={(event) => handleCueLengthChange(Number(event.target.value))}
+              />
+              <span className="music-cue-cue-length-hint">0 = all songs along path</span>
             </label>
 
           <div className="music-cue-cue-header">

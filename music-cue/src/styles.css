@@ -1318,6 +1318,18 @@ body {
   width: 100%;
 }
 
+.music-cue-cue-length-input {
+  width: 100%;
+  box-sizing: border-box;
+  font: inherit;
+  padding: 2px 4px;
+}
+
+.music-cue-cue-length-hint {
+  color: var(--w95-text);
+  opacity: 0.75;
+}
+
 .music-cue-cue-tracking-hint {
   color: #000080;
   font-style: italic;
