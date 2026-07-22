@@ -169,7 +169,7 @@ export const getPlaybackState = async (): Promise<PlaybackState | null> => {
     return null;
   }
   const payload = (await response.json()) as PlaybackState;
-  if (!payload.title) {
+  if (!payload.persistentId && !payload.title) {
     return null;
   }
   return payload;

@@ -29,7 +29,7 @@ import {
   buildTerminalPlaySpotifyCueCommand,
   toSpotifyCueTracks,
 } from "../lib/spotifyCueExport";
-import { isWebDeployment, areMockUsersEnabled } from "../lib/runtime";
+import { isWebDeployment, areMockUsersEnabled, useWebPerformanceOptimizations } from "../lib/runtime";
 import {
   CollaborativeLayoutProvider,
   CollaborativePlayProvider,
@@ -1269,7 +1269,8 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     [activeContributorIds, graphSongs, layoutLibraryScopeMode]
   );
   const isolateOwnerCount = isolateOwnerIds.length;
-  const isLargeLibrary = graphSongs.length >= LARGE_LIBRARY_LAYOUT_SNAP_THRESHOLD;
+  const isLargeLibrary =
+    useWebPerformanceOptimizations && graphSongs.length >= LARGE_LIBRARY_LAYOUT_SNAP_THRESHOLD;
   const deferredLayoutConfig = useDeferredValue(layoutConfig);
   const coldLayoutConfig = isLargeLibrary ? deferredLayoutConfig : layoutConfig;
   const skipIsolateCentroidTranslation = isolateOwnerCount <= 1;
@@ -1534,7 +1535,8 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     return ids;
   }, [activePersistentId, cue, draggingSongId, hoveredSongId, selectedSongId]);
 
-  const enableGraphNodeCulling = renderGraphSongs.length >= GRAPH_NODE_CULLING_THRESHOLD;
+  const enableGraphNodeCulling =
+    useWebPerformanceOptimizations && renderGraphSongs.length >= GRAPH_NODE_CULLING_THRESHOLD;
 
   const layoutColdKey = `${layoutConfigKey(coldLayoutConfig)}|${layoutTransitionKey}|${renderGraphSongs.length}|${dimensions.width}x${dimensions.height}|${isolateBoundsRevision}`;
 

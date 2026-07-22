@@ -14,6 +14,7 @@ import {
 import { getEnabledOwnerMetaClusters, getSongScopeClusterId, LibraryScopeMode, wedgeToHullPath } from "./libraryScope";
 import { getClusterOverridesForOwner, translateSoloLayoutToMetaCluster } from "./isolateClusterLayout";
 import { isClusterView } from "./layoutMetrics";
+import { useWebPerformanceOptimizations } from "./runtime";
 import { buildLibraryStatsFromSongs } from "../../shared/sharedLibrary";
 import {
   getCustomClusterHue,
@@ -458,7 +459,7 @@ export const buildClusterViewportHints = (
   toDisplayPoint?: (point: GraphPoint) => GraphPoint
 ): ClusterViewportHint[] => {
   const memberIndex =
-    visibleSongs.length >= LARGE_LIBRARY_CLUSTER_HULL_THRESHOLD
+    useWebPerformanceOptimizations && visibleSongs.length >= LARGE_LIBRARY_CLUSTER_HULL_THRESHOLD
       ? buildClusterMemberIndex(visibleSongs, customCatalog)
       : undefined;
 
@@ -499,7 +500,8 @@ export const buildClusterRegions = (
     return [];
   }
 
-  const useLiteHulls = visibleSongs.length >= LARGE_LIBRARY_CLUSTER_HULL_THRESHOLD;
+  const useLiteHulls =
+    useWebPerformanceOptimizations && visibleSongs.length >= LARGE_LIBRARY_CLUSTER_HULL_THRESHOLD;
   const memberIndex = useLiteHulls ? buildClusterMemberIndex(visibleSongs, customCatalog) : undefined;
   const clusterEntries = buildClusterEntries(
     clusterMode,
@@ -694,7 +696,7 @@ export const buildOwnerMetaRegions = (
         y: meta.center.y + labelRadius * Math.sin(midAngle),
       };
     } else if (isClusterLayout && members.length > 0) {
-      if (visibleSongs.length >= LARGE_LIBRARY_CLUSTER_HULL_THRESHOLD) {
+      if (useWebPerformanceOptimizations && visibleSongs.length >= LARGE_LIBRARY_CLUSTER_HULL_THRESHOLD) {
         const radius = meta.radius + Math.max(24, Math.sqrt(members.length) * 4);
         hullPath = circleHullPath(meta.center, radius);
         labelCenter = meta.center;
