@@ -1,5 +1,5 @@
 import { startTransition, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { buildClusterRegions, buildIsolateScopedClusterRegions, buildOwnerMetaRegions, ClusterRegion } from "../lib/clusterRegions";
+import { buildClusterRegions, buildClusterViewportHints, buildIsolateScopedClusterRegions, buildIsolateScopedClusterViewportHints, buildOwnerMetaRegions, ClusterRegion } from "../lib/clusterRegions";
 import { syncClusterLayoutToServer } from "../lib/clusterLayoutSync";
 import {
   fromNormalizedPosition,
@@ -62,7 +62,7 @@ import {
   zoomAtPoint,
 } from "../lib/graphView";
 import {
-  cullPositionedGraphNodes,
+  buildCulledPositionedSongs,
   GRAPH_NODE_CULLING_THRESHOLD,
 } from "../lib/graphViewportCulling";
 import {
@@ -1402,16 +1402,6 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
   );
   const effectiveClusterRevealOpacity = clusterRevealOpacity;
 
-  const positionedSongs = useMemo(() => {
-    if (isLargeLibrary) {
-      return renderGraphSongs.map((song) => ({
-        song,
-        position: computeLayoutPosition(song, layoutConfig),
-      }));
-    }
-    return renderGraphSongs.map((song) => ({ song, position: getRenderablePosition(song) }));
-  }, [computeLayoutPosition, getRenderablePosition, isLargeLibrary, layoutConfig, renderGraphSongs, clusterDragPreviewTick]);
-
   const prioritizedNodeIds = useMemo(() => {
     const ids = new Set<string>();
     if (hoveredSongId) {
@@ -1427,38 +1417,106 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     return ids;
   }, [activePersistentId, cue, hoveredSongId, selectedSongId]);
 
-  const enableGraphNodeCulling = positionedSongs.length >= GRAPH_NODE_CULLING_THRESHOLD;
+  const enableGraphNodeCulling = renderGraphSongs.length >= GRAPH_NODE_CULLING_THRESHOLD;
 
-  const renderedPositionedSongs = useMemo(() => {
-    if (!enableGraphNodeCulling) {
-      return positionedSongs;
+  const clusterViewportHints = useMemo(() => {
+    if (!enableGraphNodeCulling || !isClusterLayoutConfig(layoutConfig)) {
+      return undefined;
     }
-    return cullPositionedGraphNodes(positionedSongs, dimensions, viewTransformRef.current, {
-      alwaysIncludeSongIds: prioritizedNodeIds,
-      enableCulling: true,
-    });
+    const clusterMode = layoutConfig.clusterMode;
+    if (clusterMode !== "genre" && clusterMode !== "playlist" && clusterMode !== "custom") {
+      return undefined;
+    }
+
+    const useIsolateScopedClusters =
+      effectiveLibraryScopeMode === "isolate" &&
+      getIsolateOwnerIds(graphSongs, activeContributorIds).length > 0;
+
+    if (useIsolateScopedClusters) {
+      return buildIsolateScopedClusterViewportHints(
+        graphSongs,
+        clusterMode,
+        layoutConfig,
+        dimensions,
+        layoutClusterOverrides,
+        activeContributorIds,
+        stats.playlistNames,
+        isolateOwnerBounds,
+        customCatalogForOwner
+      );
+    }
+
+    return buildClusterViewportHints(
+      clusterMode,
+      graphSongs,
+      stats,
+      dimensions,
+      layoutClusterOverrides,
+      activeCustomCatalog
+    );
   }, [
+    activeContributorIds,
+    activeCustomCatalog,
+    customCatalogForOwner,
     dimensions,
+    effectiveLibraryScopeMode,
     enableGraphNodeCulling,
-    positionedSongs,
-    prioritizedNodeIds,
-    zoomSettleRevision,
+    graphSongs,
+    isolateOwnerBounds,
+    layoutClusterOverrides,
+    layoutConfig,
+    stats,
   ]);
 
+  const getPositionForCulling = useCallback(
+    (song: Song) =>
+      isLargeLibrary ? computeLayoutPosition(song, layoutConfig) : getRenderablePosition(song),
+    [computeLayoutPosition, getRenderablePosition, isLargeLibrary, layoutConfig]
+  );
+
+  const renderedPositionedSongs = useMemo(
+    () =>
+      buildCulledPositionedSongs(renderGraphSongs, dimensions, viewTransformRef.current, getPositionForCulling, {
+        alwaysIncludeSongIds: prioritizedNodeIds,
+        enableCulling: enableGraphNodeCulling,
+        clusterHints: clusterViewportHints,
+      }),
+    [
+      clusterViewportHints,
+      dimensions,
+      enableGraphNodeCulling,
+      getPositionForCulling,
+      prioritizedNodeIds,
+      renderGraphSongs,
+      zoomSettleRevision,
+    ]
+  );
+
   const culledNodeCount = enableGraphNodeCulling
-    ? Math.max(0, positionedSongs.length - renderedPositionedSongs.length)
+    ? Math.max(0, renderGraphSongs.length - renderedPositionedSongs.length)
     : 0;
 
   const songNodeFills = useMemo(() => {
     const fills = new Map<string, string>();
-    renderGraphSongs.forEach((song) => {
+    const songsToFill = enableGraphNodeCulling
+      ? renderedPositionedSongs.map(({ song }) => song)
+      : renderGraphSongs;
+    songsToFill.forEach((song) => {
       fills.set(
         song.id,
         getSongNodeFill(song, layoutConfig, stats, visibleSongs, activeCustomCatalog)
       );
     });
     return fills;
-  }, [activeCustomCatalog, layoutConfig, renderGraphSongs, stats, visibleSongs]);
+  }, [
+    activeCustomCatalog,
+    enableGraphNodeCulling,
+    layoutConfig,
+    renderedPositionedSongs,
+    renderGraphSongs,
+    stats,
+    visibleSongs,
+  ]);
 
   const useAnimatedClusterPositions =
     isLayoutTransitioning && visibleSongs.length < LARGE_LIBRARY_LAYOUT_SNAP_THRESHOLD;

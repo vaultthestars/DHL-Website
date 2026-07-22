@@ -1,5 +1,11 @@
 import { isClusterView } from "./layoutMetrics";
-import { getSongScopeClusterId, songsForOwnerScope } from "./libraryScope";
+import {
+  getEnabledOwnerMetaClusters,
+  getSongScopeClusterId,
+  radiusForSongCount,
+  songsForOwnerScope,
+} from "./libraryScope";
+import { LARGE_LIBRARY_LAYOUT_SNAP_THRESHOLD } from "./useLayoutTransition";
 import { normalizeClusterCenterOverrides } from "./storage";
 import {
   ClusterCenterOverrides,
@@ -170,6 +176,48 @@ export const computeIsolateOwnerLayoutBounds = (
   const bounds = boundsFromPoints(layoutPoints, dimensions);
   return { ...bounds, ownerId };
 };
+
+/** Fast owner bounds from song counts + meta-cluster layout — avoids laying out every song. */
+export const estimateIsolateOwnerBounds = (
+  graphSongs: Song[],
+  dimensions: GraphDimensions,
+  enabledOwnerIds?: string[]
+): Map<string, IsolateOwnerLayoutBounds> => {
+  const minDimension = Math.min(dimensions.width, dimensions.height);
+  const provisionalBounds = new Map<string, IsolateOwnerLayoutBounds>();
+
+  getIsolateOwnerIds(graphSongs, enabledOwnerIds).forEach((ownerId) => {
+    const ownerSongs = songsForOwnerScope(graphSongs, ownerId);
+    const radius = radiusForSongCount(ownerSongs.length, minDimension);
+    provisionalBounds.set(ownerId, {
+      ownerId,
+      centroid: { x: dimensions.width / 2, y: dimensions.height / 2 },
+      radius,
+    });
+  });
+
+  const metaClusters = getEnabledOwnerMetaClusters(graphSongs, dimensions, enabledOwnerIds, {
+    isAxisView: false,
+    ownerBounds: provisionalBounds,
+  });
+
+  metaClusters.forEach((meta) => {
+    const existing = provisionalBounds.get(meta.id);
+    if (!existing) {
+      return;
+    }
+    provisionalBounds.set(meta.id, {
+      ...existing,
+      centroid: meta.center,
+      radius: Math.max(existing.radius, meta.radius),
+    });
+  });
+
+  return provisionalBounds;
+};
+
+export const shouldUseEstimatedIsolateOwnerBounds = (songCount: number): boolean =>
+  songCount >= LARGE_LIBRARY_LAYOUT_SNAP_THRESHOLD;
 
 export const computeAllIsolateOwnerBounds = (
   graphSongs: Song[],

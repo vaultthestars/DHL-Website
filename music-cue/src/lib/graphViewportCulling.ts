@@ -1,4 +1,5 @@
 import type { GraphDimensions } from "./graphLayout";
+import type { ClusterViewportHint } from "./clusterRegions";
 import type { ViewTransform } from "./graphView";
 import type { GraphPoint } from "./types";
 
@@ -123,4 +124,101 @@ export const cullPositionedGraphNodes = <T extends { id: string }>(
     .map((entry) => entry.node);
 
   return [...required, ...sampledOptional];
+};
+
+const clusterIntersectsViewport = (
+  center: GraphPoint,
+  memberCount: number,
+  bounds: GraphViewportBounds
+): boolean => {
+  const pad = Math.max(48, Math.sqrt(memberCount) * 10);
+  return (
+    center.x + pad >= bounds.minX &&
+    center.x - pad <= bounds.maxX &&
+    center.y + pad >= bounds.minY &&
+    center.y - pad <= bounds.maxY
+  );
+};
+
+/** Compute layout positions only for viewport-visible songs (cluster hints avoid laying out the full library). */
+export const buildCulledPositionedSongs = <T extends { id: string }>(
+  songs: T[],
+  dimensions: GraphDimensions,
+  transform: ViewTransform,
+  getPosition: (song: T) => GraphPoint,
+  options?: {
+    alwaysIncludeSongIds?: Set<string>;
+    enableCulling?: boolean;
+    clusterHints?: ClusterViewportHint[];
+  }
+): PositionedGraphNode<T>[] => {
+  if (songs.length === 0) {
+    return [];
+  }
+
+  const enableCulling = options?.enableCulling ?? songs.length >= GRAPH_NODE_CULLING_THRESHOLD;
+  if (!enableCulling) {
+    return songs.map((song) => ({ song, position: getPosition(song) }));
+  }
+
+  const bounds = getGraphViewportBounds(dimensions, transform);
+  const alwaysInclude = options?.alwaysIncludeSongIds;
+  const songById = new Map(songs.map((song) => [song.id, song]));
+  const candidateIds = new Set<string>();
+
+  alwaysInclude?.forEach((songId) => {
+    if (songById.has(songId)) {
+      candidateIds.add(songId);
+    }
+  });
+
+  const clusterHints = options?.clusterHints;
+  if (clusterHints && clusterHints.length > 0) {
+    clusterHints.forEach((hint) => {
+      if (!clusterIntersectsViewport(hint.center, hint.songIds.length, bounds)) {
+        return;
+      }
+      hint.songIds.forEach((songId) => candidateIds.add(songId));
+    });
+  } else {
+    songs.forEach((song) => candidateIds.add(song.id));
+  }
+
+  const budget = getZoomNodeRenderBudget(transform.scale, candidateIds.size);
+  const required: T[] = [];
+  const optional: T[] = [];
+
+  candidateIds.forEach((songId) => {
+    const song = songById.get(songId);
+    if (!song) {
+      return;
+    }
+    if (alwaysInclude?.has(songId)) {
+      required.push(song);
+    } else {
+      optional.push(song);
+    }
+  });
+
+  const optionalBudget = Math.max(0, budget - required.length);
+  const sampledOptional =
+    optionalBudget >= optional.length
+      ? optional
+      : optional
+          .map((song) => ({ song, unit: hashUnit(song.id) }))
+          .sort((left, right) => left.unit - right.unit)
+          .slice(0, optionalBudget)
+          .map((entry) => entry.song);
+
+  const seen = new Set<string>();
+  const toPosition: T[] = [];
+  [...required, ...sampledOptional].forEach((song) => {
+    if (seen.has(song.id)) {
+      return;
+    }
+    seen.add(song.id);
+    toPosition.push(song);
+  });
+
+  return toPosition.map((song) => ({ song, position: getPosition(song) }));
 };

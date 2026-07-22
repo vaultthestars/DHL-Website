@@ -51,7 +51,7 @@ export const getSongScopeClusterId = (song: { id: string; owners?: Array<{ id: s
 const countSongsForOwner = (songs: Array<{ id: string; owners?: Array<{ id: string }> }>, ownerId: string): number =>
   songs.filter((song) => getSongScopeClusterId(song) === ownerId).length;
 
-const radiusForSongCount = (songCount: number, minDimension: number): number => {
+export const radiusForSongCount = (songCount: number, minDimension: number): number => {
   const base = minDimension * 0.085;
   const growth = minDimension * 0.013;
   return Math.min(minDimension * 0.24, base + Math.sqrt(Math.max(1, songCount)) * growth);

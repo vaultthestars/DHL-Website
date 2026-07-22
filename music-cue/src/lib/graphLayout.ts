@@ -22,6 +22,8 @@ import {
 } from "./libraryScope";
 import {
   computeAllIsolateOwnerBounds,
+  estimateIsolateOwnerBounds,
+  shouldUseEstimatedIsolateOwnerBounds,
   getClusterOverridesForOwner,
   getIsolateOwnerIds,
   translateSoloLayoutToMetaCluster,
@@ -360,22 +362,24 @@ const getIsolateLayoutCache = (
 
   const ownerBounds =
     layoutContext.isolateOwnerBounds ??
-    computeAllIsolateOwnerBounds(
-      allSongs,
-      dimensions,
-      layoutConfig,
-      stats,
-      clusterOverrides,
-      layoutContext.enabledOwnerIds,
-      (soloSong, ownerSongs, ownerOverrides) =>
-        layoutSongPositionConglomerate(
-          soloSong,
-          ownerSongs,
-          ownerOverrides,
-          layoutContext.customCatalogForOwner?.(getSongScopeClusterId(soloSong)) ??
-            layoutContext.customClusterCatalog
-        )
-    );
+    (shouldUseEstimatedIsolateOwnerBounds(allSongs.length)
+      ? estimateIsolateOwnerBounds(allSongs, dimensions, layoutContext.enabledOwnerIds)
+      : computeAllIsolateOwnerBounds(
+          allSongs,
+          dimensions,
+          layoutConfig,
+          stats,
+          clusterOverrides,
+          layoutContext.enabledOwnerIds,
+          (soloSong, ownerSongs, ownerOverrides) =>
+            layoutSongPositionConglomerate(
+              soloSong,
+              ownerSongs,
+              ownerOverrides,
+              layoutContext.customCatalogForOwner?.(getSongScopeClusterId(soloSong)) ??
+                layoutContext.customClusterCatalog
+            )
+        ));
   const metaClusters = getEnabledOwnerMetaClusters(allSongs, dimensions, layoutContext.enabledOwnerIds, {
     isAxisView: !isClusterView(layoutConfig),
     ownerBounds,
@@ -587,8 +591,12 @@ export const getIsolateOwnerBoundsForLayout = (
   clusterOverrides: ClusterCenterOverrides,
   enabledOwnerIds?: string[],
   customCatalogForOwner?: (ownerId: string) => CustomClusterCatalog
-): Map<string, { centroid: GraphPoint; radius: number }> =>
-  computeAllIsolateOwnerBounds(
+): Map<string, { centroid: GraphPoint; radius: number }> => {
+  if (shouldUseEstimatedIsolateOwnerBounds(graphSongs.length)) {
+    return estimateIsolateOwnerBounds(graphSongs, dimensions, enabledOwnerIds);
+  }
+
+  return computeAllIsolateOwnerBounds(
     graphSongs,
     dimensions,
     layoutConfig,
@@ -607,3 +615,4 @@ export const getIsolateOwnerBoundsForLayout = (
         customCatalogForOwner?.(getSongScopeClusterId(soloSong))
       )
   );
+};

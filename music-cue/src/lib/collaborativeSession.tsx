@@ -94,7 +94,7 @@ const noopSessionContext: CollaborativeSessionContextValue = {
   myPresenceLayout: {
     layoutConfig: { viewMode: "cluster", clusterMode: "playlist", axisX: "year", axisY: "year" },
     libraryScopeMode: "isolate",
-    songSpaceMode: "shared",
+    songSpaceMode: "mine",
     includeMockUsers: false,
     viewContributorId: null,
   },

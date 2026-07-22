@@ -216,7 +216,7 @@ export const toLoadedLibrary = (merged: MergedSharedLibraryResponse): LoadedLibr
 
 const ENABLED_CONTRIBUTORS_KEY = "music-cue-enabled-contributors";
 const LOCAL_CONTRIBUTOR_ID_KEY = "music-cue-local-contributor-id";
-const SONG_SPACE_MODE_KEY = "music-cue-song-space-mode";
+const SONG_SPACE_MODE_KEY = "music-cue-song-space-mode-v2";
 
 export type SongSpaceMode = "mine" | "shared";
 
