@@ -62,6 +62,10 @@ import {
   zoomAtPoint,
 } from "../lib/graphView";
 import {
+  cullPositionedGraphNodes,
+  GRAPH_NODE_CULLING_THRESHOLD,
+} from "../lib/graphViewportCulling";
+import {
   loadBuildMode,
   loadBundledClusterCenterOverrides,
   loadClusterCenterOverrides,
@@ -391,14 +395,30 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     mode: "pending" | "pan" | "draw" | "draw-cluster" | "box-select";
   } | null>(null);
   const viewTransformRef = useRef<ViewTransform>(DEFAULT_VIEW_TRANSFORM);
+  const viewCullRafRef = useRef(0);
+  const [viewCullRevision, setViewCullRevision] = useState(0);
 
-  const applyViewTransformLive = useCallback((transform: ViewTransform) => {
-    viewTransformRef.current = transform;
-    const group = contentGroupRef.current;
-    if (group) {
-      group.setAttribute("transform", toViewTransformString(transform));
+  const scheduleViewCullUpdate = useCallback(() => {
+    if (viewCullRafRef.current) {
+      return;
     }
+    viewCullRafRef.current = requestAnimationFrame(() => {
+      viewCullRafRef.current = 0;
+      setViewCullRevision((value) => value + 1);
+    });
   }, []);
+
+  const applyViewTransformLive = useCallback(
+    (transform: ViewTransform) => {
+      viewTransformRef.current = transform;
+      const group = contentGroupRef.current;
+      if (group) {
+        group.setAttribute("transform", toViewTransformString(transform));
+      }
+      scheduleViewCullUpdate();
+    },
+    [scheduleViewCullUpdate]
+  );
 
   const setGraphPanningClass = useCallback((active: boolean) => {
     svgRef.current?.classList.toggle("music-cue-graph-panning", active);
@@ -953,7 +973,12 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
 
   useLayoutEffect(() => {
     applyViewTransformLive(viewTransformRef.current);
-  }, [applyViewTransformLive, dimensions.width, dimensions.height]);
+    scheduleViewCullUpdate();
+  }, [applyViewTransformLive, dimensions.width, dimensions.height, scheduleViewCullUpdate]);
+
+  useEffect(() => {
+    scheduleViewCullUpdate();
+  }, [libraryScopeMode, positionedSongs.length, scheduleViewCullUpdate]);
 
   useEffect(() => {
     const panel = graphPanelRef.current;
@@ -1372,6 +1397,45 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     }
     return renderGraphSongs.map((song) => ({ song, position: getRenderablePosition(song) }));
   }, [computeLayoutPosition, getRenderablePosition, isLargeLibrary, layoutConfig, renderGraphSongs, clusterDragPreviewTick]);
+
+  const prioritizedNodeIds = useMemo(() => {
+    const ids = new Set<string>();
+    if (hoveredSongId) {
+      ids.add(hoveredSongId);
+    }
+    if (selectedSongId) {
+      ids.add(selectedSongId);
+    }
+    if (activePersistentId) {
+      ids.add(activePersistentId);
+    }
+    cue?.songs.forEach((song) => ids.add(song.id));
+    return ids;
+  }, [activePersistentId, cue, hoveredSongId, selectedSongId]);
+
+  const enableGraphNodeCulling =
+    renderGraphSongs.length >= GRAPH_NODE_CULLING_THRESHOLD ||
+    (effectiveLibraryScopeMode === "isolate" && renderGraphSongs.length >= 120);
+
+  const renderedPositionedSongs = useMemo(() => {
+    if (!enableGraphNodeCulling) {
+      return positionedSongs;
+    }
+    return cullPositionedGraphNodes(positionedSongs, dimensions, viewTransformRef.current, {
+      alwaysIncludeSongIds: prioritizedNodeIds,
+      enableCulling: true,
+    });
+  }, [
+    dimensions,
+    enableGraphNodeCulling,
+    positionedSongs,
+    prioritizedNodeIds,
+    viewCullRevision,
+  ]);
+
+  const culledNodeCount = enableGraphNodeCulling
+    ? Math.max(0, positionedSongs.length - renderedPositionedSongs.length)
+    : 0;
 
   const songNodeFills = useMemo(() => {
     const fills = new Map<string, string>();
@@ -4011,6 +4075,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
                 : unavailableSongIds.size > 0
                   ? ` · ${unavailableSongIds.size} unavailable (red)`
                   : ""}
+              {culledNodeCount > 0 ? ` · showing ${renderedPositionedSongs.length} nodes (zoom/pan for detail)` : ""}
               {sharedTrackCount > 0 ? ` · ${sharedTrackCount} in common` : ""}
               {songSpaceMode === "shared" && sharedContributors.length > 0
                 ? ` · ${sharedContributors.map((contributor) => contributor.name).join(" + ")}`
@@ -4510,7 +4575,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
                 </>
               ) : null}
 
-              {positionedSongs.map(({ song, position }) => {
+              {renderedPositionedSongs.map(({ song, position }) => {
                 const canonicalId = getCanonicalSongId(song.id);
                 const inCue = cue?.songs.some((entry) => entry.id === canonicalId);
                 const isUnavailable = unavailableSongIds.has(canonicalId);
@@ -4518,15 +4583,16 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
                 const nodeFill = songNodeFills.get(song.id) ?? "#000080";
                 const radius = renderGraphSongs.length > 1000 ? 2 : renderGraphSongs.length > 400 ? 2 : 3;
                 const isLargeLibrary = renderGraphSongs.length >= 500;
+                const skipNodeHover = isLargeLibrary || enableGraphNodeCulling;
                 return (
                   <g
                     key={song.id}
                     transform={`translate(${position.x}, ${position.y})`}
                     onMouseEnter={
-                      isLargeLibrary ? undefined : () => setHoveredSongId(song.id)
+                      skipNodeHover ? undefined : () => setHoveredSongId(song.id)
                     }
                     onMouseLeave={
-                      isLargeLibrary
+                      skipNodeHover
                         ? undefined
                         : () => setHoveredSongId((current) => (current === song.id ? null : current))
                     }

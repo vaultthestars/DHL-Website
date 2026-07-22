@@ -156,6 +156,9 @@ export const useLayoutTransition = (
     const songSpaceChanged =
       layoutChanged &&
       songSpaceFromScopeKey(previousScopeKey) !== songSpaceFromScopeKey(extraTransitionKey);
+    const libraryScopeChanged =
+      layoutChanged &&
+      previousLibraryScope !== nextLibraryScope;
     prevLayoutRef.current = toLayout;
     prevTransitionKeyRef.current = toKey;
 
@@ -192,7 +195,9 @@ export const useLayoutTransition = (
     }
 
     const snapLayoutInstantly =
-      visibleSongs.length >= LARGE_LIBRARY_LAYOUT_SNAP_THRESHOLD || songSpaceChanged;
+      visibleSongs.length >= LARGE_LIBRARY_LAYOUT_SNAP_THRESHOLD ||
+      songSpaceChanged ||
+      libraryScopeChanged;
 
     const startFrom =
       animatedPositionsRef.current.size > 0
