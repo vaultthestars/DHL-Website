@@ -2,8 +2,8 @@ import type { GraphDimensions } from "./graphLayout";
 import type { ViewTransform } from "./graphView";
 import type { GraphPoint } from "./types";
 
-export const GRAPH_NODE_CULLING_THRESHOLD = 200;
-export const ABSOLUTE_MAX_RENDERED_NODES = 350;
+export const GRAPH_NODE_CULLING_THRESHOLD = 120;
+export const ABSOLUTE_MAX_RENDERED_NODES = 200;
 
 export type GraphViewportBounds = {
   minX: number;
@@ -56,7 +56,7 @@ export const getZoomNodeRenderBudget = (scale: number, inViewportCount: number):
 
   let budget = inViewportCount;
   if (scale >= 0.85) {
-    budget = Math.min(inViewportCount, 320);
+    budget = Math.min(inViewportCount, 150);
   } else if (scale >= 0.65) {
     budget = Math.min(inViewportCount, Math.floor(inViewportCount * scale * 0.85));
   } else if (scale >= 0.45) {

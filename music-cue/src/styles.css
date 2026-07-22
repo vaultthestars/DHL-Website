@@ -696,6 +696,21 @@ body {
   cursor: grabbing;
 }
 
+.music-cue-graph-panning > g {
+  will-change: transform;
+}
+
+.music-cue-graph-panning .music-cue-node-hit,
+.music-cue-graph-panning .music-cue-cluster-label-draggable,
+.music-cue-graph-panning .music-cue-squiggly-cluster-fill {
+  pointer-events: none;
+}
+
+.music-cue-graph-panning .music-cue-cluster-region,
+.music-cue-graph-panning .music-cue-cluster-label {
+  visibility: hidden;
+}
+
 .music-cue-graph-draw-ready {
   cursor: crosshair;
 }

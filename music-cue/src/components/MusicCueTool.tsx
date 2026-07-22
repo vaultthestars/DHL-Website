@@ -395,34 +395,42 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     mode: "pending" | "pan" | "draw" | "draw-cluster" | "box-select";
   } | null>(null);
   const viewTransformRef = useRef<ViewTransform>(DEFAULT_VIEW_TRANSFORM);
-  const viewCullDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const [viewCullRevision, setViewCullRevision] = useState(0);
+  const pendingViewTransformRef = useRef<ViewTransform | null>(null);
+  const viewTransformRafRef = useRef<number>(0);
+  const zoomSettleDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [zoomSettleRevision, setZoomSettleRevision] = useState(0);
 
-  const scheduleViewCullUpdate = useCallback(() => {
-    startTransition(() => {
-      setViewCullRevision((value) => value + 1);
-    });
-  }, []);
-
-  const scheduleViewCullUpdateDebounced = useCallback(
-    (delayMs = 300) => {
-      if (viewCullDebounceRef.current) {
-        clearTimeout(viewCullDebounceRef.current);
-      }
-      viewCullDebounceRef.current = setTimeout(() => {
-        viewCullDebounceRef.current = null;
-        scheduleViewCullUpdate();
-      }, delayMs);
-    },
-    [scheduleViewCullUpdate]
-  );
-
-  const applyViewTransformLive = useCallback((transform: ViewTransform) => {
-    viewTransformRef.current = transform;
+  const flushViewTransform = useCallback(() => {
+    viewTransformRafRef.current = 0;
+    const transform = pendingViewTransformRef.current ?? viewTransformRef.current;
+    pendingViewTransformRef.current = null;
     const group = contentGroupRef.current;
     if (group) {
       group.setAttribute("transform", toViewTransformString(transform));
     }
+  }, []);
+
+  const applyViewTransformLive = useCallback(
+    (transform: ViewTransform) => {
+      viewTransformRef.current = transform;
+      pendingViewTransformRef.current = transform;
+      if (!viewTransformRafRef.current) {
+        viewTransformRafRef.current = requestAnimationFrame(flushViewTransform);
+      }
+    },
+    [flushViewTransform]
+  );
+
+  const scheduleZoomSettleCullUpdate = useCallback((delayMs = 400) => {
+    if (zoomSettleDebounceRef.current) {
+      clearTimeout(zoomSettleDebounceRef.current);
+    }
+    zoomSettleDebounceRef.current = setTimeout(() => {
+      zoomSettleDebounceRef.current = null;
+      startTransition(() => {
+        setZoomSettleRevision((value) => value + 1);
+      });
+    }, delayMs);
   }, []);
 
   const setGraphPanningClass = useCallback((active: boolean) => {
@@ -977,9 +985,13 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
   }, [buildMode, graphTool]);
 
   useLayoutEffect(() => {
-    applyViewTransformLive(viewTransformRef.current);
-    scheduleViewCullUpdate();
-  }, [applyViewTransformLive, dimensions.width, dimensions.height, scheduleViewCullUpdate]);
+    pendingViewTransformRef.current = null;
+    if (viewTransformRafRef.current) {
+      cancelAnimationFrame(viewTransformRafRef.current);
+      viewTransformRafRef.current = 0;
+    }
+    flushViewTransform();
+  }, [dimensions.width, dimensions.height, flushViewTransform]);
 
   useEffect(() => {
     const panel = graphPanelRef.current;
@@ -1008,13 +1020,13 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
       if (svg) {
         const next = zoomAtPoint(viewTransformRef.current, event.clientX, event.clientY, svg, event.deltaY);
         applyViewTransformLive(next);
-        scheduleViewCullUpdateDebounced(400);
+        scheduleZoomSettleCullUpdate(400);
       }
     };
 
     document.addEventListener("wheel", handleWheel, { passive: false, capture: true });
     return () => document.removeEventListener("wheel", handleWheel, { capture: true });
-  }, [applyViewTransformLive, scheduleViewCullUpdateDebounced]);
+  }, [applyViewTransformLive, scheduleZoomSettleCullUpdate]);
 
   useEffect(() => {
     if (songs.length === 0) {
@@ -1415,9 +1427,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     return ids;
   }, [activePersistentId, cue, hoveredSongId, selectedSongId]);
 
-  const enableGraphNodeCulling =
-    renderGraphSongs.length >= GRAPH_NODE_CULLING_THRESHOLD ||
-    (effectiveLibraryScopeMode === "isolate" && renderGraphSongs.length >= 120);
+  const enableGraphNodeCulling = positionedSongs.length >= GRAPH_NODE_CULLING_THRESHOLD;
 
   const renderedPositionedSongs = useMemo(() => {
     if (!enableGraphNodeCulling) {
@@ -1432,16 +1442,12 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     enableGraphNodeCulling,
     positionedSongs,
     prioritizedNodeIds,
-    viewCullRevision,
+    zoomSettleRevision,
   ]);
 
   const culledNodeCount = enableGraphNodeCulling
     ? Math.max(0, positionedSongs.length - renderedPositionedSongs.length)
     : 0;
-
-  useEffect(() => {
-    scheduleViewCullUpdate();
-  }, [libraryScopeMode, positionedSongs.length, scheduleViewCullUpdate]);
 
   const songNodeFills = useMemo(() => {
     const fills = new Map<string, string>();
@@ -1934,12 +1940,8 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
   }, [cue, musicProvider, playbackTrackingEnabled]);
 
   const resetPanSession = () => {
-    const wasPanning = panSessionRef.current?.mode === "pan";
     panSessionRef.current = null;
     setGraphPanningClass(false);
-    if (wasPanning) {
-      scheduleViewCullUpdateDebounced(350);
-    }
   };
 
   const trackPointer = (event: React.PointerEvent<Element>) => {
@@ -1999,7 +2001,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
       panX: screenMidX - graphX * nextScale,
       panY: screenMidY - graphY * nextScale,
     });
-    scheduleViewCullUpdateDebounced(400);
+    scheduleZoomSettleCullUpdate(400);
   };
 
   const beginNewStroke = (point: GraphPoint) => {
@@ -2689,11 +2691,9 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
         session.mode = "draw";
         beginNewStroke(session.graphStart);
         appendStrokePoint(getLocalPoint(event, svgRef.current, contentGroupRef.current));
-      } else if (graphTool === "navigate") {
-        session.mode = "pan";
-        setGraphPanningClass(true);
       } else {
         session.mode = "pan";
+        setGraphPanningClass(true);
       }
     }
 
@@ -3000,8 +3000,11 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
 
   useEffect(
     () => () => {
-      if (viewCullDebounceRef.current) {
-        clearTimeout(viewCullDebounceRef.current);
+      if (viewTransformRafRef.current) {
+        cancelAnimationFrame(viewTransformRafRef.current);
+      }
+      if (zoomSettleDebounceRef.current) {
+        clearTimeout(zoomSettleDebounceRef.current);
       }
       if (metaBoundsDebounceRef.current) {
         clearTimeout(metaBoundsDebounceRef.current);
