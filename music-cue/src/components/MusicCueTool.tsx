@@ -977,10 +977,6 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
   }, [applyViewTransformLive, dimensions.width, dimensions.height, scheduleViewCullUpdate]);
 
   useEffect(() => {
-    scheduleViewCullUpdate();
-  }, [libraryScopeMode, positionedSongs.length, scheduleViewCullUpdate]);
-
-  useEffect(() => {
     const panel = graphPanelRef.current;
     if (!panel) {
       return undefined;
@@ -1436,6 +1432,10 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
   const culledNodeCount = enableGraphNodeCulling
     ? Math.max(0, positionedSongs.length - renderedPositionedSongs.length)
     : 0;
+
+  useEffect(() => {
+    scheduleViewCullUpdate();
+  }, [libraryScopeMode, positionedSongs.length, scheduleViewCullUpdate]);
 
   const songNodeFills = useMemo(() => {
     const fills = new Map<string, string>();
