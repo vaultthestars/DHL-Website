@@ -4,7 +4,7 @@ import type { ViewTransform } from "./graphView";
 import type { GraphPoint } from "./types";
 
 export const GRAPH_NODE_CULLING_THRESHOLD = 120;
-export const ABSOLUTE_MAX_RENDERED_NODES = 200;
+export const ABSOLUTE_MAX_RENDERED_NODES = 280;
 
 export type GraphViewportBounds = {
   minX: number;
@@ -19,6 +19,10 @@ export type PositionedGraphNode<T> = {
 };
 
 const VIEWPORT_PADDING_PX = 28;
+
+/** Extra graph-space padding so panning does not require immediate cull refreshes. */
+export const getCullingViewportPadding = (dimensions: GraphDimensions): number =>
+  Math.max(VIEWPORT_PADDING_PX, Math.max(dimensions.width, dimensions.height) * 0.65);
 
 export const getGraphViewportBounds = (
   dimensions: GraphDimensions,
@@ -56,18 +60,15 @@ export const getZoomNodeRenderBudget = (scale: number, inViewportCount: number):
     return 0;
   }
 
-  let budget = inViewportCount;
-  if (scale >= 0.85) {
-    budget = Math.min(inViewportCount, 150);
-  } else if (scale >= 0.65) {
-    budget = Math.min(inViewportCount, Math.floor(inViewportCount * scale * 0.85));
-  } else if (scale >= 0.45) {
-    budget = Math.min(inViewportCount, Math.floor(inViewportCount * scale * 0.7));
-  } else {
-    budget = Math.min(inViewportCount, Math.floor(inViewportCount * scale * 0.5));
-  }
+  const clampedScale = Math.min(Math.max(scale, 0.12), 3);
+  // Zoomed out: sparse sample. Zoomed in: show most in-viewport nodes.
+  const fillRatio = Math.min(1, 0.1 + clampedScale * 0.42);
+  const budget = Math.floor(inViewportCount * fillRatio);
+  const floor = clampedScale < 0.35 ? 50 : clampedScale < 0.65 ? 80 : 110;
+  const ceiling =
+    clampedScale >= 1.4 ? ABSOLUTE_MAX_RENDERED_NODES : clampedScale >= 1 ? 240 : 200;
 
-  return Math.min(Math.max(budget, scale < 0.45 ? 60 : 100), ABSOLUTE_MAX_RENDERED_NODES);
+  return Math.min(Math.max(budget, floor), ceiling);
 };
 
 export const cullPositionedGraphNodes = <T extends { id: string }>(
@@ -77,6 +78,8 @@ export const cullPositionedGraphNodes = <T extends { id: string }>(
   options?: {
     alwaysIncludeSongIds?: Set<string>;
     enableCulling?: boolean;
+    viewportPaddingPx?: number;
+    cullSeed?: string;
   }
 ): PositionedGraphNode<T>[] => {
   if (nodes.length === 0) {
@@ -88,8 +91,11 @@ export const cullPositionedGraphNodes = <T extends { id: string }>(
     return nodes;
   }
 
-  const bounds = getGraphViewportBounds(dimensions, transform);
+  const paddingPx = options?.viewportPaddingPx ?? getCullingViewportPadding(dimensions);
+  const bounds = getGraphViewportBounds(dimensions, transform, paddingPx);
   const alwaysInclude = options?.alwaysIncludeSongIds;
+  const cullSeed = options?.cullSeed;
+  const hashSample = (songId: string): number => hashUnit(songId, cullSeed);
   const inViewport: PositionedGraphNode<T>[] = [];
 
   nodes.forEach((node) => {
@@ -119,7 +125,7 @@ export const cullPositionedGraphNodes = <T extends { id: string }>(
   }
 
   const sampledOptional = optional
-    .map((node) => ({ node, unit: hashUnit(node.song.id) }))
+    .map((node) => ({ node, unit: hashSample(node.song.id) }))
     .sort((left, right) => left.unit - right.unit)
     .slice(0, optionalBudget)
     .map((entry) => entry.node);

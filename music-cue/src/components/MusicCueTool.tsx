@@ -1,5 +1,5 @@
 import { startTransition, useCallback, useDeferredValue, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { buildClusterRegions, buildClusterViewportHints, buildIsolateScopedClusterRegions, buildIsolateScopedClusterViewportHints, buildOwnerMetaRegions, ClusterRegion } from "../lib/clusterRegions";
+import { buildClusterRegions, buildIsolateScopedClusterRegions, buildOwnerMetaRegions, ClusterRegion } from "../lib/clusterRegions";
 import { syncClusterLayoutToServer } from "../lib/clusterLayoutSync";
 import {
   fromNormalizedPosition,
@@ -63,7 +63,7 @@ import {
   zoomAtPoint,
 } from "../lib/graphView";
 import {
-  buildCulledPositionedSongs,
+  cullPositionedGraphNodes,
   GRAPH_NODE_CULLING_THRESHOLD,
 } from "../lib/graphViewportCulling";
 import {
@@ -398,7 +398,8 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
   const viewTransformRef = useRef<ViewTransform>(DEFAULT_VIEW_TRANSFORM);
   const pendingViewTransformRef = useRef<ViewTransform | null>(null);
   const viewTransformRafRef = useRef<number>(0);
-  const viewInteractionEndDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const zoomCullRafRef = useRef<number>(0);
+  const zoomCullPendingRef = useRef(false);
   const viewTransformForCullRef = useRef<ViewTransform>(DEFAULT_VIEW_TRANSFORM);
   const [nodeCullRevision, setNodeCullRevision] = useState(0);
   const viewPresencePublishRef = useRef<() => void>(() => {});
@@ -430,21 +431,23 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
 
   const refreshNodeCullFromView = useCallback(() => {
     viewTransformForCullRef.current = { ...viewTransformRef.current };
-    startTransition(() => {
-      setNodeCullRevision((value) => value + 1);
-    });
+    setNodeCullRevision((value) => value + 1);
   }, []);
 
-  const scheduleViewInteractionEnd = useCallback(() => {
-    scheduleViewPresencePublish();
-    if (viewInteractionEndDebounceRef.current) {
-      clearTimeout(viewInteractionEndDebounceRef.current);
+  const scheduleZoomCullRefresh = useCallback(() => {
+    zoomCullPendingRef.current = true;
+    if (zoomCullRafRef.current) {
+      return;
     }
-    viewInteractionEndDebounceRef.current = setTimeout(() => {
-      viewInteractionEndDebounceRef.current = null;
+    zoomCullRafRef.current = requestAnimationFrame(() => {
+      zoomCullRafRef.current = 0;
+      if (!zoomCullPendingRef.current) {
+        return;
+      }
+      zoomCullPendingRef.current = false;
       refreshNodeCullFromView();
-    }, 400);
-  }, [refreshNodeCullFromView, scheduleViewPresencePublish]);
+    });
+  }, [refreshNodeCullFromView]);
 
   const setGraphPanningClass = useCallback((active: boolean) => {
     svgRef.current?.classList.toggle("music-cue-graph-panning", active);
@@ -1035,13 +1038,13 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
       if (svg) {
         const next = zoomAtPoint(viewTransformRef.current, event.clientX, event.clientY, svg, event.deltaY);
         applyViewTransformLive(next);
-        scheduleViewInteractionEnd();
+        scheduleZoomCullRefresh();
       }
     };
 
     document.addEventListener("wheel", handleWheel, { passive: false, capture: true });
     return () => document.removeEventListener("wheel", handleWheel, { capture: true });
-  }, [applyViewTransformLive, scheduleViewInteractionEnd]);
+  }, [applyViewTransformLive, scheduleZoomCullRefresh]);
 
   useEffect(() => {
     if (songs.length === 0) {
@@ -1178,6 +1181,8 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
   );
   const isolateOwnerCount = isolateOwnerIds.length;
   const isLargeLibrary = graphSongs.length >= LARGE_LIBRARY_LAYOUT_SNAP_THRESHOLD;
+  const deferredLayoutConfig = useDeferredValue(layoutConfig);
+  const coldLayoutConfig = isLargeLibrary ? deferredLayoutConfig : layoutConfig;
   const skipIsolateCentroidTranslation = isolateOwnerCount <= 1;
 
   const clearFrozenIsolateBounds = useCallback(() => {
@@ -1434,94 +1439,49 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
 
   const enableGraphNodeCulling = renderGraphSongs.length >= GRAPH_NODE_CULLING_THRESHOLD;
 
-  const clusterViewportHints = useMemo(() => {
-    if (!enableGraphNodeCulling || !isClusterLayoutConfig(layoutConfig)) {
-      return undefined;
-    }
-    const clusterMode = layoutConfig.clusterMode;
-    if (clusterMode !== "genre" && clusterMode !== "playlist" && clusterMode !== "custom") {
-      return undefined;
-    }
+  const layoutColdKey = `${layoutConfigKey(coldLayoutConfig)}|${layoutTransitionKey}|${renderGraphSongs.length}|${dimensions.width}x${dimensions.height}|${isolateBoundsRevision}`;
 
-    const useIsolateScopedClusters =
-      layoutLibraryScopeMode === "isolate" &&
-      getIsolateOwnerIds(graphSongs, activeContributorIds).length > 0;
-
-    if (useIsolateScopedClusters) {
-      return buildIsolateScopedClusterViewportHints(
-        graphSongs,
-        clusterMode,
-        layoutConfig,
-        dimensions,
-        layoutClusterOverrides,
-        activeContributorIds,
-        stats.playlistNames,
-        isolateOwnerBounds,
-        customCatalogForOwner
-      );
-    }
-
-    return buildClusterViewportHints(
-      clusterMode,
-      graphSongs,
-      stats,
-      dimensions,
-      layoutClusterOverrides,
-      activeCustomCatalog
-    );
-  }, [
-    activeContributorIds,
-    activeCustomCatalog,
-    customCatalogForOwner,
-    dimensions,
-    layoutLibraryScopeMode,
-    enableGraphNodeCulling,
-    graphSongs,
-    isolateOwnerBounds,
-    layoutClusterOverrides,
-    layoutConfig,
-    stats,
-  ]);
-
-  const getPositionForCulling = useCallback(
-    (song: Song) =>
-      isLargeLibrary ? computeLayoutPosition(song, layoutConfig) : getRenderablePosition(song),
-    [computeLayoutPosition, getRenderablePosition, isLargeLibrary, layoutConfig]
+  const bakedPositionedSongs = useMemo(
+    () =>
+      renderGraphSongs.map((song) => ({
+        song,
+        position: isLargeLibrary
+          ? computeLayoutPosition(song, coldLayoutConfig)
+          : getRenderablePosition(song),
+      })),
+    [
+      coldLayoutConfig,
+      computeLayoutPosition,
+      getRenderablePosition,
+      isLargeLibrary,
+      layoutColdKey,
+      renderGraphSongs,
+    ]
   );
 
-  useEffect(() => {
-    refreshNodeCullFromView();
-  }, [
-    dimensions.height,
-    dimensions.width,
-    enableGraphNodeCulling,
-    layoutTransitionKey,
-    refreshNodeCullFromView,
-    renderGraphSongs.length,
-  ]);
+  useLayoutEffect(() => {
+    viewTransformForCullRef.current = { ...viewTransformRef.current };
+    setNodeCullRevision((value) => value + 1);
+  }, [layoutColdKey]);
 
   const renderedPositionedSongs = useMemo(
     () =>
-      buildCulledPositionedSongs(
-        renderGraphSongs,
+      cullPositionedGraphNodes(
+        bakedPositionedSongs,
         dimensions,
         viewTransformForCullRef.current,
-        getPositionForCulling,
         {
           alwaysIncludeSongIds: prioritizedNodeIds,
           enableCulling: enableGraphNodeCulling,
-          clusterHints: clusterViewportHints,
           cullSeed: songSpaceMode === "shared" ? PLAYHTML_ROOM : undefined,
         }
       ),
     [
-      clusterViewportHints,
+      bakedPositionedSongs,
       dimensions,
       enableGraphNodeCulling,
-      getPositionForCulling,
       nodeCullRevision,
       prioritizedNodeIds,
-      renderGraphSongs,
       songSpaceMode,
     ]
   );
@@ -1568,16 +1528,16 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
             layoutLibraryScopeMode,
             activeContributorIds,
             positionForClusterRegions,
-            layoutConfig,
+            coldLayoutConfig,
             isolateOwnerBounds
           )
         : [];
 
-    if (!isClusterView(layoutConfig)) {
+    if (!isClusterView(coldLayoutConfig)) {
       return ownerRegions;
     }
 
-    if (layoutConfig.clusterMode === "custom") {
+    if (coldLayoutConfig.clusterMode === "custom") {
       return ownerRegions;
     }
 
@@ -1588,8 +1548,8 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     const innerClusterRegions = useIsolateScopedClusters
         ? buildIsolateScopedClusterRegions(
             graphSongs,
-            layoutConfig.clusterMode,
-            layoutConfig,
+            coldLayoutConfig.clusterMode,
+            coldLayoutConfig,
             positionForClusterRegions,
             dimensions,
             clusterOverridesForLayout,
@@ -1599,7 +1559,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
             customCatalogForOwner
           )
         : buildClusterRegions(
-            layoutConfig.clusterMode,
+            coldLayoutConfig.clusterMode,
             graphSongs,
             positionForClusterRegions,
             stats,
@@ -1613,6 +1573,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     activeCustomCatalog,
     clusterDragPreviewTick,
     clusterOverrides,
+    coldLayoutConfig,
     customCatalogForOwner,
     layoutClusterOverrides,
     dimensions,
@@ -1621,7 +1582,6 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     positionForClusterRegions,
     graphSongs,
     isolateOwnerBounds,
-    layoutConfig,
     resolveLayoutClusterOverrides,
     stats,
   ]);
@@ -2036,7 +1996,8 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     panSessionRef.current = null;
     setGraphPanningClass(false);
     if (wasPanning) {
-      scheduleViewInteractionEnd();
+      refreshNodeCullFromView();
+      scheduleViewPresencePublish();
     }
   };
 
@@ -2097,7 +2058,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
       panX: screenMidX - graphX * nextScale,
       panY: screenMidY - graphY * nextScale,
     });
-    scheduleViewInteractionEnd();
+    scheduleZoomCullRefresh();
   };
 
   const beginNewStroke = (point: GraphPoint) => {
@@ -3099,8 +3060,8 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
       if (viewTransformRafRef.current) {
         cancelAnimationFrame(viewTransformRafRef.current);
       }
-      if (viewInteractionEndDebounceRef.current) {
-        clearTimeout(viewInteractionEndDebounceRef.current);
+      if (zoomCullRafRef.current) {
+        cancelAnimationFrame(zoomCullRafRef.current);
       }
       if (metaBoundsDebounceRef.current) {
         clearTimeout(metaBoundsDebounceRef.current);
