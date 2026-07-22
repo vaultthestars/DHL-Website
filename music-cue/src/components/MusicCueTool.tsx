@@ -395,30 +395,33 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     mode: "pending" | "pan" | "draw" | "draw-cluster" | "box-select";
   } | null>(null);
   const viewTransformRef = useRef<ViewTransform>(DEFAULT_VIEW_TRANSFORM);
-  const viewCullRafRef = useRef(0);
+  const viewCullDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [viewCullRevision, setViewCullRevision] = useState(0);
 
   const scheduleViewCullUpdate = useCallback(() => {
-    if (viewCullRafRef.current) {
-      return;
-    }
-    viewCullRafRef.current = requestAnimationFrame(() => {
-      viewCullRafRef.current = 0;
-      setViewCullRevision((value) => value + 1);
-    });
+    setViewCullRevision((value) => value + 1);
   }, []);
 
-  const applyViewTransformLive = useCallback(
-    (transform: ViewTransform) => {
-      viewTransformRef.current = transform;
-      const group = contentGroupRef.current;
-      if (group) {
-        group.setAttribute("transform", toViewTransformString(transform));
+  const scheduleViewCullUpdateDebounced = useCallback(
+    (delayMs = 150) => {
+      if (viewCullDebounceRef.current) {
+        clearTimeout(viewCullDebounceRef.current);
       }
-      scheduleViewCullUpdate();
+      viewCullDebounceRef.current = setTimeout(() => {
+        viewCullDebounceRef.current = null;
+        scheduleViewCullUpdate();
+      }, delayMs);
     },
     [scheduleViewCullUpdate]
   );
+
+  const applyViewTransformLive = useCallback((transform: ViewTransform) => {
+    viewTransformRef.current = transform;
+    const group = contentGroupRef.current;
+    if (group) {
+      group.setAttribute("transform", toViewTransformString(transform));
+    }
+  }, []);
 
   const setGraphPanningClass = useCallback((active: boolean) => {
     svgRef.current?.classList.toggle("music-cue-graph-panning", active);
@@ -1003,12 +1006,13 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
       if (svg) {
         const next = zoomAtPoint(viewTransformRef.current, event.clientX, event.clientY, svg, event.deltaY);
         applyViewTransformLive(next);
+        scheduleViewCullUpdateDebounced();
       }
     };
 
     document.addEventListener("wheel", handleWheel, { passive: false, capture: true });
     return () => document.removeEventListener("wheel", handleWheel, { capture: true });
-  }, [applyViewTransformLive]);
+  }, [applyViewTransformLive, scheduleViewCullUpdateDebounced]);
 
   useEffect(() => {
     if (songs.length === 0) {
@@ -1928,8 +1932,12 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
   }, [cue, musicProvider, playbackTrackingEnabled]);
 
   const resetPanSession = () => {
+    const wasPanning = panSessionRef.current?.mode === "pan";
     panSessionRef.current = null;
     setGraphPanningClass(false);
+    if (wasPanning) {
+      scheduleViewCullUpdate();
+    }
   };
 
   const trackPointer = (event: React.PointerEvent<Element>) => {
@@ -1964,7 +1972,11 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
   const releasePointer = (event: React.PointerEvent<Element>) => {
     pointerPositionsRef.current.delete(event.pointerId);
     if (pointerPositionsRef.current.size < 2) {
+      const hadPinch = pinchSessionRef.current !== null;
       pinchSessionRef.current = null;
+      if (hadPinch) {
+        scheduleViewCullUpdate();
+      }
     }
   };
 
@@ -1989,6 +2001,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
       panX: screenMidX - graphX * nextScale,
       panY: screenMidY - graphY * nextScale,
     });
+    scheduleViewCullUpdateDebounced(200);
   };
 
   const beginNewStroke = (point: GraphPoint) => {
@@ -2989,6 +3002,9 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
 
   useEffect(
     () => () => {
+      if (viewCullDebounceRef.current) {
+        clearTimeout(viewCullDebounceRef.current);
+      }
       if (metaBoundsDebounceRef.current) {
         clearTimeout(metaBoundsDebounceRef.current);
       }
