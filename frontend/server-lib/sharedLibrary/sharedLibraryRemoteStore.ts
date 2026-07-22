@@ -68,7 +68,25 @@ const streamToString = async (body: unknown): Promise<string> => {
     const bytes = await (body as { transformToByteArray: () => Promise<Uint8Array> }).transformToByteArray();
     return new TextDecoder().decode(bytes);
   }
-  return new Response(body as BodyInit).text();
+  const stream = body as AsyncIterable<Uint8Array>;
+  if (stream && typeof stream[Symbol.asyncIterator] === "function") {
+    const chunks: Uint8Array[] = [];
+    for await (const chunk of stream) {
+      chunks.push(chunk);
+    }
+    if (chunks.length === 0) {
+      return "";
+    }
+    const totalLength = chunks.reduce((sum, chunk) => sum + chunk.length, 0);
+    const merged = new Uint8Array(totalLength);
+    let offset = 0;
+    for (const chunk of chunks) {
+      merged.set(chunk, offset);
+      offset += chunk.length;
+    }
+    return new TextDecoder().decode(merged);
+  }
+  return "";
 };
 
 let s3Client: S3Client | null = null;

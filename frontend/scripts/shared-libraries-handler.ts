@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
-import { handleSharedLibraryRoute } from "../api/lib/sharedLibrary/sharedLibraryHandlers";
+import { handleSharedLibraryRoute } from "../server-lib/sharedLibrary/sharedLibraryHandlers";
 
 const getSharedLibraryRoute = (req: VercelRequest): string => {
   const pathParts = req.query.path;

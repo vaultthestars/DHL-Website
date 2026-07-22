@@ -34,7 +34,7 @@ __export(spotify_handler_exports, {
 });
 module.exports = __toCommonJS(spotify_handler_exports);
 
-// api/lib/spotify/spotifyLibraryAssembly.ts
+// server-lib/spotify/spotifyLibraryAssembly.ts
 var getPlaylistItemTrack = (entry) => {
   const candidate = entry.item ?? entry.track;
   if (!candidate?.id) {
@@ -132,7 +132,7 @@ var mapWithConcurrency = async (items, concurrency, mapper) => {
   return results;
 };
 
-// api/lib/spotify/spotifySession.ts
+// server-lib/spotify/spotifySession.ts
 var import_node_crypto = require("node:crypto");
 var SPOTIFY_SESSION_COOKIE = "music_cue_spotify_session";
 var getSessionSecret = () => {
@@ -192,7 +192,7 @@ var buildSpotifySessionSetCookie = (tokens) => {
   return `${SPOTIFY_SESSION_COOKIE}=${sealSpotifySession(tokens)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${60 * 60 * 24 * 30}${secure}`;
 };
 
-// api/lib/spotify/spotifyClient.ts
+// server-lib/spotify/spotifyClient.ts
 var SPOTIFY_ACCOUNTS_URL = "https://accounts.spotify.com";
 var SPOTIFY_API_URL = "https://api.spotify.com/v1";
 var SPOTIFY_NOW_PLAYING_PLAYLIST_NAME = "MusicCue \u2014 Now Playing";
@@ -736,11 +736,11 @@ var createSpotifyClient = (store) => {
   };
 };
 
-// api/lib/spotify/sharedLibraryStore.ts
+// server-lib/spotify/sharedLibraryStore.ts
 var import_node_fs = require("node:fs");
 var import_node_path = __toESM(require("node:path"));
 
-// api/lib/spotify/sharedLibraryRemoteStore.ts
+// server-lib/spotify/sharedLibraryRemoteStore.ts
 var import_client_s3 = require("@aws-sdk/client-s3");
 var isVercelProduction = () => process.env.VERCEL === "1";
 var useS3Storage = () => {
@@ -790,7 +790,25 @@ var streamToString = async (body) => {
     const bytes = await body.transformToByteArray();
     return new TextDecoder().decode(bytes);
   }
-  return new Response(body).text();
+  const stream = body;
+  if (stream && typeof stream[Symbol.asyncIterator] === "function") {
+    const chunks = [];
+    for await (const chunk of stream) {
+      chunks.push(chunk);
+    }
+    if (chunks.length === 0) {
+      return "";
+    }
+    const totalLength = chunks.reduce((sum, chunk) => sum + chunk.length, 0);
+    const merged = new Uint8Array(totalLength);
+    let offset = 0;
+    for (const chunk of chunks) {
+      merged.set(chunk, offset);
+      offset += chunk.length;
+    }
+    return new TextDecoder().decode(merged);
+  }
+  return "";
 };
 var s3Client = null;
 var getS3Client = () => {
@@ -911,7 +929,7 @@ var getRemoteJsonStore = () => {
 };
 var isRemoteStorageConfigured = () => getRemoteJsonStore() !== null;
 
-// api/lib/spotify/sharedLibraryStore.ts
+// server-lib/spotify/sharedLibraryStore.ts
 var LOCAL_LIBRARY_DIR = import_node_path.default.resolve(process.cwd(), ".data/shared-libraries");
 var STORAGE_PREFIX = "music-cue/libraries";
 var INDEX_KEY = `${STORAGE_PREFIX}/index.json`;
@@ -1003,7 +1021,7 @@ var saveSharedLibrarySnapshot = async (snapshot) => {
   await remote.writeJson(INDEX_KEY, upsertContributor(currentIndex, snapshot));
 };
 
-// api/lib/spotify/spotifyHandlers.ts
+// server-lib/spotify/spotifyHandlers.ts
 var getQueryValue = (query, key) => {
   const value = query?.[key];
   if (Array.isArray(value)) {

@@ -34,7 +34,7 @@ __export(shared_libraries_handler_exports, {
 });
 module.exports = __toCommonJS(shared_libraries_handler_exports);
 
-// api/lib/sharedLibrary/sharedLibrary.ts
+// server-lib/sharedLibrary/sharedLibrary.ts
 var buildPlaylistOwnersFromSnapshots = (snapshots) => {
   const playlistOwners = {};
   snapshots.forEach((snapshot) => {
@@ -149,11 +149,11 @@ var mergeSharedLibrarySnapshots = (snapshots) => {
   };
 };
 
-// api/lib/sharedLibrary/sharedLibraryStore.ts
+// server-lib/sharedLibrary/sharedLibraryStore.ts
 var import_node_fs = require("node:fs");
 var import_node_path = __toESM(require("node:path"));
 
-// api/lib/sharedLibrary/sharedLibraryRemoteStore.ts
+// server-lib/sharedLibrary/sharedLibraryRemoteStore.ts
 var import_client_s3 = require("@aws-sdk/client-s3");
 var isVercelProduction = () => process.env.VERCEL === "1";
 var useS3Storage = () => {
@@ -203,7 +203,25 @@ var streamToString = async (body) => {
     const bytes = await body.transformToByteArray();
     return new TextDecoder().decode(bytes);
   }
-  return new Response(body).text();
+  const stream = body;
+  if (stream && typeof stream[Symbol.asyncIterator] === "function") {
+    const chunks = [];
+    for await (const chunk of stream) {
+      chunks.push(chunk);
+    }
+    if (chunks.length === 0) {
+      return "";
+    }
+    const totalLength = chunks.reduce((sum, chunk) => sum + chunk.length, 0);
+    const merged = new Uint8Array(totalLength);
+    let offset = 0;
+    for (const chunk of chunks) {
+      merged.set(chunk, offset);
+      offset += chunk.length;
+    }
+    return new TextDecoder().decode(merged);
+  }
+  return "";
 };
 var s3Client = null;
 var getS3Client = () => {
@@ -324,7 +342,7 @@ var getRemoteJsonStore = () => {
 };
 var isRemoteStorageConfigured = () => getRemoteJsonStore() !== null;
 
-// api/lib/sharedLibrary/sharedLibraryStore.ts
+// server-lib/sharedLibrary/sharedLibraryStore.ts
 var LOCAL_LIBRARY_DIR = import_node_path.default.resolve(process.cwd(), ".data/shared-libraries");
 var STORAGE_PREFIX = "music-cue/libraries";
 var INDEX_KEY = `${STORAGE_PREFIX}/index.json`;
@@ -332,9 +350,10 @@ var SHARED_LIBRARY_STORAGE_ERROR = "Shared library storage is not configured. Se
 var isVercelProduction2 = () => process.env.VERCEL === "1";
 var getSharedLibraryStorageDiagnostics = async () => {
   const remote = getRemoteJsonStore();
+  const storageBackend = remote?.backend ?? (isVercelProduction2() ? "none" : "local");
   const base = {
     vercel: isVercelProduction2(),
-    storageBackend: remote?.backend ?? (isVercelProduction2() ? "none" : "local"),
+    storageBackend,
     s3Configured: useS3Storage(),
     blobConfigured: useBlobStorage(),
     hasReadWriteToken: Boolean(process.env.BLOB_READ_WRITE_TOKEN),
@@ -472,7 +491,7 @@ var getSharedLibrarySnapshots = async (contributorIds) => {
   return snapshots.filter((snapshot) => snapshot !== null);
 };
 
-// api/lib/sharedLibrary/sharedLibraryHandlers.ts
+// server-lib/sharedLibrary/sharedLibraryHandlers.ts
 var getQueryValue = (query, key) => {
   const value = query?.[key];
   if (Array.isArray(value)) {

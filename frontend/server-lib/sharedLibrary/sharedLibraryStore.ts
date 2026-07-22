@@ -28,9 +28,11 @@ export const getSharedLibraryStorageDiagnostics = async (): Promise<{
   indexContributorCount: number;
 }> => {
   const remote = getRemoteJsonStore();
+  const storageBackend: "local" | "s3" | "blob" | "none" =
+    remote?.backend ?? (isVercelProduction() ? "none" : "local");
   const base = {
     vercel: isVercelProduction(),
-    storageBackend: remote?.backend ?? (isVercelProduction() ? "none" : "local"),
+    storageBackend,
     s3Configured: useS3Storage(),
     blobConfigured: useBlobStorage(),
     hasReadWriteToken: Boolean(process.env.BLOB_READ_WRITE_TOKEN),
