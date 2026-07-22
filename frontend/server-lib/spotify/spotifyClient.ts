@@ -52,11 +52,10 @@ const parseRetryAfterMs = (retryAfterHeader: string | null, attempt: number): nu
 };
 
 const SPOTIFY_API_ORIGIN = "https://api.spotify.com";
-const SPOTIFY_REQUEST_TIMEOUT_MS = 7_000;
-const SPOTIFY_TOKEN_TIMEOUT_MS = 5_000;
-const PLAYLISTS_PAGE_FIELDS =
-  "items(id,name,owner(id,display_name),public,collaborative,snapshot_id),next";
-const PLAYLISTS_PAGE_DEFAULT_PATH = `/me/playlists?limit=50&fields=${encodeURIComponent(PLAYLISTS_PAGE_FIELDS)}`;
+/** Keep each serverless invocation under Vercel Hobby's 10s limit. */
+const SPOTIFY_REQUEST_TIMEOUT_MS = 6_000;
+const SPOTIFY_TOKEN_TIMEOUT_MS = 4_000;
+const PLAYLISTS_PAGE_DEFAULT_PATH = "/me/playlists?limit=50";
 
 const tryDecodeURIComponent = (value: string): string => {
   try {
@@ -278,12 +277,7 @@ export const createSpotifyClient = (store: SpotifySessionStore) => {
     return refreshed.accessToken;
   };
 
-  const spotifyFetch = async <T>(
-    path: string,
-    init?: RequestInit,
-    attempt = 0,
-    startedAt = Date.now()
-  ): Promise<T> => {
+  const spotifyFetch = async <T>(path: string, init?: RequestInit): Promise<T> => {
     const accessToken = await getAccessToken();
     let response: Response;
     try {
@@ -300,10 +294,6 @@ export const createSpotifyClient = (store: SpotifySessionStore) => {
       const timedOut =
         error instanceof Error &&
         (error.name === "TimeoutError" || error.name === "AbortError" || error.message.includes("timeout"));
-      if (timedOut && attempt < 1) {
-        await sleep(750);
-        return spotifyFetch<T>(path, init, attempt + 1, startedAt);
-      }
       if (timedOut) {
         throw new Error("Spotify API timed out. Progress saved — wait a moment, then click Resume load & share.");
       }
@@ -312,9 +302,9 @@ export const createSpotifyClient = (store: SpotifySessionStore) => {
     if (response.status === 204) {
       return {} as T;
     }
-    if (response.status === 429 && attempt < 2 && Date.now() - startedAt < 45_000) {
-      await sleep(Math.min(parseRetryAfterMs(response.headers.get("Retry-After"), attempt), 30_000));
-      return spotifyFetch<T>(path, init, attempt + 1, startedAt);
+    if (response.status === 429) {
+      const payload = (await response.json().catch(() => ({}))) as { error?: { message?: string } };
+      throw new Error(formatSpotifyApiError(429, path, payload.error?.message));
     }
     if (!response.ok) {
       const payload = (await response.json().catch(() => ({}))) as { error?: { message?: string } };
@@ -427,7 +417,13 @@ export const createSpotifyClient = (store: SpotifySessionStore) => {
   };
 
   const warmupAccessToken = async (): Promise<{ ok: true }> => {
-    await getAccessToken();
+    const tokens = store.getTokens();
+    if (!tokens?.refreshToken) {
+      throw new Error("Not connected to Spotify.");
+    }
+    if (tokens.expiresAt <= Date.now() + 60_000) {
+      await refreshAccessToken(tokens.refreshToken);
+    }
     return { ok: true };
   };
 

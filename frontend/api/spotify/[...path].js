@@ -204,21 +204,10 @@ var SPOTIFY_SCOPES = [
   "user-modify-playback-state"
 ].join(" ");
 var NO_DEVICES_MESSAGE = "No Spotify devices found. Open the Spotify app, play any song once, then try Play again.";
-var sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-var parseRetryAfterMs = (retryAfterHeader, attempt) => {
-  if (retryAfterHeader) {
-    const seconds = Number.parseInt(retryAfterHeader, 10);
-    if (Number.isFinite(seconds) && seconds > 0) {
-      return seconds * 1e3;
-    }
-  }
-  return Math.min(1e3 * 2 ** attempt, 1e4);
-};
 var SPOTIFY_API_ORIGIN = "https://api.spotify.com";
-var SPOTIFY_REQUEST_TIMEOUT_MS = 7e3;
-var SPOTIFY_TOKEN_TIMEOUT_MS = 5e3;
-var PLAYLISTS_PAGE_FIELDS = "items(id,name,owner(id,display_name),public,collaborative,snapshot_id),next";
-var PLAYLISTS_PAGE_DEFAULT_PATH = `/me/playlists?limit=50&fields=${encodeURIComponent(PLAYLISTS_PAGE_FIELDS)}`;
+var SPOTIFY_REQUEST_TIMEOUT_MS = 6e3;
+var SPOTIFY_TOKEN_TIMEOUT_MS = 4e3;
+var PLAYLISTS_PAGE_DEFAULT_PATH = "/me/playlists?limit=50";
 var tryDecodeURIComponent = (value) => {
   try {
     return decodeURIComponent(value);
@@ -396,7 +385,7 @@ var createSpotifyClient = (store) => {
     const refreshed = await refreshAccessToken(tokens.refreshToken);
     return refreshed.accessToken;
   };
-  const spotifyFetch = async (path2, init, attempt = 0, startedAt = Date.now()) => {
+  const spotifyFetch = async (path2, init) => {
     const accessToken = await getAccessToken();
     let response;
     try {
@@ -411,10 +400,6 @@ var createSpotifyClient = (store) => {
       });
     } catch (error) {
       const timedOut = error instanceof Error && (error.name === "TimeoutError" || error.name === "AbortError" || error.message.includes("timeout"));
-      if (timedOut && attempt < 1) {
-        await sleep(750);
-        return spotifyFetch(path2, init, attempt + 1, startedAt);
-      }
       if (timedOut) {
         throw new Error("Spotify API timed out. Progress saved \u2014 wait a moment, then click Resume load & share.");
       }
@@ -423,9 +408,9 @@ var createSpotifyClient = (store) => {
     if (response.status === 204) {
       return {};
     }
-    if (response.status === 429 && attempt < 2 && Date.now() - startedAt < 45e3) {
-      await sleep(Math.min(parseRetryAfterMs(response.headers.get("Retry-After"), attempt), 3e4));
-      return spotifyFetch(path2, init, attempt + 1, startedAt);
+    if (response.status === 429) {
+      const payload = await response.json().catch(() => ({}));
+      throw new Error(formatSpotifyApiError(429, path2, payload.error?.message));
     }
     if (!response.ok) {
       const payload = await response.json().catch(() => ({}));
@@ -514,7 +499,13 @@ var createSpotifyClient = (store) => {
     };
   };
   const warmupAccessToken = async () => {
-    await getAccessToken();
+    const tokens = store.getTokens();
+    if (!tokens?.refreshToken) {
+      throw new Error("Not connected to Spotify.");
+    }
+    if (tokens.expiresAt <= Date.now() + 6e4) {
+      await refreshAccessToken(tokens.refreshToken);
+    }
     return { ok: true };
   };
   const fetchPlaylistTrackItems = async (playlistId) => await fetchAllPages(
@@ -1244,7 +1235,8 @@ var handleSpotifyRoute = async (route, req, res) => {
   } catch (error) {
     const message = error instanceof Error ? error.message : "Spotify request failed.";
     const rateLimited = message.toLowerCase().includes("rate limit");
-    finish(rateLimited ? 429 : 500, { error: message });
+    const timedOut = message.toLowerCase().includes("timed out") || message.toLowerCase().includes("timeout");
+    finish(rateLimited ? 429 : timedOut ? 504 : 500, { error: message });
   }
 };
 

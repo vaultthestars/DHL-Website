@@ -34,8 +34,8 @@ type SpotifyPage<T> = {
   next: string | null;
 };
 
-const PAGE_REQUEST_DELAY_MS = 1_000;
-const PHASE_COOLDOWN_MS = 5_000;
+const PAGE_REQUEST_DELAY_MS = 750;
+const PHASE_COOLDOWN_MS = 4_000;
 
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -91,11 +91,17 @@ const fetchJson = async <T>(url: string, init?: RequestInit, attempt = 0): Promi
     if (rateLimited) {
       markSpotifyImportRateLimited();
       throw new SpotifyImportRateLimitError(
-        errorMessage || "Spotify rate limit reached. Progress saved — wait a minute, then click Load again to resume."
+        errorMessage || "Spotify rate limit reached. Progress saved — wait a minute, then click Resume load & share."
       );
     }
 
-    if ((response.status === 504 || response.status >= 500) && attempt < 3) {
+    if (response.status === 504) {
+      throw new Error(
+        "Server timed out loading from Spotify (Vercel Hobby 10s limit). Wait 30s, then click Resume load & share."
+      );
+    }
+
+    if ((response.status === 502 || response.status === 503) && attempt < 3) {
       await sleep(2_000 * (attempt + 1));
       return fetchJson<T>(url, init, attempt + 1);
     }
@@ -156,16 +162,21 @@ const fetchSpotifyPageResilient = async <T>(
         message.includes("504") ||
         message.includes("502") ||
         message.includes("503") ||
-        message.includes("Network error");
+        message.includes("Network error") ||
+        message.includes("Vercel Hobby");
       if (!retryable || attempt >= maxAttempts - 1) {
+        if (message.toLowerCase().includes("rate limit")) {
+          markSpotifyImportRateLimited();
+          throw new SpotifyImportRateLimitError(message);
+        }
         throw error;
       }
       reportProgress(options.onProgress, {
         phase: "playlists",
-        message: `${options.progressMessage} (retry ${attempt + 2}/${maxAttempts})…`,
+        message: `${options.progressMessage} (retry ${attempt + 2}/${maxAttempts} in ${attempt + 2}s)…`,
         percent: 25,
       });
-      await sleep(1_500 * (attempt + 1));
+      await sleep(1_000 * (attempt + 1));
     }
   }
   throw new Error("Spotify request failed after multiple retries.");

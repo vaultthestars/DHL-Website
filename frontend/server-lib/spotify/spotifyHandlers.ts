@@ -251,6 +251,7 @@ export const handleSpotifyRoute = async (
   } catch (error) {
     const message = error instanceof Error ? error.message : "Spotify request failed.";
     const rateLimited = message.toLowerCase().includes("rate limit");
-    finish(rateLimited ? 429 : 500, { error: message });
+    const timedOut = message.toLowerCase().includes("timed out") || message.toLowerCase().includes("timeout");
+    finish(rateLimited ? 429 : timedOut ? 504 : 500, { error: message });
   }
 };
