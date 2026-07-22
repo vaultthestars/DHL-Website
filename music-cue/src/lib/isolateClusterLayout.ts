@@ -208,7 +208,6 @@ export const estimateIsolateOwnerBounds = (
     }
     provisionalBounds.set(meta.id, {
       ...existing,
-      centroid: meta.center,
       radius: Math.max(existing.radius, meta.radius),
     });
   });

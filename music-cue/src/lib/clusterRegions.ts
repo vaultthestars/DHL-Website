@@ -12,7 +12,7 @@ import {
   resolveClusterCenter,
 } from "./graphLayout";
 import { getEnabledOwnerMetaClusters, getSongScopeClusterId, LibraryScopeMode, wedgeToHullPath } from "./libraryScope";
-import { getClusterOverridesForOwner } from "./isolateClusterLayout";
+import { getClusterOverridesForOwner, translateSoloLayoutToMetaCluster } from "./isolateClusterLayout";
 import { isClusterView } from "./layoutMetrics";
 import { buildLibraryStatsFromSongs } from "../../shared/sharedLibrary";
 import {
@@ -371,7 +371,8 @@ export const buildClusterViewportHints = (
   stats: LibraryStats,
   dimensions: GraphDimensions,
   clusterOverrides: ClusterCenterOverrides,
-  customCatalog?: CustomClusterCatalog
+  customCatalog?: CustomClusterCatalog,
+  toDisplayPoint?: (point: GraphPoint) => GraphPoint
 ): ClusterViewportHint[] => {
   const memberIndex =
     visibleSongs.length >= LARGE_LIBRARY_CLUSTER_HULL_THRESHOLD
@@ -394,7 +395,7 @@ export const buildClusterViewportHints = (
       }
       return {
         clusterId: cluster.id,
-        center: cluster.center,
+        center: toDisplayPoint ? toDisplayPoint(cluster.center) : cluster.center,
         songIds: members.map((song) => song.id),
       };
     })
@@ -408,7 +409,8 @@ export const buildClusterRegions = (
   stats: LibraryStats,
   dimensions: GraphDimensions,
   clusterOverrides: ClusterCenterOverrides,
-  customCatalog?: CustomClusterCatalog
+  customCatalog?: CustomClusterCatalog,
+  toDisplayPoint?: (point: GraphPoint) => GraphPoint
 ): ClusterRegion[] => {
   if (clusterMode !== "genre" && clusterMode !== "playlist" && clusterMode !== "custom") {
     return [];
@@ -436,9 +438,10 @@ export const buildClusterRegions = (
       let hullPath: string;
       let labelCenter: GraphPoint;
       if (useLiteHulls) {
+        const displayCenter = toDisplayPoint ? toDisplayPoint(cluster.center) : cluster.center;
         const radius = estimateClusterHullRadius(members.length, padding);
-        hullPath = circleHullPath(cluster.center, radius);
-        labelCenter = cluster.center;
+        hullPath = circleHullPath(displayCenter, radius);
+        labelCenter = displayCenter;
       } else {
         const memberPositions = members.map((song) => getPosition(song));
         hullPath = pointsToHullPath(memberPositions, padding);
@@ -494,13 +497,18 @@ export const buildIsolateScopedClusterViewportHints = (
     const ownerStats = buildLibraryStatsFromSongs(ownerSongs, playlistNames);
     const ownerOverrides = getClusterOverridesForOwner(clusterOverrides, meta.id, layoutConfig);
     const ownerCatalog = customCatalogForOwner?.(meta.id);
+    const bounds = ownerBounds?.get(meta.id);
+    const toDisplayPoint = bounds
+      ? (point: GraphPoint) => translateSoloLayoutToMetaCluster(point, bounds, meta.center)
+      : undefined;
     return buildClusterViewportHints(
       clusterMode,
       ownerSongs,
       ownerStats,
       dimensions,
       ownerOverrides,
-      ownerCatalog
+      ownerCatalog,
+      toDisplayPoint
     ).map((hint) => ({
       ...hint,
       clusterId: ownerScopedClusterId(meta.id, hint.clusterId),
@@ -534,6 +542,10 @@ export const buildIsolateScopedClusterRegions = (
     const ownerStats = buildLibraryStatsFromSongs(ownerSongs, playlistNames);
     const ownerOverrides = getClusterOverridesForOwner(clusterOverrides, meta.id, layoutConfig);
     const ownerCatalog = customCatalogForOwner?.(meta.id);
+    const bounds = ownerBounds?.get(meta.id);
+    const toDisplayPoint = bounds
+      ? (point: GraphPoint) => translateSoloLayoutToMetaCluster(point, bounds, meta.center)
+      : undefined;
     return buildClusterRegions(
       clusterMode,
       ownerSongs,
@@ -541,7 +553,8 @@ export const buildIsolateScopedClusterRegions = (
       ownerStats,
       dimensions,
       ownerOverrides,
-      ownerCatalog
+      ownerCatalog,
+      toDisplayPoint
     ).map((region) => ({
       ...region,
       id: ownerScopedClusterId(meta.id, region.id),

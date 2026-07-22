@@ -1174,7 +1174,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
   );
   const isolateOwnerCount = isolateOwnerIds.length;
   const isLargeLibrary = graphSongs.length >= LARGE_LIBRARY_LAYOUT_SNAP_THRESHOLD;
-  const skipIsolateCentroidTranslation = isolateOwnerCount <= 1 || isLargeLibrary;
+  const skipIsolateCentroidTranslation = isolateOwnerCount <= 1;
 
   const clearFrozenIsolateBounds = useCallback(() => {
     frozenIsolateBoundsRef.current = null;
