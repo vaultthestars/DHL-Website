@@ -196,7 +196,7 @@ import {
   toOwnerScopedOverrideUpdates,
 } from "../lib/isolateClusterLayout";
 import {
-  applyIsolateDisplayPosition,
+  buildWebDisplayPositionCache,
   computeIsolateDisplayContext,
 } from "../lib/isolateDisplayTransform";
 import { getEnabledOwnerMetaClusters, hasMultipleLibraryOwners } from "../lib/libraryScope";
@@ -1250,7 +1250,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     libraryScopeMode === "isolate" && hasMultipleLibraryOwners(visibleSongs);
 
   const conglomeratePositionBySongId = useMemo(() => {
-    if (!useWebPerformanceOptimizations) {
+    if (!useWebPerformanceOptimizations || !isClusterView(layoutConfig)) {
       return null;
     }
     const positions = new Map<string, GraphPoint>();
@@ -1287,6 +1287,48 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     visibleSongs,
   ]);
 
+  const axisConglomeratePositionBySongId = useMemo(() => {
+    if (!useWebPerformanceOptimizations || isClusterView(layoutConfig)) {
+      return null;
+    }
+    if (libraryScopeMode === "isolate") {
+      return null;
+    }
+    const positions = new Map<string, GraphPoint>();
+    visibleSongs.forEach((song) => {
+      positions.set(
+        song.id,
+        layoutSongPosition(
+          song,
+          dimensions,
+          layoutConfig,
+          stats,
+          isSquigglyCustomMode ? squigglySongPositions : {},
+          conglomerateClusterOverridesRef.current,
+          visibleSongs,
+          {
+            libraryScopeMode: "conglomerate",
+            enabledOwnerIds: activeContributorIds,
+            customClusterCatalog: customClusterCatalogState.conglomerate,
+          }
+        )
+      );
+    });
+    return positions;
+  }, [
+    activeContributorIds,
+    clusterDragPreviewTick,
+    customClusterCatalogState.conglomerate,
+    dimensions,
+    isSquigglyCustomMode,
+    layoutConfig,
+    squigglySongPositions,
+    stats,
+    useWebPerformanceOptimizations,
+    visibleSongs,
+    libraryScopeMode,
+  ]);
+
   const isolateDisplayContext = useMemo(() => {
     if (!useWebPerformanceOptimizations || !hasMultipleLibraryOwners(visibleSongs)) {
       return null;
@@ -1299,13 +1341,15 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
       visibleSongs,
       dimensions,
       activeContributorIds,
-      layoutConfig
+      layoutConfig,
+      stats
     );
   }, [
     activeContributorIds,
     conglomeratePositionBySongId,
     dimensions,
     layoutConfig,
+    stats,
     useWebPerformanceOptimizations,
     visibleSongs,
   ]);
@@ -1445,9 +1489,13 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
 
   const getConglomeratePositionForSong = useCallback(
     (song: Song, config: LayoutConfig = layoutConfig): GraphPoint => {
-      const cached = conglomeratePositionBySongId?.get(song.id);
-      if (cached) {
-        return cached;
+      const clusterCached = conglomeratePositionBySongId?.get(song.id);
+      if (clusterCached) {
+        return clusterCached;
+      }
+      const axisCached = axisConglomeratePositionBySongId?.get(song.id);
+      if (axisCached) {
+        return axisCached;
       }
       return layoutSongPosition(
         song,
@@ -1466,6 +1514,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     },
     [
       activeContributorIds,
+      axisConglomeratePositionBySongId,
       clusterDragPreviewTick,
       conglomeratePositionBySongId,
       customClusterCatalogState.conglomerate,
@@ -1477,6 +1526,61 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
       visibleSongs,
     ]
   );
+
+  const webDisplayPositionBySongId = useMemo(() => {
+    if (!useWebPerformanceOptimizations) {
+      return null;
+    }
+
+    const conglomeratePositions = isClusterView(layoutConfig)
+      ? conglomeratePositionBySongId
+      : axisConglomeratePositionBySongId;
+
+    const isolateContext =
+      showIsolateContributorView && isolateDisplayContext ? isolateDisplayContext : null;
+
+    if (!isClusterView(layoutConfig) && libraryScopeMode === "isolate" && !isolateContext) {
+      return new Map<string, GraphPoint>();
+    }
+
+    if (isolateContext?.isAxisView) {
+      return buildWebDisplayPositionCache(
+        visibleSongs,
+        null,
+        isolateContext,
+        layoutConfig,
+        stats,
+        getConglomeratePositionForSong
+      );
+    }
+
+    if (!conglomeratePositions && !isolateContext) {
+      return null;
+    }
+
+    return buildWebDisplayPositionCache(
+      visibleSongs,
+      conglomeratePositions,
+      isolateContext,
+      layoutConfig,
+      stats,
+      getConglomeratePositionForSong
+    );
+  }, [
+    axisConglomeratePositionBySongId,
+    conglomeratePositionBySongId,
+    getConglomeratePositionForSong,
+    isolateDisplayContext,
+    layoutConfig,
+    libraryScopeMode,
+    showIsolateContributorView,
+    stats,
+    useWebPerformanceOptimizations,
+    visibleSongs,
+  ]);
+
+  const webDisplayPositionBySongIdRef = useRef(webDisplayPositionBySongId);
+  webDisplayPositionBySongIdRef.current = webDisplayPositionBySongId;
 
   const computeLayoutPosition = useCallback(
     (
@@ -1627,12 +1731,11 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
   const getPosition = useCallback(
     (song: Song): GraphPoint => {
       if (useWebPerformanceOptimizations) {
-        const base = getConglomeratePositionForSong(song);
-        const context = isolateDisplayContextRef.current;
-        if (showIsolateContributorViewRef.current && context) {
-          return applyIsolateDisplayPosition(song, base, context, layoutConfig, stats, visibleSongs);
+        const cached = webDisplayPositionBySongIdRef.current?.get(song.id);
+        if (cached) {
+          return cached;
         }
-        return base;
+        return getConglomeratePositionForSong(song);
       }
       return computeLayoutPosition(song, layoutConfig, layoutLibraryScopeMode, graphSongsRef.current);
     },
@@ -1641,9 +1744,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
       getConglomeratePositionForSong,
       layoutConfig,
       layoutLibraryScopeMode,
-      stats,
       useWebPerformanceOptimizations,
-      visibleSongs,
     ]
   );
 
@@ -1826,7 +1927,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
       return;
     }
     setNodeCullRevision((value) => value + 1);
-  }, [libraryScopeMode, useWebPerformanceOptimizations]);
+  }, [libraryScopeMode, useWebPerformanceOptimizations, webDisplayPositionBySongId]);
 
   const renderedPositionedSongs = useMemo(() => {
     if (useLazyWebNodeCulling) {
