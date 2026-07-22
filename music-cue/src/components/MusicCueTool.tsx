@@ -1274,6 +1274,8 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     () => isolateGraphSongs(visibleSongs),
     [isolateGraphSongs, visibleSongs]
   );
+  const graphSongsRef = useRef(graphSongs);
+  graphSongsRef.current = graphSongs;
 
   const liveIsolateOwnerBounds = useMemo(() => {
     if (layoutLibraryScopeMode !== "isolate" || !isClusterView(layoutConfig)) {
@@ -1354,6 +1356,9 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     return frozenIsolateBoundsRef.current ?? liveIsolateOwnerBounds;
   }, [isolateBoundsRevision, liveIsolateOwnerBounds, skipIsolateCentroidTranslation]);
 
+  const isolateOwnerBoundsRef = useRef(isolateOwnerBounds);
+  isolateOwnerBoundsRef.current = isolateOwnerBounds;
+
   const { getMetaClusterCenter, startMetaClusterCenterTransition, cancelMetaClusterCenterTransition } =
     useMetaClusterCenterTransition(graphSongs, dimensions, activeContributorIds, isolateOwnerBounds);
 
@@ -1390,8 +1395,8 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
       song: Song,
       config: LayoutConfig,
       scopeMode: LibraryScopeMode = layoutLibraryScopeMode,
-      layoutSongs: Song[] = isolateGraphSongs(visibleSongs),
-      ownerBounds = isolateOwnerBounds
+      layoutSongs: Song[] = graphSongsRef.current,
+      ownerBounds = isolateOwnerBoundsRef.current
     ): GraphPoint => {
       const clusterOverridesForLayout = draggingClusterIdRef.current
         ? resolveLayoutClusterOverrides()
@@ -1418,8 +1423,6 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
       dimensions,
       layoutLibraryScopeMode,
       getMetaClusterCenter,
-      isolateGraphSongs,
-      isolateOwnerBounds,
       layoutClusterOverrides,
       resolveLayoutClusterOverrides,
       skipIsolateCentroidTranslation,
@@ -1427,7 +1430,6 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
       squigglySongPositions,
       stats,
       useWebPerformanceOptimizations,
-      visibleSongs,
     ]
   );
 
@@ -1500,7 +1502,9 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
         scope === "isolate" && getIsolateOwnerIds(layoutSongs, activeContributorIds).length > 0;
 
       const innerRegions = useIsolateScopedClusters
-          ? buildIsolateScopedClusterRegions(
+          ? useWebPerformanceOptimizations
+            ? []
+            : buildIsolateScopedClusterRegions(
               layoutSongs,
               config.clusterMode,
               config,
@@ -1538,8 +1542,9 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
   );
 
   const getPosition = useCallback(
-    (song: Song): GraphPoint => computeLayoutPosition(song, layoutConfig),
-    [computeLayoutPosition, layoutConfig]
+    (song: Song): GraphPoint =>
+      computeLayoutPosition(song, layoutConfig, layoutLibraryScopeMode, graphSongsRef.current),
+    [computeLayoutPosition, layoutConfig, layoutLibraryScopeMode]
   );
 
   const layoutTransitionKey = `${songSpaceMode}:${libraryScopeMode}`;
@@ -1764,7 +1769,9 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
       getIsolateOwnerIds(graphSongs, activeContributorIds).length > 0;
 
     const innerClusterRegions = useIsolateScopedClusters
-        ? buildIsolateScopedClusterRegions(
+        ? useWebPerformanceOptimizations
+          ? []
+          : buildIsolateScopedClusterRegions(
             graphSongs,
             coldLayoutConfig.clusterMode,
             coldLayoutConfig,
