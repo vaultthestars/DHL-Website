@@ -713,7 +713,7 @@ const loadLibraryInChunks = async (options?: LoadLibraryOptions): Promise<Loaded
     return {
       songs: sanitized.songs,
       stats: sanitized.stats,
-      contributor: library.contributor,
+      contributor: sanitized.contributor,
     };
   } catch (error) {
     const session = await loadSpotifyImportSession();

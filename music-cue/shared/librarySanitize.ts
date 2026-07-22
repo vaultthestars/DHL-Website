@@ -2,10 +2,9 @@ import type { LibraryStats, Song } from "../src/lib/types";
 import { isExcludedPlaylistName } from "./playlistNames";
 import { buildLibraryStatsFromSongs } from "./sharedLibrary";
 
-export const sanitizeLibraryPayload = (payload: {
-  songs: Song[];
-  stats: LibraryStats;
-}): { songs: Song[]; stats: LibraryStats } => {
+export const sanitizeLibraryPayload = <T extends { songs: Song[]; stats: LibraryStats }>(
+  payload: T
+): T => {
   const playlistNames = payload.stats.playlistNames ?? {};
   const keptNames: Record<string, string> = {};
 
@@ -21,6 +20,7 @@ export const sanitizeLibraryPayload = (payload: {
   }));
 
   return {
+    ...payload,
     songs,
     stats: buildLibraryStatsFromSongs(songs, keptNames),
   };
