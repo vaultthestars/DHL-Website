@@ -586,33 +586,13 @@ export const getLayoutAxisLabels = (
 export const getIsolateOwnerBoundsForLayout = (
   graphSongs: Song[],
   dimensions: GraphDimensions,
-  layoutConfig: LayoutConfig,
-  stats: LibraryStats,
-  clusterOverrides: ClusterCenterOverrides,
+  _layoutConfig: LayoutConfig,
+  _stats: LibraryStats,
+  _clusterOverrides: ClusterCenterOverrides,
   enabledOwnerIds?: string[],
-  customCatalogForOwner?: (ownerId: string) => CustomClusterCatalog
+  _customCatalogForOwner?: (ownerId: string) => CustomClusterCatalog
 ): Map<string, { centroid: GraphPoint; radius: number }> => {
-  if (shouldUseEstimatedIsolateOwnerBounds(graphSongs.length)) {
-    return estimateIsolateOwnerBounds(graphSongs, dimensions, enabledOwnerIds);
-  }
-
-  return computeAllIsolateOwnerBounds(
-    graphSongs,
-    dimensions,
-    layoutConfig,
-    stats,
-    clusterOverrides,
-    enabledOwnerIds,
-    (soloSong, ownerSongs, ownerOverrides) =>
-      layoutSongPositionConglomerate(
-        soloSong,
-        dimensions,
-        layoutConfig,
-        buildLibraryStatsFromSongs(ownerSongs, stats.playlistNames),
-        {},
-        ownerOverrides,
-        ownerSongs,
-        customCatalogForOwner?.(getSongScopeClusterId(soloSong))
-      )
-  );
+  // Isolate layout = solo (my song space) positions + fixed per-owner translation only.
+  // Bounds come from song counts + metacluster ring — never from relayouting every song.
+  return estimateIsolateOwnerBounds(graphSongs, dimensions, enabledOwnerIds);
 };

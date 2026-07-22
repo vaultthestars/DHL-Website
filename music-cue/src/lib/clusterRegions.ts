@@ -127,6 +127,89 @@ const truncateLabel = (label: string, maxLength = 28): string =>
 const circleHullPath = (center: GraphPoint, radius: number): string =>
   `M ${(center.x - radius).toFixed(1)} ${center.y.toFixed(1)} a ${radius} ${radius} 0 1 0 ${radius * 2} 0 a ${radius} ${radius} 0 1 0 ${-radius * 2} 0`;
 
+const sampleMemberPositions = (
+  members: Song[],
+  getPosition: (song: Song) => GraphPoint
+): GraphPoint[] => {
+  if (members.length <= 8) {
+    return members.map((song) => getPosition(song));
+  }
+  const positions: GraphPoint[] = [];
+  for (let index = 0; index < members.length; index += 2) {
+    positions.push(getPosition(members[index]));
+  }
+  return positions;
+};
+
+/** Oriented ellipse through sampled member positions (cheaper than full convex hull). */
+const ellipseHullPathFromPoints = (points: GraphPoint[], padding: number): string => {
+  if (points.length === 0) {
+    return "";
+  }
+  if (points.length === 1) {
+    return circleHullPath(points[0], padding);
+  }
+  if (points.length === 2) {
+    return pointsToHullPath(points, padding);
+  }
+
+  const centroid = points.reduce(
+    (sum, point) => ({ x: sum.x + point.x, y: sum.y + point.y }),
+    { x: 0, y: 0 }
+  );
+  centroid.x /= points.length;
+  centroid.y /= points.length;
+
+  let sxx = 0;
+  let syy = 0;
+  let sxy = 0;
+  points.forEach((point) => {
+    const dx = point.x - centroid.x;
+    const dy = point.y - centroid.y;
+    sxx += dx * dx;
+    syy += dy * dy;
+    sxy += dx * dy;
+  });
+  const count = points.length;
+  sxx /= count;
+  syy /= count;
+  sxy /= count;
+
+  const angle = 0.5 * Math.atan2(2 * sxy, sxx - syy);
+  const cos = Math.cos(angle);
+  const sin = Math.sin(angle);
+
+  let minU = Infinity;
+  let maxU = -Infinity;
+  let minV = Infinity;
+  let maxV = -Infinity;
+  points.forEach((point) => {
+    const dx = point.x - centroid.x;
+    const dy = point.y - centroid.y;
+    const u = dx * cos + dy * sin;
+    const v = -dx * sin + dy * cos;
+    minU = Math.min(minU, u);
+    maxU = Math.max(maxU, u);
+    minV = Math.min(minV, v);
+    maxV = Math.max(maxV, v);
+  });
+
+  const rx = Math.max(padding * 0.6, (maxU - minU) / 2 + padding * 0.45);
+  const ry = Math.max(padding * 0.5, (maxV - minV) / 2 + padding * 0.45);
+
+  const steps = 28;
+  const parts: string[] = [];
+  for (let step = 0; step <= steps; step += 1) {
+    const t = (step / steps) * Math.PI * 2;
+    const u = rx * Math.cos(t);
+    const v = ry * Math.sin(t);
+    const x = centroid.x + u * cos - v * sin;
+    const y = centroid.y + u * sin + v * cos;
+    parts.push(`${step === 0 ? "M" : "L"} ${x.toFixed(1)} ${y.toFixed(1)}`);
+  }
+  return `${parts.join(" ")} Z`;
+};
+
 const estimateClusterHullRadius = (memberCount: number, padding: number): number =>
   Math.max(padding, Math.min(96, padding + Math.sqrt(memberCount) * 3));
 
@@ -438,10 +521,23 @@ export const buildClusterRegions = (
       let hullPath: string;
       let labelCenter: GraphPoint;
       if (useLiteHulls) {
-        const displayCenter = toDisplayPoint ? toDisplayPoint(cluster.center) : cluster.center;
-        const radius = estimateClusterHullRadius(members.length, padding);
-        hullPath = circleHullPath(displayCenter, radius);
-        labelCenter = displayCenter;
+        const memberPositions = sampleMemberPositions(members, getPosition).map((point) =>
+          toDisplayPoint ? toDisplayPoint(point) : point
+        );
+        if (memberPositions.length >= 2) {
+          hullPath = ellipseHullPathFromPoints(memberPositions, padding);
+          labelCenter = memberPositions.reduce(
+            (sum, point) => ({ x: sum.x + point.x, y: sum.y + point.y }),
+            { x: 0, y: 0 }
+          );
+          labelCenter.x /= memberPositions.length;
+          labelCenter.y /= memberPositions.length;
+        } else {
+          const displayCenter = toDisplayPoint ? toDisplayPoint(cluster.center) : cluster.center;
+          const radius = estimateClusterHullRadius(members.length, padding);
+          hullPath = circleHullPath(displayCenter, radius);
+          labelCenter = displayCenter;
+        }
       } else {
         const memberPositions = members.map((song) => getPosition(song));
         hullPath = pointsToHullPath(memberPositions, padding);

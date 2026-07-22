@@ -4,7 +4,7 @@ import type { ViewTransform } from "./graphView";
 import type { GraphPoint } from "./types";
 
 export const GRAPH_NODE_CULLING_THRESHOLD = 120;
-export const ABSOLUTE_MAX_RENDERED_NODES = 280;
+export const ABSOLUTE_MAX_RENDERED_NODES = 360;
 
 export type GraphViewportBounds = {
   minX: number;
@@ -66,7 +66,7 @@ export const getZoomNodeRenderBudget = (scale: number, inViewportCount: number):
   const budget = Math.floor(inViewportCount * fillRatio);
   const floor = clampedScale < 0.35 ? 50 : clampedScale < 0.65 ? 80 : 110;
   const ceiling =
-    clampedScale >= 1.4 ? ABSOLUTE_MAX_RENDERED_NODES : clampedScale >= 1 ? 240 : 200;
+    clampedScale >= 1.4 ? ABSOLUTE_MAX_RENDERED_NODES : clampedScale >= 1 ? 300 : 240;
 
   return Math.min(Math.max(budget, floor), ceiling);
 };

@@ -25,6 +25,7 @@ const CollaborativeLayoutSync = ({
   clusterOverrides,
   setClusterOverrides,
   draggingClusterIdRef,
+  layoutSyncPausedRef,
   roomLayoutSeed,
   clusterLayoutSyncMode,
   enableRemoteClusterPublish,
@@ -33,6 +34,7 @@ const CollaborativeLayoutSync = ({
   clusterOverrides: ClusterCenterOverrides;
   setClusterOverrides: (overrides: ClusterCenterOverrides) => void;
   draggingClusterIdRef: RefObject<string | null>;
+  layoutSyncPausedRef?: RefObject<boolean>;
   roomLayoutSeed: ClusterCenterOverrides;
   clusterLayoutSyncMode: ClusterLayoutSyncMode;
   enableRemoteClusterPublish: boolean;
@@ -52,7 +54,12 @@ const CollaborativeLayoutSync = ({
   remoteRef.current = remoteOverrides;
 
   useEffect(() => {
-    if (clusterLayoutSyncMode !== "snapshot" || isLoading || draggingClusterIdRef.current) {
+    if (
+      clusterLayoutSyncMode !== "snapshot" ||
+      isLoading ||
+      draggingClusterIdRef.current ||
+      layoutSyncPausedRef?.current
+    ) {
       return;
     }
     if (areClusterOverridesEqual(remoteOverrides, localRef.current)) {
@@ -60,24 +67,17 @@ const CollaborativeLayoutSync = ({
     }
     applyingRemoteRef.current = true;
     setClusterOverrides(normalizeClusterCenterOverrides(remoteOverrides));
+    queueMicrotask(() => {
+      applyingRemoteRef.current = false;
+    });
   }, [
     clusterLayoutSyncMode,
     draggingClusterIdRef,
     isLoading,
+    layoutSyncPausedRef,
     remoteOverrides,
     setClusterOverrides,
   ]);
-
-  useEffect(() => {
-    if (!enableRemoteClusterPublish || isLoading || applyingRemoteRef.current) {
-      applyingRemoteRef.current = false;
-      return;
-    }
-    if (areClusterOverridesEqual(clusterOverrides, remoteOverrides)) {
-      return;
-    }
-    setRemoteOverrides(normalizeClusterCenterOverrides(clusterOverrides));
-  }, [clusterOverrides, enableRemoteClusterPublish, isLoading, remoteOverrides, setRemoteOverrides]);
 
   const publishClusterLayout = useCallback(
     (overrides: ClusterCenterOverrides) => {
@@ -124,6 +124,7 @@ export const CollaborativeLayoutProvider = ({
   clusterOverrides,
   setClusterOverrides,
   draggingClusterIdRef,
+  layoutSyncPausedRef,
   layoutScope,
   roomLayoutSeed,
   clusterLayoutSyncMode = "off",
@@ -134,6 +135,7 @@ export const CollaborativeLayoutProvider = ({
   clusterOverrides: ClusterCenterOverrides;
   setClusterOverrides: (overrides: ClusterCenterOverrides) => void;
   draggingClusterIdRef: RefObject<string | null>;
+  layoutSyncPausedRef?: RefObject<boolean>;
   layoutScope: ClusterLayoutScope;
   roomLayoutSeed?: ClusterCenterOverrides;
   clusterLayoutSyncMode?: ClusterLayoutSyncMode;
@@ -156,6 +158,7 @@ export const CollaborativeLayoutProvider = ({
         clusterOverrides={clusterOverrides}
         setClusterOverrides={setClusterOverrides}
         draggingClusterIdRef={draggingClusterIdRef}
+        layoutSyncPausedRef={layoutSyncPausedRef}
         roomLayoutSeed={resolvedRoomLayoutSeed}
         clusterLayoutSyncMode={clusterLayoutSyncMode}
         enableRemoteClusterPublish={enableRemoteClusterPublish}
