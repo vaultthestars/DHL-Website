@@ -11,6 +11,7 @@ import {
   toNormalizedPosition,
 } from "../lib/graphLayout";
 import { invalidatePlaylistOverlapLayoutCache } from "../lib/playlistOverlapLayout";
+import { buildPlaylistMetaGraphEdges, buildPlaylistMetaGraphSegments } from "../lib/playlistMetaGraph";
 import { UNASSIGNED_PLAYLIST_CLUSTER_ID, EXCLUDED_PLAYLIST_NAMES } from "../lib/playlistConstants";
 import { applyPlaybackAdvance } from "../lib/cuePlaybackTracking";
 import { formatDuration, sumDuration } from "../lib/formatDuration";
@@ -81,7 +82,7 @@ import {
   loadMusicService,
   loadPathThreshold,
   loadCustomPositions,
-  loadPlaylistSpaceOut,
+  loadPlaylistGraphView,
   saveCustomPositions,
   saveBuildMode,
   saveClusterCenterOverridesForScope,
@@ -94,7 +95,7 @@ import {
   saveMusicService,
   savePathThreshold,
   savePlaylistClusterCenterOverrides,
-  savePlaylistSpaceOut,
+  savePlaylistGraphView,
   type ClusterLayoutScope,
 } from "../lib/storage";
 import { getActiveClusterLayoutScope, getEffectiveLibraryScopeMode, isSingleContributorSharedLibrary } from "../lib/clusterLayoutScope";
@@ -819,7 +820,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
   const [importProgress, setImportProgress] = useState<LibraryLoadProgress | null>(null);
   const [importResumeRevision, setImportResumeRevision] = useState(0);
   const [rateLimitCooldownMs, setRateLimitCooldownMs] = useState(0);
-  const [playlistSpaceOut, setPlaylistSpaceOut] = useState(() => loadPlaylistSpaceOut());
+  const [playlistGraphView, setPlaylistGraphView] = useState(() => loadPlaylistGraphView());
   const [shiftHeld, setShiftHeld] = useState(false);
   const [boxSelectRect, setBoxSelectRect] = useState<BoxSelectRect | null>(null);
   const [selectedClusterIds, setSelectedClusterIds] = useState<Set<string>>(() => new Set());
@@ -1531,7 +1532,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
 
   const enableGraphNodeCulling = renderGraphSongs.length >= GRAPH_NODE_CULLING_THRESHOLD;
 
-  const layoutColdKey = `${layoutConfigKey(coldLayoutConfig)}|${layoutTransitionKey}|${renderGraphSongs.length}|${dimensions.width}x${dimensions.height}|${isolateBoundsRevision}|space:${playlistSpaceOut}`;
+  const layoutColdKey = `${layoutConfigKey(coldLayoutConfig)}|${layoutTransitionKey}|${renderGraphSongs.length}|${dimensions.width}x${dimensions.height}|${isolateBoundsRevision}`;
 
   const bakedPositionedSongs = useMemo(
     () =>
@@ -1745,6 +1746,34 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     resolveLayoutClusterOverrides,
     stats,
   ]);
+
+  const showPlaylistMetaGraph =
+    playlistGraphView &&
+    songSpaceMode === "mine" &&
+    isClusterLayout &&
+    layoutConfig.clusterMode === "playlist" &&
+    !isSquigglyCustomMode;
+
+  const playlistMetaGraphSegments = useMemo(() => {
+    if (!showPlaylistMetaGraph) {
+      return [];
+    }
+    const playlistRegions = clusterRegions.filter(
+      (region) => region.id !== UNASSIGNED_PLAYLIST_CLUSTER_ID && !region.id.startsWith("owner:")
+    );
+    const centerByPlaylistId = new Map(playlistRegions.map((region) => [region.id, region.center]));
+    const edges = buildPlaylistMetaGraphEdges(stats.playlistIds ?? [], graphSongs);
+    return buildPlaylistMetaGraphSegments(edges, centerByPlaylistId);
+  }, [clusterRegions, graphSongs, showPlaylistMetaGraph, stats.playlistIds]);
+
+  const maxPlaylistMetaGraphSharedCount = useMemo(
+    () =>
+      playlistMetaGraphSegments.reduce(
+        (max, segment) => Math.max(max, segment.sharedSongCount),
+        1
+      ),
+    [playlistMetaGraphSegments]
+  );
 
   useLayoutEffect(() => {
     const previousKey = prevLayoutForClustersRef.current;
@@ -4588,25 +4617,27 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
                 ))}
               </div>
               {layoutConfig.clusterMode === "playlist" && songSpaceMode === "mine" ? (
-                <label className="music-cue-space-out-toggle">
-                  <input
-                    type="checkbox"
-                    checked={playlistSpaceOut}
-                    onChange={(event) => {
-                      const enabled = event.target.checked;
-                      setPlaylistSpaceOut(enabled);
-                      savePlaylistSpaceOut(enabled);
-                      invalidatePlaylistOverlapLayoutCache();
-                      invalidateLayoutPositionCaches();
-                      setStatusMessage(
-                        enabled
-                          ? "Space out on — playlist clusters spread using overlap graph layout."
-                          : "Space out off — default playlist cluster placement."
-                      );
-                    }}
-                  />
-                  Space out playlists
-                </label>
+                <button
+                  type="button"
+                  className={playlistGraphView ? "music-cue-layout-active" : ""}
+                  onClick={() => {
+                    const enabled = !playlistGraphView;
+                    setPlaylistGraphView(enabled);
+                    savePlaylistGraphView(enabled);
+                    setStatusMessage(
+                      enabled
+                        ? "Graph view on — lines show shared songs between playlists. Drag playlist labels to untangle."
+                        : "Graph view off."
+                    );
+                  }}
+                >
+                  Graph view
+                </button>
+              ) : null}
+              {showPlaylistMetaGraph ? (
+                <span className="music-cue-axis-note">
+                  Lines connect playlists that share songs. Drag playlist labels to rearrange.
+                </span>
               ) : null}
               {layoutConfig.clusterMode === "custom" && isSquigglyCustomMode ? (
                 <span className="music-cue-axis-note">
@@ -4856,6 +4887,25 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
                     pointerEvents="none"
                   />
                 ))}
+
+              {showPlaylistMetaGraph
+                ? playlistMetaGraphSegments.map((segment) => {
+                    const weight = 0.35 + (segment.sharedSongCount / maxPlaylistMetaGraphSharedCount) * 1.1;
+                    return (
+                      <line
+                        key={`metagraph-${segment.leftId}-${segment.rightId}`}
+                        x1={segment.start.x}
+                        y1={segment.start.y}
+                        x2={segment.end.x}
+                        y2={segment.end.y}
+                        className="music-cue-playlist-metagraph-edge"
+                        strokeWidth={weight}
+                        pointerEvents="none"
+                        opacity={effectiveClusterRevealOpacity}
+                      />
+                    );
+                  })
+                : null}
 
               {strokePaths.map((path, index) => (
                 <path

@@ -1203,6 +1203,12 @@ body {
   pointer-events: none;
 }
 
+.music-cue-playlist-metagraph-edge {
+  stroke: rgba(72, 52, 140, 0.42);
+  vector-effect: non-scaling-stroke;
+  pointer-events: none;
+}
+
 .music-cue-stroke,
 .music-cue-stroke-drafting,
 .music-cue-edge-path {

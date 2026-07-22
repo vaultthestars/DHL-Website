@@ -40,7 +40,7 @@ const LAYOUT_MODE_KEY = "music-cue-layout-mode";
 const PATH_THRESHOLD_KEY = "music-cue-path-threshold";
 const BUILD_MODE_KEY = "music-cue-build-mode";
 const GRAPH_TOOL_KEY = "music-cue-graph-tool";
-const PLAYLIST_SPACE_OUT_KEY = "music-cue-playlist-space-out";
+const PLAYLIST_GRAPH_VIEW_KEY = "music-cue-playlist-graph-view";
 export const DEFAULT_PATH_THRESHOLD = 60;
 
 export const loadMusicService = (): MusicServiceId => {
@@ -100,11 +100,11 @@ export const saveGraphTool = (tool: GraphToolMode): void => {
   localStorage.setItem(GRAPH_TOOL_KEY, tool);
 };
 
-export const loadPlaylistSpaceOut = (): boolean =>
-  localStorage.getItem(PLAYLIST_SPACE_OUT_KEY) === "1";
+export const loadPlaylistGraphView = (): boolean =>
+  localStorage.getItem(PLAYLIST_GRAPH_VIEW_KEY) === "1";
 
-export const savePlaylistSpaceOut = (enabled: boolean): void => {
-  localStorage.setItem(PLAYLIST_SPACE_OUT_KEY, enabled ? "1" : "0");
+export const savePlaylistGraphView = (enabled: boolean): void => {
+  localStorage.setItem(PLAYLIST_GRAPH_VIEW_KEY, enabled ? "1" : "0");
 };
 
 export const loadCustomPositions = (): Record<string, NormalizedPoint> => {
