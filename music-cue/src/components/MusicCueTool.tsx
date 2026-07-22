@@ -186,6 +186,7 @@ import {
   getCanonicalSongId,
   prepareGraphSongsForIsolate,
   resolveCanonicalSong,
+  scopeSongsForIsolateOwner,
 } from "../lib/isolateScopeSongs";
 import {
   displayNormalizedToSoloNormalized,
@@ -1700,7 +1701,8 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
               activeContributorIds,
               stats.playlistNames,
               snapshotOwnerBounds,
-              customCatalogForOwner
+              customCatalogForOwner,
+              playlistOwners
             )
           : buildClusterRegions(
               config.clusterMode,
@@ -1723,6 +1725,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
       dimensions,
       isolateGraphSongs,
       layoutClusterOverrides,
+      playlistOwners,
       stats,
       useWebPerformanceOptimizations,
       visibleSongs,
@@ -2035,14 +2038,26 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
 
     const byOwner = new Map<string, ClusterRegion[]>();
     ownerIds.forEach((ownerId) => {
-      const ownerSongs = graphSongs.filter(
-        (song) => resolveIsolateDisplayOwnerId(song, activeContributorIds) === ownerId
+      const ownerSongs = scopeSongsForIsolateOwner(
+        graphSongs.filter(
+          (song) => resolveIsolateDisplayOwnerId(song, activeContributorIds) === ownerId
+        ),
+        ownerId,
+        playlistOwners
       );
       if (ownerSongs.length === 0) {
         return;
       }
 
-      const ownerStats = buildLibraryStatsFromSongs(ownerSongs, stats.playlistNames);
+      const ownerPlaylistNames =
+        Object.keys(playlistOwners).length === 0
+          ? stats.playlistNames
+          : Object.fromEntries(
+              Object.entries(stats.playlistNames).filter(
+                ([playlistId]) => playlistOwners[playlistId] === ownerId
+              )
+            );
+      const ownerStats = buildLibraryStatsFromSongs(ownerSongs, ownerPlaylistNames);
       const ownerOverrides = getClusterOverridesForOwner(layoutClusterOverrides, ownerId, coldLayoutConfig);
       const ownerCatalog = customCatalogForOwner?.(ownerId);
       const regions = buildClusterRegions(
@@ -2070,6 +2085,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     getConglomeratePositionForSong,
     graphSongs,
     layoutClusterOverrides,
+    playlistOwners,
     stats.playlistNames,
     useWebPerformanceOptimizations,
   ]);
@@ -2134,7 +2150,8 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
           activeContributorIds,
           stats.playlistNames,
           isolateOwnerBounds,
-          customCatalogForOwner
+          customCatalogForOwner,
+          playlistOwners
         )
       : buildClusterRegions(
           coldLayoutConfig.clusterMode,
@@ -2159,6 +2176,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     layoutClusterOverrides,
     layoutLibraryScopeMode,
     libraryScopeMode,
+    playlistOwners,
     positionForClusterRegions,
     resolveLayoutClusterOverrides,
     showIsolateContributorView,

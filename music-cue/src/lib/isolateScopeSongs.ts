@@ -54,11 +54,33 @@ export const scopeSongPlaylistsForOwner = (
   if (!ownerId) {
     return song;
   }
+  return scopeSongPlaylistsForIsolateOwner(song, ownerId, playlistOwners);
+};
+
+export const scopeSongPlaylistsForIsolateOwner = (
+  song: Song,
+  ownerId: string,
+  playlistOwners: Record<string, string>
+): Song => {
+  if (Object.keys(playlistOwners).length === 0) {
+    return song;
+  }
   const playlists = filterPlaylistsForOwner(song.playlists, ownerId, playlistOwners);
   if (playlists.length === (song.playlists ?? []).length) {
     return song;
   }
   return { ...song, playlists };
+};
+
+export const scopeSongsForIsolateOwner = (
+  songs: Song[],
+  ownerId: string,
+  playlistOwners: Record<string, string>
+): Song[] => {
+  if (Object.keys(playlistOwners).length === 0) {
+    return songs;
+  }
+  return songs.map((song) => scopeSongPlaylistsForIsolateOwner(song, ownerId, playlistOwners));
 };
 
 export const expandSongsForIsolateScope = (songs: Song[], enabledOwnerIds?: string[]): Song[] => {

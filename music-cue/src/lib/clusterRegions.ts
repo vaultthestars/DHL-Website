@@ -12,6 +12,7 @@ import {
   resolveClusterCenter,
 } from "./graphLayout";
 import { getEnabledOwnerMetaClusters, getSongScopeClusterId, LibraryScopeMode, wedgeToHullPath } from "./libraryScope";
+import { scopeSongsForIsolateOwner } from "./isolateScopeSongs";
 import { getClusterOverridesForOwner, translateSoloLayoutToMetaCluster } from "./isolateClusterLayout";
 import { isClusterView } from "./layoutMetrics";
 import { useWebPerformanceOptimizations } from "./runtime";
@@ -582,6 +583,19 @@ export const buildClusterRegions = (
 
 const ownerScopedClusterId = (ownerId: string, clusterId: string): string => `owner:${ownerId}:${clusterId}`;
 
+const playlistNamesForOwner = (
+  playlistNames: Record<string, string>,
+  ownerId: string,
+  playlistOwners: Record<string, string>
+): Record<string, string> => {
+  if (Object.keys(playlistOwners).length === 0) {
+    return playlistNames;
+  }
+  return Object.fromEntries(
+    Object.entries(playlistNames).filter(([playlistId]) => playlistOwners[playlistId] === ownerId)
+  );
+};
+
 export const buildIsolateScopedClusterViewportHints = (
   graphSongs: Song[],
   clusterMode: ClusterMode,
@@ -591,7 +605,8 @@ export const buildIsolateScopedClusterViewportHints = (
   enabledOwnerIds?: string[],
   playlistNames: Record<string, string> = {},
   ownerBounds?: Map<string, { centroid: GraphPoint; radius: number }>,
-  customCatalogForOwner?: (ownerId: string) => CustomClusterCatalog
+  customCatalogForOwner?: (ownerId: string) => CustomClusterCatalog,
+  playlistOwners: Record<string, string> = {}
 ): ClusterViewportHint[] => {
   const metaClusters = getEnabledOwnerMetaClusters(graphSongs, dimensions, enabledOwnerIds, {
     isAxisView: false,
@@ -599,12 +614,19 @@ export const buildIsolateScopedClusterViewportHints = (
   });
 
   return metaClusters.flatMap((meta) => {
-    const ownerSongs = graphSongs.filter((song) => getSongScopeClusterId(song) === meta.id);
+    const ownerSongs = scopeSongsForIsolateOwner(
+      graphSongs.filter((song) => getSongScopeClusterId(song) === meta.id),
+      meta.id,
+      playlistOwners
+    );
     if (ownerSongs.length === 0) {
       return [];
     }
 
-    const ownerStats = buildLibraryStatsFromSongs(ownerSongs, playlistNames);
+    const ownerStats = buildLibraryStatsFromSongs(
+      ownerSongs,
+      playlistNamesForOwner(playlistNames, meta.id, playlistOwners)
+    );
     const ownerOverrides = getClusterOverridesForOwner(clusterOverrides, meta.id, layoutConfig);
     const ownerCatalog = customCatalogForOwner?.(meta.id);
     const bounds = ownerBounds?.get(meta.id);
@@ -636,7 +658,8 @@ export const buildIsolateScopedClusterRegions = (
   enabledOwnerIds?: string[],
   playlistNames: Record<string, string> = {},
   ownerBounds?: Map<string, { centroid: GraphPoint; radius: number }>,
-  customCatalogForOwner?: (ownerId: string) => CustomClusterCatalog
+  customCatalogForOwner?: (ownerId: string) => CustomClusterCatalog,
+  playlistOwners: Record<string, string> = {}
 ): ClusterRegion[] => {
   const metaClusters = getEnabledOwnerMetaClusters(graphSongs, dimensions, enabledOwnerIds, {
     isAxisView: false,
@@ -644,12 +667,19 @@ export const buildIsolateScopedClusterRegions = (
   });
 
   return metaClusters.flatMap((meta) => {
-    const ownerSongs = graphSongs.filter((song) => getSongScopeClusterId(song) === meta.id);
+    const ownerSongs = scopeSongsForIsolateOwner(
+      graphSongs.filter((song) => getSongScopeClusterId(song) === meta.id),
+      meta.id,
+      playlistOwners
+    );
     if (ownerSongs.length === 0) {
       return [];
     }
 
-    const ownerStats = buildLibraryStatsFromSongs(ownerSongs, playlistNames);
+    const ownerStats = buildLibraryStatsFromSongs(
+      ownerSongs,
+      playlistNamesForOwner(playlistNames, meta.id, playlistOwners)
+    );
     const ownerOverrides = getClusterOverridesForOwner(clusterOverrides, meta.id, layoutConfig);
     const ownerCatalog = customCatalogForOwner?.(meta.id);
     const bounds = ownerBounds?.get(meta.id);
