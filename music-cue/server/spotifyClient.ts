@@ -316,7 +316,9 @@ export const createSpotifyClient = (store: SpotifySessionStore) => {
       const payload = (await response.json().catch(() => ({}))) as { error?: { message?: string } };
       const retryAfterRaw = response.headers.get("Retry-After");
       const parsedRetryAfter = retryAfterRaw ? Number.parseInt(retryAfterRaw, 10) : Number.NaN;
-      const retryAfterSeconds = Number.isFinite(parsedRetryAfter) && parsedRetryAfter > 0 ? parsedRetryAfter : 300;
+      const retryAfterSeconds = Number.isFinite(parsedRetryAfter) && parsedRetryAfter > 0
+        ? Math.min(parsedRetryAfter, 3_600)
+        : 300;
       throw new SpotifyRateLimitError(
         formatSpotifyApiError(429, path, payload.error?.message),
         retryAfterSeconds

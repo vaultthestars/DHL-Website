@@ -3612,6 +3612,9 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     if (!musicProvider.loadLibrary) {
       return;
     }
+    if (isImportingRef.current) {
+      return;
+    }
     if (!spotifyCanLoadLibrary) {
       setStatusMessage("Connect Spotify before loading your library.");
       return;

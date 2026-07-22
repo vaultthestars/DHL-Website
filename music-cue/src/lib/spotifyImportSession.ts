@@ -16,6 +16,8 @@ const RATE_LIMIT_UNTIL_KEY = "music-cue-spotify-rate-limit-until-ms";
 
 const DEFAULT_RATE_LIMIT_SECONDS = 60;
 const MIN_RATE_LIMIT_SECONDS = 60;
+/** Client-side cap — Spotify may return multi-hour Retry-After after heavy abuse. */
+const MAX_RATE_LIMIT_SECONDS = 3_600;
 
 export const saveConnectedSpotifyUser = (contributor: { id: string; name: string }): void => {
   localStorage.setItem(CONNECTED_USER_KEY, JSON.stringify(contributor));
@@ -182,7 +184,10 @@ export const formatSpotifyRateLimitCooldown = (cooldownMs: number): string => {
 };
 
 export const markSpotifyImportRateLimited = (retryAfterSeconds?: number): void => {
-  const waitSeconds = Math.max(retryAfterSeconds ?? DEFAULT_RATE_LIMIT_SECONDS, MIN_RATE_LIMIT_SECONDS);
+  const waitSeconds = Math.min(
+    Math.max(retryAfterSeconds ?? DEFAULT_RATE_LIMIT_SECONDS, MIN_RATE_LIMIT_SECONDS),
+    MAX_RATE_LIMIT_SECONDS
+  );
   const proposedUntil = Date.now() + waitSeconds * 1000;
   const existingUntil = Number.parseInt(localStorage.getItem(RATE_LIMIT_UNTIL_KEY) ?? "0", 10);
   const rateLimitUntilMs = Math.max(

@@ -22,7 +22,6 @@ import {
   SpotifyImportRateLimitError,
   type SpotifyImportSession,
 } from "../spotifyImportSession";
-import { isWebDeployment } from "../runtime";
 import {
   ConnectionStatus,
   CuePlaylistResult,
@@ -41,7 +40,10 @@ type SpotifyPage<T> = {
 const PAGE_REQUEST_DELAY_MS = 750;
 const PHASE_COOLDOWN_MS = 4_000;
 const POST_COOLDOWN_BUFFER_MS = 3_000;
-const SINGLE_STEP_IMPORT = isWebDeployment;
+/** One Spotify API call per loadLibrary() invocation — prevents burst rate limits. */
+const SINGLE_STEP_IMPORT = true;
+
+let spotifyImportInFlight = false;
 
 type SpotifyFetchOptions = {
   /** Only successful library-import calls should clear a Spotify rate-limit cooldown. */
@@ -569,48 +571,53 @@ const loadGenresPhase = async (
 };
 
 const loadLibraryInChunks = async (options?: LoadLibraryOptions): Promise<LoadedLibrary> => {
+  if (spotifyImportInFlight) {
+    throw new Error("Spotify import is already running. Wait for it to finish before clicking Resume again.");
+  }
+  spotifyImportInFlight = true;
+
   const onProgress = options?.onProgress;
 
-  if (options?.fresh) {
-    await clearSpotifyImportSession();
-  }
-
-  const cooldownMs = getSpotifyImportRateLimitCooldownMs();
-  if (cooldownMs > 0) {
-    reportProgress(onProgress, {
-      phase: "profile",
-      message: `Waiting for Spotify rate limit to clear (${formatSpotifyRateLimitCooldown(cooldownMs)})…`,
-      percent: 1,
-    });
-    await sleep(cooldownMs);
-    await sleep(POST_COOLDOWN_BUFFER_MS);
-  }
-
-  let session = options?.fresh ? null : await loadSpotifyImportSession();
-  const profile = await resolveImportContributor(session, options);
-
-  if (session && session.contributor.id !== profile.id) {
-    await clearSpotifyImportSession();
-    session = null;
-  }
-
-  if (session) {
-    reportProgress(onProgress, {
-      phase: session.phase,
-      message: `Resuming import (${session.savedItems.length.toLocaleString()} saved tracks loaded)…`,
-      percent: computeSpotifyImportPercent(session),
-    });
-  } else {
-    session = createSpotifyImportSession(profile);
-    persistSession(session);
-    reportProgress(onProgress, {
-      phase: "saved-tracks",
-      message: "Loading saved tracks…",
-      percent: 3,
-    });
-  }
-
   try {
+    if (options?.fresh) {
+      await clearSpotifyImportSession();
+    }
+
+    const cooldownMs = getSpotifyImportRateLimitCooldownMs();
+    if (cooldownMs > 0) {
+      reportProgress(onProgress, {
+        phase: "profile",
+        message: `Waiting for Spotify rate limit to clear (${formatSpotifyRateLimitCooldown(cooldownMs)})…`,
+        percent: 1,
+      });
+      await sleep(cooldownMs);
+      await sleep(POST_COOLDOWN_BUFFER_MS);
+    }
+
+    let session = options?.fresh ? null : await loadSpotifyImportSession();
+    const profile = await resolveImportContributor(session, options);
+
+    if (session && session.contributor.id !== profile.id) {
+      await clearSpotifyImportSession();
+      session = null;
+    }
+
+    if (session) {
+      reportProgress(onProgress, {
+        phase: session.phase,
+        message: `Resuming import (${session.savedItems.length.toLocaleString()} saved tracks loaded)…`,
+        percent: computeSpotifyImportPercent(session),
+      });
+    } else {
+      session = createSpotifyImportSession(profile);
+      persistSession(session);
+      reportProgress(onProgress, {
+        phase: "saved-tracks",
+        message: "Loading saved tracks…",
+        percent: 3,
+      });
+    }
+
     if (!session.savedTracksComplete) {
       if (!SINGLE_STEP_IMPORT && session.savedItems.length === 0) {
         await warmupSpotifyApi();
@@ -665,11 +672,13 @@ const loadLibraryInChunks = async (options?: LoadLibraryOptions): Promise<Loaded
       contributor: library.contributor,
     };
   } catch (error) {
-    persistSession(session);
-    if (error instanceof SpotifyImportRateLimitError || error instanceof SpotifyImportPausedError) {
-      throw error;
+    const session = await loadSpotifyImportSession();
+    if (session) {
+      persistSession(session);
     }
     throw error;
+  } finally {
+    spotifyImportInFlight = false;
   }
 };
 
