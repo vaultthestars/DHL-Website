@@ -2993,20 +2993,20 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     }
 
     const nextCompleted = [...completedStrokesRef.current, currentStroke];
-    completedStrokesRef.current = nextCompleted;
-    setCompletedStrokes(nextCompleted);
-    strokeRef.current = [];
-    setActiveStroke([]);
-
     const generated = regenerateCueFromStrokes(nextCompleted, pathThreshold, cueLength);
     if (!generated || generated.songs.length === 0) {
-      completedStrokesRef.current = completedStrokesRef.current.slice(0, -1);
-      setCompletedStrokes(completedStrokesRef.current);
+      strokeRef.current = [];
+      setActiveStroke([]);
       setStatusMessage("No songs matched that path. Widen the path threshold or draw closer to nodes.");
       return;
     }
 
     pushUndo(cue, { includeStrokes: true, action: "stroke" });
+
+    completedStrokesRef.current = nextCompleted;
+    setCompletedStrokes(nextCompleted);
+    strokeRef.current = [];
+    setActiveStroke([]);
 
     setCue({
       ...generated,
