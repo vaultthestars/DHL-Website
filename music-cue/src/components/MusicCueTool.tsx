@@ -1,4 +1,4 @@
-import { startTransition, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { startTransition, useCallback, useDeferredValue, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { buildClusterRegions, buildClusterViewportHints, buildIsolateScopedClusterRegions, buildIsolateScopedClusterViewportHints, buildOwnerMetaRegions, ClusterRegion } from "../lib/clusterRegions";
 import { syncClusterLayoutToServer } from "../lib/clusterLayoutSync";
 import {
@@ -398,7 +398,8 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
   const pendingViewTransformRef = useRef<ViewTransform | null>(null);
   const viewTransformRafRef = useRef<number>(0);
   const zoomSettleDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const [zoomSettleRevision, setZoomSettleRevision] = useState(0);
+  const viewTransformForCullRef = useRef<ViewTransform>(DEFAULT_VIEW_TRANSFORM);
+  const [nodeCullRevision, setNodeCullRevision] = useState(0);
 
   const flushViewTransform = useCallback(() => {
     viewTransformRafRef.current = 0;
@@ -421,15 +422,23 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     [flushViewTransform]
   );
 
-  const scheduleZoomSettleCullUpdate = useCallback((delayMs = 400) => {
+  const scheduleZoomSettleCullUpdate = useCallback((delayMs = 500) => {
     if (zoomSettleDebounceRef.current) {
       clearTimeout(zoomSettleDebounceRef.current);
     }
     zoomSettleDebounceRef.current = setTimeout(() => {
       zoomSettleDebounceRef.current = null;
-      startTransition(() => {
-        setZoomSettleRevision((value) => value + 1);
-      });
+      viewTransformForCullRef.current = { ...viewTransformRef.current };
+      const applyCullRefresh = () => {
+        startTransition(() => {
+          setNodeCullRevision((value) => value + 1);
+        });
+      };
+      if (typeof requestIdleCallback !== "undefined") {
+        requestIdleCallback(applyCullRefresh, { timeout: 1200 });
+      } else {
+        applyCullRefresh();
+      }
     }, delayMs);
   }, []);
 
@@ -497,6 +506,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     () => getEffectiveLibraryScopeMode(songSpaceMode, libraryScopeMode),
     [libraryScopeMode, songSpaceMode]
   );
+  const layoutLibraryScopeMode = useDeferredValue(effectiveLibraryScopeMode);
   const activeContributorIds = useMemo(
     () =>
       resolveActiveContributorIds(
@@ -986,6 +996,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
 
   useLayoutEffect(() => {
     pendingViewTransformRef.current = null;
+    viewTransformForCullRef.current = { ...viewTransformRef.current };
     if (viewTransformRafRef.current) {
       cancelAnimationFrame(viewTransformRafRef.current);
       viewTransformRafRef.current = 0;
@@ -1020,7 +1031,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
       if (svg) {
         const next = zoomAtPoint(viewTransformRef.current, event.clientX, event.clientY, svg, event.deltaY);
         applyViewTransformLive(next);
-        scheduleZoomSettleCullUpdate(400);
+        scheduleZoomSettleCullUpdate(500);
       }
     };
 
@@ -1117,12 +1128,12 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
 
   const isolateGraphSongs = useCallback(
     (sourceSongs: Song[]) => {
-      if (effectiveLibraryScopeMode !== "isolate" || !hasMultipleLibraryOwners(sourceSongs)) {
+      if (layoutLibraryScopeMode !== "isolate" || !hasMultipleLibraryOwners(sourceSongs)) {
         return sourceSongs;
       }
       return prepareGraphSongsForIsolate(sourceSongs, activeContributorIds, playlistOwners);
     },
-    [activeContributorIds, effectiveLibraryScopeMode, playlistOwners]
+    [activeContributorIds, layoutLibraryScopeMode, playlistOwners]
   );
 
   const graphSongs = useMemo(
@@ -1131,7 +1142,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
   );
 
   const liveIsolateOwnerBounds = useMemo(() => {
-    if (effectiveLibraryScopeMode !== "isolate" || !isClusterView(layoutConfig)) {
+    if (layoutLibraryScopeMode !== "isolate" || !isClusterView(layoutConfig)) {
       return undefined;
     }
     return getIsolateOwnerBoundsForLayout(
@@ -1150,16 +1161,16 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     activeContributorIds,
     graphSongs,
     layoutConfig,
-    effectiveLibraryScopeMode,
+    layoutLibraryScopeMode,
     stats,
   ]);
 
   const isolateOwnerIds = useMemo(
     () =>
-      effectiveLibraryScopeMode === "isolate"
+      layoutLibraryScopeMode === "isolate"
         ? getIsolateOwnerIds(graphSongs, activeContributorIds)
         : [],
-    [activeContributorIds, graphSongs, effectiveLibraryScopeMode]
+    [activeContributorIds, graphSongs, layoutLibraryScopeMode]
   );
   const isolateOwnerCount = isolateOwnerIds.length;
   const isLargeLibrary = graphSongs.length >= LARGE_LIBRARY_LAYOUT_SNAP_THRESHOLD;
@@ -1228,7 +1239,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     (
       song: Song,
       config: LayoutConfig,
-      scopeMode: LibraryScopeMode = effectiveLibraryScopeMode,
+      scopeMode: LibraryScopeMode = layoutLibraryScopeMode,
       layoutSongs: Song[] = isolateGraphSongs(visibleSongs),
       ownerBounds = isolateOwnerBounds
     ): GraphPoint => {
@@ -1251,7 +1262,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
       clusterDragPreviewTick,
       customCatalogForOwner,
       dimensions,
-      effectiveLibraryScopeMode,
+      layoutLibraryScopeMode,
       getMetaClusterCenter,
       isolateGraphSongs,
       isolateOwnerBounds,
@@ -1273,7 +1284,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     clusterOverrides,
     layoutClusterOverrides,
     computeLayoutPosition,
-    libraryScopeMode: effectiveLibraryScopeMode,
+    libraryScopeMode: layoutLibraryScopeMode,
     activeContributorIds,
     activeCustomCatalog,
     customCatalogForOwner,
@@ -1286,7 +1297,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     clusterOverrides,
     layoutClusterOverrides,
     computeLayoutPosition,
-    libraryScopeMode: effectiveLibraryScopeMode,
+    libraryScopeMode: layoutLibraryScopeMode,
     activeContributorIds,
     activeCustomCatalog,
     customCatalogForOwner,
@@ -1429,7 +1440,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     }
 
     const useIsolateScopedClusters =
-      effectiveLibraryScopeMode === "isolate" &&
+      layoutLibraryScopeMode === "isolate" &&
       getIsolateOwnerIds(graphSongs, activeContributorIds).length > 0;
 
     if (useIsolateScopedClusters) {
@@ -1459,7 +1470,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     activeCustomCatalog,
     customCatalogForOwner,
     dimensions,
-    effectiveLibraryScopeMode,
+    layoutLibraryScopeMode,
     enableGraphNodeCulling,
     graphSongs,
     isolateOwnerBounds,
@@ -1476,19 +1487,25 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
 
   const renderedPositionedSongs = useMemo(
     () =>
-      buildCulledPositionedSongs(renderGraphSongs, dimensions, viewTransformRef.current, getPositionForCulling, {
+      buildCulledPositionedSongs(
+        renderGraphSongs,
+        dimensions,
+        viewTransformForCullRef.current,
+        getPositionForCulling,
+        {
         alwaysIncludeSongIds: prioritizedNodeIds,
         enableCulling: enableGraphNodeCulling,
         clusterHints: clusterViewportHints,
-      }),
+      }
+      ),
     [
       clusterViewportHints,
       dimensions,
       enableGraphNodeCulling,
       getPositionForCulling,
+      nodeCullRevision,
       prioritizedNodeIds,
       renderGraphSongs,
-      zoomSettleRevision,
     ]
   );
 
@@ -1527,11 +1544,11 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
       ? resolveLayoutClusterOverrides()
       : layoutClusterOverrides;
     const ownerRegions =
-      effectiveLibraryScopeMode === "isolate"
+      layoutLibraryScopeMode === "isolate"
         ? buildOwnerMetaRegions(
             graphSongs,
             dimensions,
-            effectiveLibraryScopeMode,
+            layoutLibraryScopeMode,
             activeContributorIds,
             positionForClusterRegions,
             layoutConfig,
@@ -1548,7 +1565,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     }
 
     const useIsolateScopedClusters =
-      effectiveLibraryScopeMode === "isolate" &&
+      layoutLibraryScopeMode === "isolate" &&
       getIsolateOwnerIds(graphSongs, activeContributorIds).length > 0;
 
     const innerClusterRegions = useIsolateScopedClusters
@@ -1583,7 +1600,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     layoutClusterOverrides,
     dimensions,
     activeContributorIds,
-    effectiveLibraryScopeMode,
+    layoutLibraryScopeMode,
     positionForClusterRegions,
     graphSongs,
     isolateOwnerBounds,
@@ -2059,7 +2076,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
       panX: screenMidX - graphX * nextScale,
       panY: screenMidY - graphY * nextScale,
     });
-    scheduleZoomSettleCullUpdate(400);
+    scheduleZoomSettleCullUpdate(500);
   };
 
   const beginNewStroke = (point: GraphPoint) => {
@@ -3309,10 +3326,12 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
 
   const handleIsolateToggle = () => {
     const nextMode: LibraryScopeMode = libraryScopeMode === "isolate" ? "conglomerate" : "isolate";
-    clearFrozenIsolateBounds();
-    setLibraryScopeMode(nextMode);
-    saveLibraryScopeMode(nextMode);
-    reloadLayoutCaches(getActiveClusterLayoutScope(songSpaceMode, nextMode));
+    startTransition(() => {
+      clearFrozenIsolateBounds();
+      setLibraryScopeMode(nextMode);
+      saveLibraryScopeMode(nextMode);
+      reloadLayoutCaches(getActiveClusterLayoutScope(songSpaceMode, nextMode));
+    });
     setStatusMessage(
       nextMode === "isolate"
         ? "Isolate on — each contributor keeps their own cluster room inside metaclusters."

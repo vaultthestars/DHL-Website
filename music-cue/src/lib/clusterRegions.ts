@@ -176,12 +176,101 @@ const getCustomClusterCenter = (
   return resolveClusterCenter(defaultCenter, (clusterOverrides.custom ?? {})[clusterId], dimensions);
 };
 
+export type ClusterMemberIndex = {
+  songById: Map<string, Song>;
+  byGenre: Map<string, Song[]>;
+  byPlaylistId: Map<string, Song[]>;
+  unassignedPlaylistSongs: Song[];
+  customAssignedSongIds: Set<string>;
+};
+
+export const buildClusterMemberIndex = (
+  visibleSongs: Song[],
+  customCatalog?: CustomClusterCatalog
+): ClusterMemberIndex => {
+  const songById = new Map<string, Song>();
+  const byGenre = new Map<string, Song[]>();
+  const byPlaylistId = new Map<string, Song[]>();
+  const unassignedPlaylistSongs: Song[] = [];
+
+  visibleSongs.forEach((song) => {
+    songById.set(song.id, song);
+    const genreMembers = byGenre.get(song.genre) ?? [];
+    genreMembers.push(song);
+    byGenre.set(song.genre, genreMembers);
+
+    const playlists = song.playlists ?? [];
+    if (playlists.length === 0) {
+      unassignedPlaylistSongs.push(song);
+      return;
+    }
+    playlists.forEach((playlistId) => {
+      const members = byPlaylistId.get(playlistId) ?? [];
+      members.push(song);
+      byPlaylistId.set(playlistId, members);
+    });
+  });
+
+  return {
+    songById,
+    byGenre,
+    byPlaylistId,
+    unassignedPlaylistSongs,
+    customAssignedSongIds: new Set(
+      customCatalog?.clusters.flatMap((cluster) => cluster.songIds) ?? []
+    ),
+  };
+};
+
+const getClusterMembersFromIndex = (
+  clusterId: string,
+  clusterMode: ClusterMode,
+  memberIndex: ClusterMemberIndex,
+  customCatalog?: CustomClusterCatalog
+): Song[] => {
+  if (clusterMode === "genre") {
+    return memberIndex.byGenre.get(clusterId) ?? [];
+  }
+  if (clusterMode === "playlist") {
+    if (clusterId === UNASSIGNED_PLAYLIST_CLUSTER_ID) {
+      return memberIndex.unassignedPlaylistSongs;
+    }
+    return memberIndex.byPlaylistId.get(clusterId) ?? [];
+  }
+  if (clusterMode === "custom" && customCatalog) {
+    if (clusterId === UNASSIGNED_CUSTOM_CLUSTER_ID) {
+      if (memberIndex.customAssignedSongIds.size === 0) {
+        return [];
+      }
+      const unassigned: Song[] = [];
+      memberIndex.songById.forEach((song, songId) => {
+        if (!memberIndex.customAssignedSongIds.has(songId)) {
+          unassigned.push(song);
+        }
+      });
+      return unassigned;
+    }
+    const cluster = customCatalog.clusters.find((entry) => entry.id === clusterId);
+    if (!cluster) {
+      return [];
+    }
+    return cluster.songIds
+      .map((songId) => memberIndex.songById.get(songId))
+      .filter((song): song is Song => Boolean(song));
+  }
+  return [];
+};
+
 const getClusterMembers = (
   clusterId: string,
   clusterMode: ClusterMode,
   visibleSongs: Song[],
-  customCatalog?: CustomClusterCatalog
+  customCatalog?: CustomClusterCatalog,
+  memberIndex?: ClusterMemberIndex
 ): Song[] => {
+  if (memberIndex) {
+    return getClusterMembersFromIndex(clusterId, clusterMode, memberIndex, customCatalog);
+  }
   if (clusterMode === "genre") {
     return visibleSongs.filter((song) => song.genre === clusterId);
   }
@@ -219,7 +308,8 @@ const buildClusterEntries = (
   stats: LibraryStats,
   dimensions: GraphDimensions,
   clusterOverrides: ClusterCenterOverrides,
-  customCatalog?: CustomClusterCatalog
+  customCatalog?: CustomClusterCatalog,
+  memberIndex?: ClusterMemberIndex
 ): ClusterEntry[] => {
   if (clusterMode === "genre") {
     return stats.genres.map((genre, index) => ({
@@ -236,7 +326,11 @@ const buildClusterEntries = (
       hue: clusterHue(index, stats.playlistIds.length),
       center: getPlaylistClusterCenter(playlistId, stats, dimensions, clusterOverrides, visibleSongs),
     }));
-    if (visibleSongs.some((song) => (song.playlists ?? []).length === 0)) {
+    if (
+      memberIndex
+        ? memberIndex.unassignedPlaylistSongs.length > 0
+        : visibleSongs.some((song) => (song.playlists ?? []).length === 0)
+    ) {
       entries.push({
         id: UNASSIGNED_PLAYLIST_CLUSTER_ID,
         label: "No playlist",
@@ -278,10 +372,23 @@ export const buildClusterViewportHints = (
   dimensions: GraphDimensions,
   clusterOverrides: ClusterCenterOverrides,
   customCatalog?: CustomClusterCatalog
-): ClusterViewportHint[] =>
-  buildClusterEntries(clusterMode, visibleSongs, stats, dimensions, clusterOverrides, customCatalog)
+): ClusterViewportHint[] => {
+  const memberIndex =
+    visibleSongs.length >= LARGE_LIBRARY_CLUSTER_HULL_THRESHOLD
+      ? buildClusterMemberIndex(visibleSongs, customCatalog)
+      : undefined;
+
+  return buildClusterEntries(
+    clusterMode,
+    visibleSongs,
+    stats,
+    dimensions,
+    clusterOverrides,
+    customCatalog,
+    memberIndex
+  )
     .map((cluster) => {
-      const members = getClusterMembers(cluster.id, clusterMode, visibleSongs, customCatalog);
+      const members = getClusterMembers(cluster.id, clusterMode, visibleSongs, customCatalog, memberIndex);
       if (members.length === 0) {
         return null;
       }
@@ -292,6 +399,7 @@ export const buildClusterViewportHints = (
       };
     })
     .filter((hint): hint is ClusterViewportHint => hint !== null);
+};
 
 export const buildClusterRegions = (
   clusterMode: ClusterMode,
@@ -307,18 +415,20 @@ export const buildClusterRegions = (
   }
 
   const useLiteHulls = visibleSongs.length >= LARGE_LIBRARY_CLUSTER_HULL_THRESHOLD;
+  const memberIndex = useLiteHulls ? buildClusterMemberIndex(visibleSongs, customCatalog) : undefined;
   const clusterEntries = buildClusterEntries(
     clusterMode,
     visibleSongs,
     stats,
     dimensions,
     clusterOverrides,
-    customCatalog
+    customCatalog,
+    memberIndex
   );
 
   return clusterEntries
     .map((cluster) => {
-      const members = getClusterMembers(cluster.id, clusterMode, visibleSongs, customCatalog);
+      const members = getClusterMembers(cluster.id, clusterMode, visibleSongs, customCatalog, memberIndex);
       if (members.length === 0) {
         return null;
       }
