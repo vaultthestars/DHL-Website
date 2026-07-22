@@ -1250,7 +1250,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     libraryScopeMode === "isolate" && hasMultipleLibraryOwners(visibleSongs);
 
   const conglomeratePositionBySongId = useMemo(() => {
-    if (!useWebPerformanceOptimizations || !isClusterView(layoutConfig)) {
+    if (!useWebPerformanceOptimizations) {
       return null;
     }
     const positions = new Map<string, GraphPoint>();
@@ -1288,10 +1288,10 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
   ]);
 
   const isolateDisplayContext = useMemo(() => {
-    if (!useWebPerformanceOptimizations || !conglomeratePositionBySongId) {
+    if (!useWebPerformanceOptimizations || !hasMultipleLibraryOwners(visibleSongs)) {
       return null;
     }
-    if (!hasMultipleLibraryOwners(visibleSongs)) {
+    if (isClusterView(layoutConfig) && !conglomeratePositionBySongId) {
       return null;
     }
     return computeIsolateDisplayContext(

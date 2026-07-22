@@ -16,22 +16,25 @@ export type IsolateDisplayContext = {
 
 /** Precompute per-owner isolate display data from conglomerate positions (no relayout). */
 export const computeIsolateDisplayContext = (
-  conglomeratePositions: Map<string, GraphPoint>,
+  conglomeratePositions: Map<string, GraphPoint> | null,
   songs: Song[],
   dimensions: { width: number; height: number },
   enabledOwnerIds: string[] | undefined,
   layoutConfig: LayoutConfig
 ): IsolateDisplayContext => {
   const isAxisView = !isClusterView(layoutConfig);
-  const boundsByOwner = getIsolateOwnerBoundsFromConglomeratePositions(
-    songs,
-    conglomeratePositions,
-    dimensions,
-    enabledOwnerIds
-  );
+  const boundsByOwner =
+    !isAxisView && conglomeratePositions
+      ? getIsolateOwnerBoundsFromConglomeratePositions(
+          songs,
+          conglomeratePositions,
+          dimensions,
+          enabledOwnerIds
+        )
+      : undefined;
   const metaClusters = getEnabledOwnerMetaClusters(songs, dimensions, enabledOwnerIds, {
     isAxisView,
-    ownerBounds: isAxisView ? undefined : boundsByOwner,
+    ownerBounds: boundsByOwner,
   });
   const metaClustersByOwner = new Map(metaClusters.map((meta) => [meta.id, meta]));
   const offsets = new Map<string, GraphPoint>();
