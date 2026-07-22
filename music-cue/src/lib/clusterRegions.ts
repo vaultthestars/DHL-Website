@@ -43,6 +43,18 @@ export type ClusterRegion = {
   fill: string;
   stroke: string;
   memberCount: number;
+  /** Display-only translation applied at render time (conglomerate hull space). */
+  displayOffset?: GraphPoint;
+};
+
+export const getClusterRegionDisplayCenter = (region: ClusterRegion): GraphPoint => {
+  if (!region.displayOffset) {
+    return region.center;
+  }
+  return {
+    x: region.center.x + region.displayOffset.x,
+    y: region.center.y + region.displayOffset.y,
+  };
 };
 
 const cross = (origin: GraphPoint, a: GraphPoint, b: GraphPoint): number =>

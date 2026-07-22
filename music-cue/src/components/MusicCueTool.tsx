@@ -1,7 +1,8 @@
 import { startTransition, useCallback, useDeferredValue, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { buildClusterRegions, buildClusterViewportHints, buildIsolateScopedClusterRegions, buildOwnerMetaRegions, ClusterRegion } from "../lib/clusterRegions";
+import { buildClusterRegions, buildClusterViewportHints, buildIsolateScopedClusterRegions, ClusterRegion, getClusterRegionDisplayCenter } from "../lib/clusterRegions";
 import { syncClusterLayoutToServer } from "../lib/clusterLayoutSync";
 import { sanitizeLibraryPayload } from "../../shared/librarySanitize";
+import { buildLibraryStatsFromSongs } from "../../shared/sharedLibrary";
 import {
   fromNormalizedPosition,
   getIsolateOwnerBoundsForLayout,
@@ -189,13 +190,14 @@ import {
   displayNormalizedToSoloNormalized,
   getClusterDragDisplayNormalizedStart,
   getClusterOverridesForOwner,
+  getIsolateOwnerBoundsFromConglomeratePositions,
   getIsolateOwnerIds,
   parseOwnerScopedRegionId,
   toOwnerScopedOverrideUpdates,
 } from "../lib/isolateClusterLayout";
 import {
-  applyIsolateDisplayTranslation,
-  computeOwnerTranslationOffsets,
+  applyIsolateDisplayPosition,
+  computeIsolateDisplayContext,
 } from "../lib/isolateDisplayTransform";
 import { getEnabledOwnerMetaClusters, hasMultipleLibraryOwners } from "../lib/libraryScope";
 
@@ -1285,31 +1287,33 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     visibleSongs,
   ]);
 
-  const ownerTranslationOffsets = useMemo(() => {
+  const isolateDisplayContext = useMemo(() => {
     if (!useWebPerformanceOptimizations || !conglomeratePositionBySongId) {
       return null;
     }
     if (!hasMultipleLibraryOwners(visibleSongs)) {
       return null;
     }
-    return computeOwnerTranslationOffsets(
+    return computeIsolateDisplayContext(
       conglomeratePositionBySongId,
       visibleSongs,
       dimensions,
-      activeContributorIds
+      activeContributorIds,
+      layoutConfig
     );
   }, [
     activeContributorIds,
     conglomeratePositionBySongId,
     dimensions,
+    layoutConfig,
     useWebPerformanceOptimizations,
     visibleSongs,
   ]);
 
   const showIsolateContributorViewRef = useRef(showIsolateContributorView);
   showIsolateContributorViewRef.current = showIsolateContributorView;
-  const ownerTranslationOffsetsRef = useRef(ownerTranslationOffsets);
-  ownerTranslationOffsetsRef.current = ownerTranslationOffsets;
+  const isolateDisplayContextRef = useRef(isolateDisplayContext);
+  isolateDisplayContextRef.current = isolateDisplayContext;
 
   const isolateGraphSongs = useCallback(
     (sourceSongs: Song[]) => {
@@ -1555,40 +1559,33 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
         scope === "isolate" ? clusterOverrides : layoutClusterOverrides;
       const snapshotOwnerBounds =
         scope === "isolate" && isClusterView(config)
-          ? getIsolateOwnerBoundsForLayout(
-              layoutSongs,
-              dimensions,
-              config,
-              stats,
-              clusterOverrides,
-              activeContributorIds,
-              customCatalogForOwner
-            )
+          ? useWebPerformanceOptimizations && conglomeratePositionBySongId
+            ? getIsolateOwnerBoundsFromConglomeratePositions(
+                layoutSongs,
+                conglomeratePositionBySongId,
+                dimensions,
+                activeContributorIds
+              )
+            : getIsolateOwnerBoundsForLayout(
+                layoutSongs,
+                dimensions,
+                config,
+                stats,
+                clusterOverrides,
+                activeContributorIds,
+                customCatalogForOwner
+              )
           : undefined;
-      const ownerRegions =
-        scope === "isolate"
-          ? buildOwnerMetaRegions(
-              layoutSongs,
-              dimensions,
-              scope,
-              activeContributorIds,
-              positionForSong,
-              config,
-              snapshotOwnerBounds
-            )
-          : [];
 
       if (!isClusterView(config)) {
-        return ownerRegions;
+        return [];
       }
 
       const useIsolateScopedClusters =
         scope === "isolate" && getIsolateOwnerIds(layoutSongs, activeContributorIds).length > 0;
 
       const innerRegions = useIsolateScopedClusters
-          ? useWebPerformanceOptimizations
-            ? []
-            : buildIsolateScopedClusterRegions(
+          ? buildIsolateScopedClusterRegions(
               layoutSongs,
               config.clusterMode,
               config,
@@ -1610,17 +1607,19 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
               activeCustomCatalog
             );
 
-      return [...ownerRegions, ...innerRegions];
+      return innerRegions;
     },
     [
       activeCustomCatalog,
-      clusterOverrides,
-      customCatalogForOwner,
-      layoutClusterOverrides,
-      dimensions,
       activeContributorIds,
+      clusterOverrides,
+      conglomeratePositionBySongId,
+      customCatalogForOwner,
+      dimensions,
       isolateGraphSongs,
+      layoutClusterOverrides,
       stats,
+      useWebPerformanceOptimizations,
       visibleSongs,
     ]
   );
@@ -1629,8 +1628,9 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     (song: Song): GraphPoint => {
       if (useWebPerformanceOptimizations) {
         const base = getConglomeratePositionForSong(song);
-        if (showIsolateContributorViewRef.current && ownerTranslationOffsetsRef.current) {
-          return applyIsolateDisplayTranslation(song, base, ownerTranslationOffsetsRef.current);
+        const context = isolateDisplayContextRef.current;
+        if (showIsolateContributorViewRef.current && context) {
+          return applyIsolateDisplayPosition(song, base, context, layoutConfig, stats, visibleSongs);
         }
         return base;
       }
@@ -1641,7 +1641,9 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
       getConglomeratePositionForSong,
       layoutConfig,
       layoutLibraryScopeMode,
+      stats,
       useWebPerformanceOptimizations,
+      visibleSongs,
     ]
   );
 
@@ -1907,6 +1909,63 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     isLayoutTransitioning && visibleSongs.length < LARGE_LIBRARY_LAYOUT_SNAP_THRESHOLD;
   const positionForClusterRegions = useAnimatedClusterPositions ? getRenderablePosition : getPosition;
 
+  const webPerOwnerClusterRegions = useMemo(() => {
+    if (
+      !useWebPerformanceOptimizations ||
+      !isClusterView(coldLayoutConfig) ||
+      coldLayoutConfig.clusterMode === "custom" ||
+      !hasMultipleLibraryOwners(graphSongs)
+    ) {
+      return null;
+    }
+
+    const ownerIds = getIsolateOwnerIds(graphSongs, activeContributorIds);
+    if (ownerIds.length === 0) {
+      return null;
+    }
+
+    const byOwner = new Map<string, ClusterRegion[]>();
+    ownerIds.forEach((ownerId) => {
+      const ownerSongs = graphSongs.filter((song) => {
+        const owners = song.owners ?? [];
+        return owners.length === 1 && owners[0].id === ownerId;
+      });
+      if (ownerSongs.length === 0) {
+        return;
+      }
+
+      const ownerStats = buildLibraryStatsFromSongs(ownerSongs, stats.playlistNames);
+      const ownerOverrides = getClusterOverridesForOwner(layoutClusterOverrides, ownerId, coldLayoutConfig);
+      const ownerCatalog = customCatalogForOwner?.(ownerId);
+      const regions = buildClusterRegions(
+        coldLayoutConfig.clusterMode,
+        ownerSongs,
+        getConglomeratePositionForSong,
+        ownerStats,
+        dimensions,
+        ownerOverrides,
+        ownerCatalog
+      ).map((region) => ({
+        ...region,
+        id: `owner:${ownerId}:${region.id}`,
+      }));
+      byOwner.set(ownerId, regions);
+    });
+
+    return byOwner;
+  }, [
+    activeContributorIds,
+    clusterDragPreviewTick,
+    coldLayoutConfig,
+    customCatalogForOwner,
+    dimensions,
+    getConglomeratePositionForSong,
+    graphSongs,
+    layoutClusterOverrides,
+    stats.playlistNames,
+    useWebPerformanceOptimizations,
+  ]);
+
   const clusterRegions = useMemo(() => {
     const clusterOverridesForLayout = draggingClusterIdRef.current
       ? resolveLayoutClusterOverrides()
@@ -1914,55 +1973,70 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     const showIsolateRegions = useWebPerformanceOptimizations
       ? showIsolateContributorView
       : layoutLibraryScopeMode === "isolate";
-    const ownerRegions = showIsolateRegions
-        ? buildOwnerMetaRegions(
-            graphSongs,
-            dimensions,
-            "isolate",
-            activeContributorIds,
-            positionForClusterRegions,
-            coldLayoutConfig,
-            isolateOwnerBounds
-          )
-        : [];
 
     if (!isClusterView(coldLayoutConfig)) {
-      return ownerRegions;
+      return [];
     }
 
     if (coldLayoutConfig.clusterMode === "custom") {
-      return ownerRegions;
+      return [];
+    }
+
+    if (useWebPerformanceOptimizations && webPerOwnerClusterRegions) {
+      if (showIsolateRegions && isolateDisplayContext) {
+        const regions: ClusterRegion[] = [];
+        webPerOwnerClusterRegions.forEach((ownerRegions, ownerId) => {
+          const offset = isolateDisplayContext.offsets.get(ownerId);
+          if (!offset) {
+            regions.push(...ownerRegions);
+            return;
+          }
+          regions.push(
+            ...ownerRegions.map((region) => ({
+              ...region,
+              displayOffset: offset,
+            }))
+          );
+        });
+        return regions;
+      }
+
+      return buildClusterRegions(
+        coldLayoutConfig.clusterMode,
+        graphSongs,
+        getConglomeratePositionForSong,
+        stats,
+        dimensions,
+        clusterOverridesForLayout,
+        activeCustomCatalog
+      );
     }
 
     const useIsolateScopedClusters =
       showIsolateRegions && getIsolateOwnerIds(graphSongs, activeContributorIds).length > 0;
 
-    const innerClusterRegions = useIsolateScopedClusters
-        ? useWebPerformanceOptimizations
-          ? []
-          : buildIsolateScopedClusterRegions(
-            graphSongs,
-            coldLayoutConfig.clusterMode,
-            coldLayoutConfig,
-            positionForClusterRegions,
-            dimensions,
-            clusterOverridesForLayout,
-            activeContributorIds,
-            stats.playlistNames,
-            isolateOwnerBounds,
-            customCatalogForOwner
-          )
-        : buildClusterRegions(
-            coldLayoutConfig.clusterMode,
-            graphSongs,
-            positionForClusterRegions,
-            stats,
-            dimensions,
-            clusterOverridesForLayout,
-            activeCustomCatalog
-          );
-
-    return [...ownerRegions, ...innerClusterRegions];
+    return useIsolateScopedClusters
+      ? buildIsolateScopedClusterRegions(
+          graphSongs,
+          coldLayoutConfig.clusterMode,
+          coldLayoutConfig,
+          positionForClusterRegions,
+          dimensions,
+          clusterOverridesForLayout,
+          activeContributorIds,
+          stats.playlistNames,
+          isolateOwnerBounds,
+          customCatalogForOwner
+        )
+      : buildClusterRegions(
+          coldLayoutConfig.clusterMode,
+          graphSongs,
+          positionForClusterRegions,
+          stats,
+          dimensions,
+          clusterOverridesForLayout,
+          activeCustomCatalog
+        );
   }, [
     activeContributorIds,
     activeCustomCatalog,
@@ -1971,16 +2045,19 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     coldLayoutConfig,
     customCatalogForOwner,
     dimensions,
+    graphSongs,
+    isolateDisplayContext,
+    isolateOwnerBounds,
     layoutClusterOverrides,
     layoutLibraryScopeMode,
     libraryScopeMode,
     positionForClusterRegions,
-    graphSongs,
-    isolateOwnerBounds,
     resolveLayoutClusterOverrides,
     showIsolateContributorView,
     stats,
     useWebPerformanceOptimizations,
+    webPerOwnerClusterRegions,
+    getConglomeratePositionForSong,
   ]);
 
   const showPlaylistMetaGraph =
@@ -3325,13 +3402,10 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
       const minY = Math.min(session.graphStart.y, session.boxEnd.y);
       const maxY = Math.max(session.graphStart.y, session.boxEnd.y);
       const selected = clusterRegions
-        .filter(
-          (region) =>
-            region.center.x >= minX &&
-            region.center.x <= maxX &&
-            region.center.y >= minY &&
-            region.center.y <= maxY
-        )
+        .filter((region) => {
+          const center = getClusterRegionDisplayCenter(region);
+          return center.x >= minX && center.x <= maxX && center.y >= minY && center.y <= maxY;
+        })
         .map((region) => region.id);
       setSelectedClusterIds(new Set(selected));
       setBoxSelectRect(null);
@@ -5131,17 +5205,22 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
               ))}
 
               {isClusterLayout &&
-                clusterRegions.map((region) => (
-                  <path
-                    key={`region-${region.id}`}
-                    d={region.hullPath}
-                    className="music-cue-cluster-region"
-                    fill={region.fill}
-                    stroke={region.stroke}
-                    opacity={effectiveClusterRevealOpacity}
-                    pointerEvents="none"
-                  />
-                ))}
+                clusterRegions.map((region) => {
+                  const offset = region.displayOffset;
+                  const transform = offset ? `translate(${offset.x} ${offset.y})` : undefined;
+                  return (
+                    <path
+                      key={`region-${region.id}`}
+                      d={region.hullPath}
+                      className="music-cue-cluster-region"
+                      fill={region.fill}
+                      stroke={region.stroke}
+                      opacity={effectiveClusterRevealOpacity}
+                      pointerEvents="none"
+                      transform={transform}
+                    />
+                  );
+                })}
 
               {showPlaylistMetaGraph
                 ? playlistMetaGraphSegments.map((segment) => {
@@ -5261,19 +5340,23 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
 
               {isClusterLayout &&
                 !isSquigglyCustomMode &&
-                clusterRegions.map((region) => (
-                  <text
-                    key={`label-${region.id}`}
-                    x={region.center.x}
-                    y={region.center.y}
-                    className={`music-cue-cluster-label ${
-                      effectiveClusterRevealOpacity >= 1 && !isGuestViewOnly
-                        ? "music-cue-cluster-label-draggable"
-                        : ""
-                    } ${selectedClusterIds.has(region.id) ? "music-cue-cluster-label-selected" : ""}`}
-                    opacity={effectiveClusterRevealOpacity}
-                    pointerEvents={effectiveClusterRevealOpacity >= 1 && !isGuestViewOnly ? undefined : "none"}
-                    onPointerDown={
+                clusterRegions.map((region) => {
+                  const offset = region.displayOffset;
+                  const transform = offset ? `translate(${offset.x} ${offset.y})` : undefined;
+                  return (
+                    <text
+                      key={`label-${region.id}`}
+                      x={region.center.x}
+                      y={region.center.y}
+                      className={`music-cue-cluster-label ${
+                        effectiveClusterRevealOpacity >= 1 && !isGuestViewOnly
+                          ? "music-cue-cluster-label-draggable"
+                          : ""
+                      } ${selectedClusterIds.has(region.id) ? "music-cue-cluster-label-selected" : ""}`}
+                      opacity={effectiveClusterRevealOpacity}
+                      pointerEvents={effectiveClusterRevealOpacity >= 1 && !isGuestViewOnly ? undefined : "none"}
+                      transform={transform}
+                      onPointerDown={
                       isGuestViewOnly
                         ? undefined
                         : (event) => handleClusterLabelPointerDown(event, region.id, region.label)
@@ -5288,7 +5371,8 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
                   >
                     {region.label}
                   </text>
-                ))}
+                  );
+                })}
 
               {!showLabels && hoveredSong && hoveredSongRenderPosition && (
                 <text
