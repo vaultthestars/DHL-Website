@@ -1750,7 +1750,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
   const showPlaylistMetaGraph =
     playlistGraphView &&
     songSpaceMode === "mine" &&
-    isClusterLayout &&
+    isClusterView(layoutConfig) &&
     layoutConfig.clusterMode === "playlist" &&
     !isSquigglyCustomMode;
 
