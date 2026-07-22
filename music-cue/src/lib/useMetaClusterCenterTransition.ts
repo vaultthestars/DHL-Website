@@ -41,6 +41,7 @@ export const useMetaClusterCenterTransition = (
     fromBounds: Map<string, { centroid: GraphPoint; radius: number }>,
     onComplete?: () => void
   ) => void;
+  cancelMetaClusterCenterTransition: () => void;
 } => {
   const [animTick, setAnimTick] = useState(0);
   const animationRef = useRef<MetaCenterAnimation | null>(null);
@@ -85,6 +86,15 @@ export const useMetaClusterCenterTransition = (
       }
 
       if (maxDistance < 1) {
+        animationRef.current = null;
+        onComplete?.();
+        setAnimTick((value) => value + 1);
+        return;
+      }
+
+      // Large layout shifts snap instantly — animating them pegs the main thread on big libraries.
+      const snapThreshold = Math.max(dimensions.width, dimensions.height) * 0.35;
+      if (maxDistance >= snapThreshold) {
         animationRef.current = null;
         onComplete?.();
         setAnimTick((value) => value + 1);
@@ -150,5 +160,6 @@ export const useMetaClusterCenterTransition = (
     getMetaClusterCenter,
     isMetaClusterAnimating: animationRef.current !== null,
     startMetaClusterCenterTransition,
+    cancelMetaClusterCenterTransition: finishAnimation,
   };
 };

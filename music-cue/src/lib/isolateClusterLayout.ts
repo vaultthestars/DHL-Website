@@ -331,10 +331,42 @@ export const soloNormalizedToDisplayNormalized = (
 export const displayNormalizedToSoloNormalized = (
   displayNorm: NormalizedPoint,
   dimensions: GraphDimensions,
-  bounds: { centroid: GraphPoint },
+  bounds: { centroid: GraphPoint; radius: number },
   metaCenter: GraphPoint
 ): NormalizedPoint => {
-  const display = fromNormalizedPosition(displayNorm, dimensions);
+  const clampedDisplayNorm = clampDisplayNormalizedToOwnerBounds(
+    displayNorm,
+    dimensions,
+    bounds,
+    metaCenter
+  );
+  const display = fromNormalizedPosition(clampedDisplayNorm, dimensions);
   const solo = displayPositionToSoloPosition(display, bounds, metaCenter);
   return toNormalizedPosition(solo, dimensions);
+};
+
+/** Keep cluster drags inside the contributor metacluster so bounds/layout cannot explode. */
+export const clampDisplayNormalizedToOwnerBounds = (
+  displayNorm: NormalizedPoint,
+  dimensions: GraphDimensions,
+  bounds: { centroid: GraphPoint; radius: number },
+  metaCenter: GraphPoint,
+  margin = 1.12
+): NormalizedPoint => {
+  const display = fromNormalizedPosition(displayNorm, dimensions);
+  const dx = display.x - metaCenter.x;
+  const dy = display.y - metaCenter.y;
+  const maxRadius = Math.max(bounds.radius * margin, 48);
+  const distance = Math.hypot(dx, dy);
+  if (distance <= maxRadius) {
+    return displayNorm;
+  }
+  const scale = maxRadius / distance;
+  return toNormalizedPosition(
+    {
+      x: metaCenter.x + dx * scale,
+      y: metaCenter.y + dy * scale,
+    },
+    dimensions
+  );
 };

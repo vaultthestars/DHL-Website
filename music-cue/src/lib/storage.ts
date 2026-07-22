@@ -149,11 +149,20 @@ export const loadBundledClusterCenterOverrides = (): ClusterCenterOverrides =>
 
 export const normalizeClusterCenterOverrides = (
   overrides: Partial<ClusterCenterOverrides> | ClusterCenterOverrides
-): ClusterCenterOverrides => ({
-  genre: overrides.genre ?? {},
-  playlist: overrides.playlist ?? {},
-  custom: overrides.custom ?? {},
-});
+): ClusterCenterOverrides => {
+  const clampPoint = (point: NormalizedPoint): NormalizedPoint => ({
+    x: Math.min(1.25, Math.max(-0.25, point.x)),
+    y: Math.min(1.25, Math.max(-0.25, point.y)),
+  });
+  const clampMap = (map: Record<string, NormalizedPoint>): Record<string, NormalizedPoint> =>
+    Object.fromEntries(Object.entries(map).map(([key, point]) => [key, clampPoint(point)]));
+
+  return {
+    genre: clampMap(overrides.genre ?? {}),
+    playlist: clampMap(overrides.playlist ?? {}),
+    custom: clampMap(overrides.custom ?? {}),
+  };
+};
 
 export const loadClusterCenterOverrides = (scope: ClusterLayoutScope = "isolate"): ClusterCenterOverrides => {
   let genreStored = loadClusterCenterMap(genreClusterLayoutKey(scope));

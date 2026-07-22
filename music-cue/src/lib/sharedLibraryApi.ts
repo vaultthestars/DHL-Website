@@ -55,7 +55,11 @@ const fetchJson = async <T>(url: string, init?: RequestInit): Promise<T> => {
   });
   if (!response.ok) {
     const payload = (await response.json().catch(() => ({}))) as { error?: string };
-    throw new Error(payload.error ?? `Request failed (${response.status}).`);
+    const detail = payload.error ?? `Request failed (${response.status}).`;
+    if (response.status === 404 && url.startsWith("/api/shared-libraries")) {
+      throw new Error(`Shared library API not found (${response.status}).`);
+    }
+    throw new Error(detail);
   }
   return (await response.json()) as T;
 };

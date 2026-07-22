@@ -721,6 +721,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
   const frozenIsolateBoundsRef = useRef<Map<string, { centroid: GraphPoint; radius: number }> | null>(null);
   const [isolateBoundsRevision, setIsolateBoundsRevision] = useState(0);
   const metaBoundsDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const cancelMetaClusterTransitionRef = useRef<() => void>(() => {});
   const [fadingClusterSnapshot, setFadingClusterSnapshot] = useState<{
     id: number;
     regions: ClusterRegion[];
@@ -1191,6 +1192,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
       clearTimeout(metaBoundsDebounceRef.current);
       metaBoundsDebounceRef.current = null;
     }
+    cancelMetaClusterTransitionRef.current();
   }, []);
 
   const beginIsolateClusterDrag = useCallback(() => {
@@ -1217,12 +1219,16 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     return frozenIsolateBoundsRef.current ?? liveIsolateOwnerBounds;
   }, [isolateBoundsRevision, liveIsolateOwnerBounds, skipIsolateCentroidTranslation]);
 
-  const { getMetaClusterCenter, startMetaClusterCenterTransition } = useMetaClusterCenterTransition(
-    graphSongs,
-    dimensions,
-    activeContributorIds,
-    isolateOwnerBounds
-  );
+  const { getMetaClusterCenter, startMetaClusterCenterTransition, cancelMetaClusterCenterTransition } =
+    useMetaClusterCenterTransition(graphSongs, dimensions, activeContributorIds, isolateOwnerBounds);
+
+  useEffect(() => {
+    cancelMetaClusterTransitionRef.current = cancelMetaClusterCenterTransition;
+  }, [cancelMetaClusterCenterTransition]);
+
+  useEffect(() => {
+    clearFrozenIsolateBounds();
+  }, [clearFrozenIsolateBounds]);
 
   const endIsolateClusterDrag = useCallback(() => {
     if (skipIsolateCentroidTranslation) {
@@ -3147,11 +3153,14 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
         }
         return contributors;
       } catch (error) {
-        setStatusMessage(
-          error instanceof Error
-            ? `Could not load shared libraries: ${error.message}`
-            : "Could not load shared libraries."
-        );
+        const message = error instanceof Error ? error.message : "Could not load shared libraries.";
+        if (message.includes("404")) {
+          setStatusMessage(
+            "Shared library API is unavailable. Redeploy the site, then use Load & share library to publish again."
+          );
+        } else {
+          setStatusMessage(`Could not load shared libraries: ${message}`);
+        }
         return [];
       }
     },
