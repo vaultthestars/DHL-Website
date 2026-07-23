@@ -24,7 +24,36 @@ type CursorAwareness = {
   off: (event: "change", handler: (change: AwarenessChange) => void) => void;
 };
 
-const readCursorMessages = (awareness: CursorAwareness): Map<string, string> => {
+type TransportPresence = {
+  message?: string | null;
+  playerIdentity?: {
+    publicKey?: string;
+  };
+};
+
+type CursorClientReader = {
+  presenceTransport?: unknown;
+  presenceStore?: {
+    getRemotePresences: (excludePublicKey: string) => Map<string, TransportPresence>;
+  };
+  getMyPlayerIdentity: () => { publicKey: string };
+  getProvider: () => { awareness: CursorAwareness };
+  onCursorPresencesChange?: (callback: () => void) => () => void;
+};
+
+const getCursorClient = (): CursorClientReader | null => {
+  if (!playhtml.cursorClient) {
+    return null;
+  }
+  try {
+    playhtml.cursorClient.getProvider();
+    return playhtml.cursorClient as CursorClientReader;
+  } catch {
+    return null;
+  }
+};
+
+const readCursorMessagesFromAwareness = (awareness: CursorAwareness): Map<string, string> => {
   const messages = new Map<string, string>();
   awareness.getStates().forEach((state) => {
     const presence = state[PLAYHTML_CURSOR_AWARENESS_KEY] as CursorAwarenessState | undefined;
@@ -38,6 +67,30 @@ const readCursorMessages = (awareness: CursorAwareness): Map<string, string> => 
   return messages;
 };
 
+const readCursorMessagesFromTransport = (client: CursorClientReader): Map<string, string> => {
+  const messages = new Map<string, string>();
+  const store = client.presenceStore;
+  if (!store) {
+    return messages;
+  }
+
+  const selfKey = client.getMyPlayerIdentity().publicKey;
+  for (const [publicKey, presence] of store.getRemotePresences(selfKey)) {
+    const message = presence.message?.trim();
+    if (message) {
+      messages.set(publicKey, message);
+    }
+  }
+  return messages;
+};
+
+const readCursorMessages = (client: CursorClientReader): Map<string, string> => {
+  if (client.presenceTransport) {
+    return readCursorMessagesFromTransport(client);
+  }
+  return readCursorMessagesFromAwareness(client.getProvider().awareness);
+};
+
 const mapsEqual = (left: Map<string, string>, right: Map<string, string>): boolean => {
   if (left.size !== right.size) {
     return false;
@@ -48,18 +101,6 @@ const mapsEqual = (left: Map<string, string>, right: Map<string, string>): boole
     }
   }
   return true;
-};
-
-const getCursorAwareness = (): CursorAwareness | null => {
-  const client = playhtml.cursorClient;
-  if (!client) {
-    return null;
-  }
-  try {
-    return client.getProvider().awareness as CursorAwareness;
-  } catch {
-    return null;
-  }
 };
 
 export const usePlayhtmlCursorMessages = (): Map<string, string> => {
@@ -76,16 +117,19 @@ export const usePlayhtmlCursorMessages = (): Map<string, string> => {
       return;
     }
 
-    const awareness = getCursorAwareness();
-    if (!awareness) {
+    const client = getCursorClient();
+    if (!client) {
       return;
     }
 
+    const awareness = client.getProvider().awareness;
+    const usesTransport = Boolean(client.presenceTransport);
+
     let flushRafId = 0;
-    let pendingChange: AwarenessChange | null = null;
+    let needsSync = false;
 
     const commitAllMessages = () => {
-      const next = readCursorMessages(awareness);
+      const next = readCursorMessages(client);
       if (mapsEqual(next, latestRef.current)) {
         return;
       }
@@ -105,78 +149,47 @@ export const usePlayhtmlCursorMessages = (): Map<string, string> => {
       return latestRef.current.has(publicKey);
     };
 
-    const applyPendingChange = () => {
-      flushRafId = 0;
-      const change = pendingChange;
-      pendingChange = null;
-      if (!change) {
+    const scheduleCommit = () => {
+      needsSync = true;
+      if (flushRafId) {
+        return;
+      }
+      flushRafId = requestAnimationFrame(() => {
+        flushRafId = 0;
+        if (!needsSync) {
+          return;
+        }
+        needsSync = false;
+        commitAllMessages();
+      });
+    };
+
+    const handleAwarenessChange = (change: AwarenessChange) => {
+      if (usesTransport) {
         return;
       }
 
-      if (change.removed.length > 0) {
-        if (latestRef.current.size > 0) {
-          commitAllMessages();
-        }
+      if (change.removed.length > 0 && latestRef.current.size > 0) {
+        scheduleCommit();
         return;
       }
 
       const states = awareness.getStates();
-      const clientIds = [...change.added, ...change.updated];
-      if (!clientIds.some((clientId) => isMessageRelevant(states.get(clientId)))) {
-        return;
+      if ([...change.added, ...change.updated].some((clientId) => isMessageRelevant(states.get(clientId)))) {
+        scheduleCommit();
       }
-
-      const next = new Map(latestRef.current);
-      let changed = false;
-
-      for (const clientId of clientIds) {
-        const state = states.get(clientId);
-        const presence = state?.[PLAYHTML_CURSOR_AWARENESS_KEY] as CursorAwarenessState | undefined;
-        const publicKey = presence?.playerIdentity?.publicKey;
-        if (!publicKey) {
-          continue;
-        }
-
-        const message = presence?.message?.trim();
-        if (!message) {
-          if (next.delete(publicKey)) {
-            changed = true;
-          }
-          continue;
-        }
-
-        if (next.get(publicKey) !== message) {
-          next.set(publicKey, message);
-          changed = true;
-        }
-      }
-
-      if (!changed) {
-        return;
-      }
-
-      latestRef.current = next;
-      setMessagesByPublicKey(next);
-    };
-
-    const scheduleFlush = (change: AwarenessChange) => {
-      pendingChange = change;
-      if (flushRafId) {
-        return;
-      }
-      flushRafId = requestAnimationFrame(applyPendingChange);
     };
 
     commitAllMessages();
-    const handleAwarenessChange = (change: AwarenessChange) => {
-      scheduleFlush(change);
-    };
-
     awareness.on("change", handleAwarenessChange);
+    const unsubscribePresences = client.onCursorPresencesChange?.(() => {
+      scheduleCommit();
+    });
     const pollId = window.setInterval(commitAllMessages, MESSAGE_FALLBACK_POLL_MS);
 
     return () => {
       awareness.off("change", handleAwarenessChange);
+      unsubscribePresences?.();
       window.clearInterval(pollId);
       if (flushRafId) {
         cancelAnimationFrame(flushRafId);
