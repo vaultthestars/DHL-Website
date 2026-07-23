@@ -19,6 +19,7 @@ import type { SongSpaceMode } from "./sharedLibraryApi";
 import { layoutConfigKey } from "./layoutMetrics";
 import { isWebDeployment } from "./runtime";
 import type { LayoutConfig, NormalizedPoint } from "./types";
+import { usePlayhtmlCursorMessages } from "./usePlayhtmlCursorChat";
 
 export const SESSION_PRESENCE_CHANNEL = "session";
 
@@ -330,6 +331,7 @@ export const CollaborativeParticipantsPanel = () => {
       {open ? (
         <div className="music-cue-live-panel" role="menu">
           <div className="music-cue-live-panel-title">Online now</div>
+          <p className="music-cue-live-panel-hint">Type / to chat on the graph.</p>
           <button type="button" className="music-cue-live-participant music-cue-live-participant-me" disabled>
             <span className="music-cue-live-swatch" style={{ background: color }} aria-hidden />
             <span>You{pid ? "" : " (connecting)"}</span>
@@ -364,6 +366,7 @@ export const CollaborativeParticipantsPanel = () => {
 const CollaborativeGraphCursorsInner = ({ dimensions }: { dimensions: GraphDimensions }) => {
   const { presences } = usePresence<SessionPresenceData>(SESSION_PRESENCE_CHANNEL);
   const { myPresenceLayout, syncWithParticipant } = useCollaborativeSession();
+  const cursorMessagesByPublicKey = usePlayhtmlCursorMessages();
 
   const cursors = [...presences.entries()]
     .filter(([, presence]) => !presence.isMe)
@@ -375,6 +378,8 @@ const CollaborativeGraphCursorsInner = ({ dimensions }: { dimensions: GraphDimen
       const graphPoint = fromNormalizedPosition(session.graphCursor, dimensions);
       const isSynced =
         presenceLayoutKey(session.presenceLayout) === presenceLayoutKey(myPresenceLayout);
+      const publicKey = presence.playerIdentity?.publicKey;
+      const message = publicKey ? cursorMessagesByPublicKey.get(publicKey) : undefined;
       return {
         id,
         displayName: session.displayName,
@@ -382,6 +387,7 @@ const CollaborativeGraphCursorsInner = ({ dimensions }: { dimensions: GraphDimen
         x: graphPoint.x,
         y: graphPoint.y,
         isSynced,
+        message,
       };
     })
     .filter((cursor): cursor is NonNullable<typeof cursor> => cursor !== null);
@@ -402,6 +408,19 @@ const CollaborativeGraphCursorsInner = ({ dimensions }: { dimensions: GraphDimen
         >
           <title>{`Sync with ${cursor.displayName}`}</title>
           <circle className="music-cue-remote-cursor-svg-dot" r={5} fill={cursor.color} />
+          {cursor.message ? (
+            <foreignObject
+              x={8}
+              y={-34}
+              width={220}
+              height={32}
+              className="music-cue-remote-cursor-chat-wrap"
+            >
+              <div className="music-cue-remote-cursor-chat" style={{ backgroundColor: cursor.color }}>
+                {cursor.message}
+              </div>
+            </foreignObject>
+          ) : null}
           <text className="music-cue-remote-cursor-svg-label" x={8} y={4}>
             {cursor.displayName}
           </text>

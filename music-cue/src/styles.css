@@ -979,6 +979,13 @@ body {
   color: var(--w95-surface-dark);
 }
 
+.music-cue-live-panel-hint {
+  margin: 0 0 6px;
+  padding: 0 4px;
+  font-size: 10px;
+  color: var(--w95-surface-dark);
+}
+
 .music-cue-live-panel-empty {
   margin: 0;
   padding: 4px;
@@ -1056,6 +1063,38 @@ body {
   stroke-width: 3;
   paint-order: stroke fill;
   pointer-events: none;
+}
+
+.music-cue-remote-cursor-chat-wrap {
+  overflow: visible;
+  pointer-events: none;
+}
+
+.music-cue-remote-cursor-chat {
+  display: inline-block;
+  max-width: 200px;
+  padding: 3px 8px;
+  border-radius: 10px;
+  color: #fff;
+  font-size: 11px;
+  line-height: 1.3;
+  font-family: var(--w95-font);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+  animation: music-cue-remote-cursor-chat-fade 10s ease forwards;
+}
+
+@keyframes music-cue-remote-cursor-chat-fade {
+  0%,
+  80% {
+    opacity: 1;
+  }
+
+  100% {
+    opacity: 0;
+  }
 }
 
 .music-cue-remote-cursors {

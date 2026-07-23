@@ -111,6 +111,7 @@ export const CollaborativePlayProvider = ({ children }: { children: ReactNode })
         room: PLAYHTML_ROOM,
         cursors: {
           enabled: true,
+          enableChat: true,
           shouldRenderCursor: () => false,
         },
       }}
