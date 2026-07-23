@@ -1,4 +1,4 @@
-import { ClusterCenterOverrides, ClusterMode, CustomClusterCatalog, GraphPoint, LayoutConfig, LibraryStats, NormalizedPoint, Song } from "./types";
+import { ClusterCenterOverrides, ClusterMode, GraphPoint, LayoutConfig, LibraryStats, Song } from "./types";
 import {
   getPlaylistOverlapClusterCenter,
   getPlaylistOverlapLabelCenter,
@@ -17,15 +17,6 @@ import { getClusterOverridesForOwner, translateSoloLayoutToMetaCluster } from ".
 import { isClusterView } from "./layoutMetrics";
 import { useWebPerformanceOptimizations } from "./runtime";
 import { buildLibraryStatsFromSongs } from "../../shared/sharedLibrary";
-import {
-  getCustomClusterHue,
-  getCustomClusterMemberCount,
-  getDefaultCustomClusterCenter,
-  getUnassignedCustomClusterCenter,
-  resolveSongCustomClusterId,
-  UNASSIGNED_CUSTOM_CLUSTER_ID,
-} from "./customClusters";
-
 import { UNASSIGNED_PLAYLIST_CLUSTER_ID } from "./playlistConstants";
 
 export const LARGE_LIBRARY_CLUSTER_HULL_THRESHOLD = 300;
@@ -259,32 +250,14 @@ const getPlaylistClusterCenter = (
   );
 };
 
-const getCustomClusterCenter = (
-  clusterId: string,
-  clusterIndex: number,
-  clusterCount: number,
-  dimensions: GraphDimensions,
-  clusterOverrides: ClusterCenterOverrides
-): GraphPoint => {
-  const defaultCenter =
-    clusterId === UNASSIGNED_CUSTOM_CLUSTER_ID
-      ? getUnassignedCustomClusterCenter(dimensions)
-      : getDefaultCustomClusterCenter(clusterIndex, clusterCount, dimensions);
-  return resolveClusterCenter(defaultCenter, (clusterOverrides.custom ?? {})[clusterId], dimensions);
-};
-
 export type ClusterMemberIndex = {
   songById: Map<string, Song>;
   byGenre: Map<string, Song[]>;
   byPlaylistId: Map<string, Song[]>;
   unassignedPlaylistSongs: Song[];
-  customAssignedSongIds: Set<string>;
 };
 
-export const buildClusterMemberIndex = (
-  visibleSongs: Song[],
-  customCatalog?: CustomClusterCatalog
-): ClusterMemberIndex => {
+export const buildClusterMemberIndex = (visibleSongs: Song[]): ClusterMemberIndex => {
   const songById = new Map<string, Song>();
   const byGenre = new Map<string, Song[]>();
   const byPlaylistId = new Map<string, Song[]>();
@@ -313,17 +286,13 @@ export const buildClusterMemberIndex = (
     byGenre,
     byPlaylistId,
     unassignedPlaylistSongs,
-    customAssignedSongIds: new Set(
-      customCatalog?.clusters.flatMap((cluster) => cluster.songIds) ?? []
-    ),
   };
 };
 
 const getClusterMembersFromIndex = (
   clusterId: string,
   clusterMode: ClusterMode,
-  memberIndex: ClusterMemberIndex,
-  customCatalog?: CustomClusterCatalog
+  memberIndex: ClusterMemberIndex
 ): Song[] => {
   if (clusterMode === "genre") {
     return memberIndex.byGenre.get(clusterId) ?? [];
@@ -334,27 +303,6 @@ const getClusterMembersFromIndex = (
     }
     return memberIndex.byPlaylistId.get(clusterId) ?? [];
   }
-  if (clusterMode === "custom" && customCatalog) {
-    if (clusterId === UNASSIGNED_CUSTOM_CLUSTER_ID) {
-      if (memberIndex.customAssignedSongIds.size === 0) {
-        return [];
-      }
-      const unassigned: Song[] = [];
-      memberIndex.songById.forEach((song, songId) => {
-        if (!memberIndex.customAssignedSongIds.has(songId)) {
-          unassigned.push(song);
-        }
-      });
-      return unassigned;
-    }
-    const cluster = customCatalog.clusters.find((entry) => entry.id === clusterId);
-    if (!cluster) {
-      return [];
-    }
-    return cluster.songIds
-      .map((songId) => memberIndex.songById.get(songId))
-      .filter((song): song is Song => Boolean(song));
-  }
   return [];
 };
 
@@ -362,11 +310,10 @@ const getClusterMembers = (
   clusterId: string,
   clusterMode: ClusterMode,
   visibleSongs: Song[],
-  customCatalog?: CustomClusterCatalog,
   memberIndex?: ClusterMemberIndex
 ): Song[] => {
   if (memberIndex) {
-    return getClusterMembersFromIndex(clusterId, clusterMode, memberIndex, customCatalog);
+    return getClusterMembersFromIndex(clusterId, clusterMode, memberIndex);
   }
   if (clusterMode === "genre") {
     return visibleSongs.filter((song) => song.genre === clusterId);
@@ -376,18 +323,6 @@ const getClusterMembers = (
       return visibleSongs.filter((song) => (song.playlists ?? []).length === 0);
     }
     return visibleSongs.filter((song) => (song.playlists ?? []).includes(clusterId));
-  }
-  if (clusterMode === "custom" && customCatalog) {
-    if (clusterId === UNASSIGNED_CUSTOM_CLUSTER_ID) {
-      const assigned = new Set(customCatalog.clusters.flatMap((cluster) => cluster.songIds));
-      return visibleSongs.filter((song) => !assigned.has(song.id));
-    }
-    const cluster = customCatalog.clusters.find((entry) => entry.id === clusterId);
-    if (!cluster) {
-      return [];
-    }
-    const memberIds = new Set(cluster.songIds);
-    return visibleSongs.filter((song) => memberIds.has(song.id));
   }
   return [];
 };
@@ -405,7 +340,6 @@ const buildClusterEntries = (
   stats: LibraryStats,
   dimensions: GraphDimensions,
   clusterOverrides: ClusterCenterOverrides,
-  customCatalog?: CustomClusterCatalog,
   memberIndex?: ClusterMemberIndex
 ): ClusterEntry[] => {
   if (clusterMode === "genre") {
@@ -443,22 +377,6 @@ const buildClusterEntries = (
     }
     return entries;
   }
-  if (clusterMode === "custom") {
-    const catalog = customCatalog ?? { clusters: [] };
-    const labelClusters = catalog.clusters.filter((cluster) => cluster.kind !== "squiggly");
-    return labelClusters.map((cluster, index) => ({
-      id: cluster.id,
-      label: cluster.label,
-      hue: getCustomClusterHue(cluster.id, catalog),
-      center: getCustomClusterCenter(
-        cluster.id,
-        index,
-        Math.max(1, labelClusters.length),
-        dimensions,
-        clusterOverrides
-      ),
-    }));
-  }
   return [];
 };
 
@@ -468,12 +386,11 @@ export const buildClusterViewportHints = (
   stats: LibraryStats,
   dimensions: GraphDimensions,
   clusterOverrides: ClusterCenterOverrides,
-  customCatalog?: CustomClusterCatalog,
   toDisplayPoint?: (point: GraphPoint) => GraphPoint
 ): ClusterViewportHint[] => {
   const memberIndex =
     useWebPerformanceOptimizations && visibleSongs.length >= LARGE_LIBRARY_CLUSTER_HULL_THRESHOLD
-      ? buildClusterMemberIndex(visibleSongs, customCatalog)
+      ? buildClusterMemberIndex(visibleSongs)
       : undefined;
 
   return buildClusterEntries(
@@ -482,11 +399,10 @@ export const buildClusterViewportHints = (
     stats,
     dimensions,
     clusterOverrides,
-    customCatalog,
     memberIndex
   )
     .map((cluster) => {
-      const members = getClusterMembers(cluster.id, clusterMode, visibleSongs, customCatalog, memberIndex);
+      const members = getClusterMembers(cluster.id, clusterMode, visibleSongs, memberIndex);
       if (members.length === 0) {
         return null;
       }
@@ -506,29 +422,27 @@ export const buildClusterRegions = (
   stats: LibraryStats,
   dimensions: GraphDimensions,
   clusterOverrides: ClusterCenterOverrides,
-  customCatalog?: CustomClusterCatalog,
   toDisplayPoint?: (point: GraphPoint) => GraphPoint
 ): ClusterRegion[] => {
-  if (clusterMode !== "genre" && clusterMode !== "playlist" && clusterMode !== "custom") {
+  if (clusterMode !== "genre" && clusterMode !== "playlist") {
     return [];
   }
 
   const useLiteHulls =
     useWebPerformanceOptimizations && visibleSongs.length >= LARGE_LIBRARY_CLUSTER_HULL_THRESHOLD;
-  const memberIndex = useLiteHulls ? buildClusterMemberIndex(visibleSongs, customCatalog) : undefined;
+  const memberIndex = useLiteHulls ? buildClusterMemberIndex(visibleSongs) : undefined;
   const clusterEntries = buildClusterEntries(
     clusterMode,
     visibleSongs,
     stats,
     dimensions,
     clusterOverrides,
-    customCatalog,
     memberIndex
   );
 
   return clusterEntries
     .map((cluster) => {
-      const members = getClusterMembers(cluster.id, clusterMode, visibleSongs, customCatalog, memberIndex);
+      const members = getClusterMembers(cluster.id, clusterMode, visibleSongs, memberIndex);
       if (members.length === 0) {
         return null;
       }
@@ -605,7 +519,6 @@ export const buildIsolateScopedClusterViewportHints = (
   enabledOwnerIds?: string[],
   playlistNames: Record<string, string> = {},
   ownerBounds?: Map<string, { centroid: GraphPoint; radius: number }>,
-  customCatalogForOwner?: (ownerId: string) => CustomClusterCatalog,
   playlistOwners: Record<string, string> = {}
 ): ClusterViewportHint[] => {
   const metaClusters = getEnabledOwnerMetaClusters(graphSongs, dimensions, enabledOwnerIds, {
@@ -628,7 +541,6 @@ export const buildIsolateScopedClusterViewportHints = (
       playlistNamesForOwner(playlistNames, meta.id, playlistOwners)
     );
     const ownerOverrides = getClusterOverridesForOwner(clusterOverrides, meta.id, layoutConfig);
-    const ownerCatalog = customCatalogForOwner?.(meta.id);
     const bounds = ownerBounds?.get(meta.id);
     const toDisplayPoint = bounds
       ? (point: GraphPoint) => translateSoloLayoutToMetaCluster(point, bounds, meta.center)
@@ -639,7 +551,6 @@ export const buildIsolateScopedClusterViewportHints = (
       ownerStats,
       dimensions,
       ownerOverrides,
-      ownerCatalog,
       toDisplayPoint
     ).map((hint) => ({
       ...hint,
@@ -658,7 +569,6 @@ export const buildIsolateScopedClusterRegions = (
   enabledOwnerIds?: string[],
   playlistNames: Record<string, string> = {},
   ownerBounds?: Map<string, { centroid: GraphPoint; radius: number }>,
-  customCatalogForOwner?: (ownerId: string) => CustomClusterCatalog,
   playlistOwners: Record<string, string> = {}
 ): ClusterRegion[] => {
   const metaClusters = getEnabledOwnerMetaClusters(graphSongs, dimensions, enabledOwnerIds, {
@@ -681,7 +591,6 @@ export const buildIsolateScopedClusterRegions = (
       playlistNamesForOwner(playlistNames, meta.id, playlistOwners)
     );
     const ownerOverrides = getClusterOverridesForOwner(clusterOverrides, meta.id, layoutConfig);
-    const ownerCatalog = customCatalogForOwner?.(meta.id);
     const bounds = ownerBounds?.get(meta.id);
     const toDisplayPoint = bounds
       ? (point: GraphPoint) => translateSoloLayoutToMetaCluster(point, bounds, meta.center)
@@ -693,7 +602,6 @@ export const buildIsolateScopedClusterRegions = (
       ownerStats,
       dimensions,
       ownerOverrides,
-      ownerCatalog,
       toDisplayPoint
     ).map((region) => ({
       ...region,
@@ -784,10 +692,9 @@ export const findNearestCluster = (
   stats: LibraryStats,
   dimensions: GraphDimensions,
   clusterOverrides: ClusterCenterOverrides,
-  maxDistance = 80,
-  customCatalog?: CustomClusterCatalog
+  maxDistance = 80
 ): string | null => {
-  if (clusterMode !== "genre" && clusterMode !== "playlist" && clusterMode !== "custom") {
+  if (clusterMode !== "genre" && clusterMode !== "playlist") {
     return null;
   }
 
@@ -797,21 +704,10 @@ export const findNearestCluster = (
           id: genre,
           center: getGenreClusterCenter(genre, stats, dimensions, clusterOverrides),
         }))
-      : clusterMode === "playlist"
-        ? stats.playlistIds.map((playlistId) => ({
-            id: playlistId,
-            center: getPlaylistClusterCenter(playlistId, stats, dimensions, clusterOverrides, []),
-          }))
-        : (customCatalog?.clusters ?? []).map((cluster, index) => ({
-            id: cluster.id,
-            center: getCustomClusterCenter(
-              cluster.id,
-              index,
-              customCatalog.clusters.length,
-              dimensions,
-              clusterOverrides
-            ),
-          }));
+      : stats.playlistIds.map((playlistId) => ({
+          id: playlistId,
+          center: getPlaylistClusterCenter(playlistId, stats, dimensions, clusterOverrides, []),
+        }));
 
   let nearestId: string | null = null;
   let nearestDistance = maxDistance;

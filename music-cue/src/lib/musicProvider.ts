@@ -34,6 +34,13 @@ export type LoadLibraryOptions = {
   onProgress?: (progress: LibraryLoadProgress) => void;
   fresh?: boolean;
   knownContributor?: { id: string; name: string };
+  /** When set, only import tracks for these playlist ids (merged with any existing library). */
+  selectedPlaylistIds?: string[];
+  /** Include a full saved-tracks pass when doing a selective playlist import. */
+  includeSavedTracks?: boolean;
+  mergeWithExisting?: LoadedLibrary;
+  /** Pre-fetched playlist catalog to skip the playlist-list API phase. */
+  playlistCatalog?: Array<{ id: string; name: string; owner: { id: string }; collaborative?: boolean }>;
 };
 
 export type ConnectionStatus = {

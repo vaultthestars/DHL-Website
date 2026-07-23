@@ -1,5 +1,6 @@
 import {
   createContext,
+  memo,
   useCallback,
   useContext,
   useEffect,
@@ -363,34 +364,95 @@ export const CollaborativeParticipantsPanel = () => {
   );
 };
 
-const CollaborativeGraphCursorsInner = ({ dimensions }: { dimensions: GraphDimensions }) => {
+const CollaborativeGraphCursorsInner = memo(({ dimensions }: { dimensions: GraphDimensions }) => {
   const { presences } = usePresence<SessionPresenceData>(SESSION_PRESENCE_CHANNEL);
   const { myPresenceLayout, syncWithParticipant } = useCollaborativeSession();
   const cursorMessagesByPublicKey = usePlayhtmlCursorMessages();
+  const [cursors, setCursors] = useState<
+    Array<{
+      id: string;
+      displayName: string;
+      color: string;
+      x: number;
+      y: number;
+      isSynced: boolean;
+      message?: string;
+    }>
+  >([]);
+  const frameRef = useRef(0);
+  const presencesRef = useRef(presences);
+  const messagesRef = useRef(cursorMessagesByPublicKey);
+  const layoutRef = useRef(myPresenceLayout);
+  const dimensionsRef = useRef(dimensions);
 
-  const cursors = [...presences.entries()]
-    .filter(([, presence]) => !presence.isMe)
-    .map(([id, presence]) => {
-      const session = getSessionData(presence as Record<string, unknown>);
-      if (!session?.graphCursor) {
-        return null;
+  presencesRef.current = presences;
+  messagesRef.current = cursorMessagesByPublicKey;
+  layoutRef.current = myPresenceLayout;
+  dimensionsRef.current = dimensions;
+
+  useEffect(() => {
+    const flush = () => {
+      frameRef.current = 0;
+      const next = [...presencesRef.current.entries()]
+        .filter(([, presence]) => !presence.isMe)
+        .map(([id, presence]) => {
+          const session = getSessionData(presence as Record<string, unknown>);
+          if (!session?.graphCursor) {
+            return null;
+          }
+          const graphPoint = fromNormalizedPosition(session.graphCursor, dimensionsRef.current);
+          const isSynced =
+            presenceLayoutKey(session.presenceLayout) === presenceLayoutKey(layoutRef.current);
+          const publicKey = presence.playerIdentity?.publicKey;
+          const message = publicKey ? messagesRef.current.get(publicKey) : undefined;
+          return {
+            id,
+            displayName: session.displayName,
+            color: presence.playerIdentity?.color ?? "#4a90d9",
+            x: graphPoint.x,
+            y: graphPoint.y,
+            isSynced,
+            message,
+          };
+        })
+        .filter((cursor): cursor is NonNullable<typeof cursor> => cursor !== null);
+
+      setCursors((current) => {
+        if (
+          current.length === next.length &&
+          current.every((cursor, index) => {
+            const other = next[index];
+            return (
+              other &&
+              cursor.id === other.id &&
+              cursor.x === other.x &&
+              cursor.y === other.y &&
+              cursor.isSynced === other.isSynced &&
+              cursor.message === other.message
+            );
+          })
+        ) {
+          return current;
+        }
+        return next;
+      });
+    };
+
+    const schedule = () => {
+      if (frameRef.current) {
+        return;
       }
-      const graphPoint = fromNormalizedPosition(session.graphCursor, dimensions);
-      const isSynced =
-        presenceLayoutKey(session.presenceLayout) === presenceLayoutKey(myPresenceLayout);
-      const publicKey = presence.playerIdentity?.publicKey;
-      const message = publicKey ? cursorMessagesByPublicKey.get(publicKey) : undefined;
-      return {
-        id,
-        displayName: session.displayName,
-        color: presence.playerIdentity?.color ?? "#4a90d9",
-        x: graphPoint.x,
-        y: graphPoint.y,
-        isSynced,
-        message,
-      };
-    })
-    .filter((cursor): cursor is NonNullable<typeof cursor> => cursor !== null);
+      frameRef.current = requestAnimationFrame(flush);
+    };
+
+    schedule();
+    return () => {
+      if (frameRef.current) {
+        cancelAnimationFrame(frameRef.current);
+        frameRef.current = 0;
+      }
+    };
+  }, [cursorMessagesByPublicKey, dimensions, myPresenceLayout, presences]);
 
   if (cursors.length === 0) {
     return null;
@@ -398,37 +460,49 @@ const CollaborativeGraphCursorsInner = ({ dimensions }: { dimensions: GraphDimen
 
   return (
     <g className="music-cue-remote-cursors-svg" aria-hidden>
-      {cursors.map((cursor) => (
-        <g
-          key={cursor.id}
-          className={`music-cue-remote-cursor-svg ${cursor.isSynced ? "music-cue-remote-cursor-svg-synced" : ""}`}
-          transform={`translate(${cursor.x}, ${cursor.y})`}
-          pointerEvents="visiblePainted"
-          onClick={() => syncWithParticipant(cursor.id)}
-        >
-          <title>{`Sync with ${cursor.displayName}`}</title>
-          <circle className="music-cue-remote-cursor-svg-dot" r={5} fill={cursor.color} />
-          {cursor.message ? (
-            <foreignObject
-              x={8}
-              y={-34}
-              width={220}
-              height={32}
-              className="music-cue-remote-cursor-chat-wrap"
-            >
-              <div className="music-cue-remote-cursor-chat" style={{ backgroundColor: cursor.color }}>
-                {cursor.message}
-              </div>
-            </foreignObject>
-          ) : null}
-          <text className="music-cue-remote-cursor-svg-label" x={8} y={4}>
-            {cursor.displayName}
-          </text>
-        </g>
-      ))}
+      {cursors.map((cursor) => {
+        const messageLabel =
+          cursor.message && cursor.message.length > 36
+            ? `${cursor.message.slice(0, 35)}…`
+            : cursor.message;
+        const messageWidth = messageLabel ? Math.min(220, 16 + messageLabel.length * 6.2) : 0;
+
+        return (
+          <g
+            key={cursor.id}
+            className={`music-cue-remote-cursor-svg ${cursor.isSynced ? "music-cue-remote-cursor-svg-synced" : ""}`}
+            transform={`translate(${cursor.x}, ${cursor.y})`}
+            pointerEvents="visiblePainted"
+            onClick={() => syncWithParticipant(cursor.id)}
+          >
+            <title>{`Sync with ${cursor.displayName}`}</title>
+            {messageLabel ? (
+              <>
+                <rect
+                  className="music-cue-remote-cursor-chat-bubble"
+                  x={8}
+                  y={-30}
+                  width={messageWidth}
+                  height={18}
+                  rx={9}
+                  fill={cursor.color}
+                />
+                <text className="music-cue-remote-cursor-chat-text" x={16} y={-17}>
+                  {messageLabel}
+                </text>
+              </>
+            ) : null}
+            <circle className="music-cue-remote-cursor-svg-dot" r={5} fill={cursor.color} />
+            <text className="music-cue-remote-cursor-svg-label" x={8} y={4}>
+              {cursor.displayName}
+            </text>
+          </g>
+        );
+      })}
     </g>
   );
-};
+});
+CollaborativeGraphCursorsInner.displayName = "CollaborativeGraphCursorsInner";
 
 export const CollaborativeGraphCursorsPortal = ({
   contentGroupRef,

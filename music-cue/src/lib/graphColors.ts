@@ -1,8 +1,5 @@
 import { getMetricRange, getMetricValue, isClusterView } from "./layoutMetrics";
 import { LayoutConfig, LibraryStats, Song } from "./types";
-import { getCustomClusterHue, resolveSongCustomClusterId } from "./customClusters";
-import { resolveSquigglySongColor } from "./squigglyClusters";
-import type { CustomClusterCatalog } from "./types";
 
 const NODE_SATURATION = 72;
 const NODE_LIGHTNESS = 48;
@@ -74,8 +71,7 @@ export const getSongNodeFill = (
   song: Song,
   layoutConfig: LayoutConfig,
   stats: LibraryStats,
-  songs: Song[] = [],
-  customCatalog?: CustomClusterCatalog
+  songs: Song[] = []
 ): string => {
   if ((song.ownerCount ?? 0) > 1) {
     return hueToFill(46, 84, 56);
@@ -85,12 +81,6 @@ export const getSongNodeFill = (
   if (isClusterView(layoutConfig)) {
     if (layoutConfig.clusterMode === "playlist") {
       hue = getPlaylistHue(song, stats);
-    } else if (layoutConfig.clusterMode === "custom" && customCatalog) {
-      const squigglyColor = resolveSquigglySongColor(song.id, customCatalog);
-      if (squigglyColor) {
-        return squigglyColor;
-      }
-      hue = getCustomClusterHue(resolveSongCustomClusterId(song.id, customCatalog), customCatalog);
     } else {
       hue = getGenreHue(song, stats);
     }

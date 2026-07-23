@@ -30,8 +30,6 @@ import {
 } from "./isolateClusterLayout";
 import { getCanonicalSongId } from "./isolateScopeSongs";
 import { MusicServiceId } from "./musicProvider";
-import { customClusterPosition } from "./customClusters";
-import { CustomClusterCatalog } from "./types";
 
 const GRAPH_PADDING = 48;
 
@@ -43,8 +41,6 @@ export type LayoutContext = {
   skipIsolateCentroidTranslation?: boolean;
   /** Optional animated override for metacluster centers during layout reposition. */
   metaClusterCenterForOwner?: (ownerId: string, defaultCenter: GraphPoint) => GraphPoint;
-  customClusterCatalog?: CustomClusterCatalog;
-  customCatalogForOwner?: (ownerId: string) => CustomClusterCatalog;
   /** Web perf: reuse conglomerate node positions and only translate into owner metaclusters. */
   useConglomerateOffsetIsolate?: boolean;
   conglomeratePositionsBySongId?: Map<string, GraphPoint>;
@@ -349,8 +345,7 @@ const getIsolateLayoutCache = (
   layoutSongPositionConglomerate: (
     song: Song,
     ownerSongs: Song[],
-    ownerOverrides: ClusterCenterOverrides,
-    customCatalog?: CustomClusterCatalog
+    ownerOverrides: ClusterCenterOverrides
   ) => GraphPoint
 ): IsolateLayoutCache => {
   const cacheKey = buildIsolateLayoutCacheKey(
@@ -378,10 +373,12 @@ const getIsolateLayoutCache = (
           (soloSong, ownerSongs, ownerOverrides) =>
             layoutSongPositionConglomerate(
               soloSong,
-              ownerSongs,
+              dimensions,
+              layoutConfig,
+              buildLibraryStatsFromSongs(ownerSongs, stats.playlistNames),
+              customPositions,
               ownerOverrides,
-              layoutContext.customCatalogForOwner?.(getSongScopeClusterId(soloSong)) ??
-                layoutContext.customClusterCatalog
+              ownerSongs
             )
         ));
   const metaClusters = getEnabledOwnerMetaClusters(allSongs, dimensions, layoutContext.enabledOwnerIds, {
@@ -436,7 +433,7 @@ export const layoutSongPosition = (
         stats,
         clusterOverrides,
         layoutContext,
-        (soloSong, ownerSongs, ownerOverrides, customCatalog) =>
+        (soloSong, ownerSongs, ownerOverrides) =>
           layoutSongPositionConglomerate(
             soloSong,
             dimensions,
@@ -444,8 +441,7 @@ export const layoutSongPosition = (
             buildLibraryStatsFromSongs(ownerSongs, stats.playlistNames),
             customPositions,
             ownerOverrides,
-            ownerSongs,
-            customCatalog
+            ownerSongs
           )
       );
       const { ownerBounds, metaClusters } = isolateCache;
@@ -493,8 +489,7 @@ export const layoutSongPosition = (
           ownerStats,
           customPositions,
           ownerOverrides,
-          ownerSongs,
-          layoutContext.customCatalogForOwner?.(scopeClusterId) ?? layoutContext.customClusterCatalog
+          ownerSongs
         );
         if (bounds && !layoutContext.skipIsolateCentroidTranslation) {
           return translateSoloLayoutToMetaCluster(soloPosition, bounds, metaCenter);
@@ -511,8 +506,7 @@ export const layoutSongPosition = (
     stats,
     customPositions,
     clusterOverrides,
-    songs,
-    layoutContext.customClusterCatalog
+    songs
   );
 };
 
@@ -523,8 +517,7 @@ const layoutSongPositionConglomerate = (
   stats: LibraryStats,
   customPositions: Record<string, NormalizedPoint>,
   clusterOverrides: ClusterCenterOverrides,
-  songs: Song[],
-  customClusterCatalog?: CustomClusterCatalog
+  songs: Song[]
 ): { x: number; y: number } => {
   if (!isClusterView(layoutConfig)) {
     const { xRange, yRange } = getAxisRanges(songs, layoutConfig, stats);
@@ -533,23 +526,6 @@ const layoutSongPositionConglomerate = (
 
   if (layoutConfig.clusterMode === "playlist") {
     return playlistClusterPosition(song, stats, dimensions, clusterOverrides, songs);
-  }
-
-  if (layoutConfig.clusterMode === "custom") {
-    const squigglyClusters = customClusterCatalog?.clusters.filter((c) => c.kind === "squiggly" && c.hull) ?? [];
-    if (squigglyClusters.length > 0) {
-      const stored = customPositions[song.id];
-      if (stored) {
-        return fromNormalizedPosition(stored, dimensions);
-      }
-    }
-    if (!customClusterCatalog) {
-      return {
-        x: dimensions.width / 2,
-        y: dimensions.height / 2,
-      };
-    }
-    return customClusterPosition(song, customClusterCatalog, dimensions, clusterOverrides, songs);
   }
 
   return genreClusterPosition(song, stats, dimensions, clusterOverrides);
@@ -605,8 +581,7 @@ export const getIsolateOwnerBoundsForLayout = (
   _layoutConfig: LayoutConfig,
   _stats: LibraryStats,
   _clusterOverrides: ClusterCenterOverrides,
-  enabledOwnerIds?: string[],
-  _customCatalogForOwner?: (ownerId: string) => CustomClusterCatalog
+  enabledOwnerIds?: string[]
 ): Map<string, { centroid: GraphPoint; radius: number }> => {
   // Isolate layout = solo (my song space) positions + fixed per-owner translation only.
   // Bounds come from song counts + metacluster ring — never from relayouting every song.

@@ -31,6 +31,7 @@ import {
   LoadedLibrary,
   MusicProvider,
 } from "../musicProvider";
+import { mergeLoadedLibraries } from "../spotifyLibraryMerge";
 import { PlaybackState, Song } from "../types";
 
 type SpotifyPage<T> = {
@@ -213,6 +214,114 @@ const waitBetweenPages = async (): Promise<void> => {
 
 const waitBetweenPhases = async (): Promise<void> => {
   await sleep(PHASE_COOLDOWN_MS);
+};
+
+export const fetchSpotifyPlaylistCatalog = async (): Promise<SpotifyPlaylistSummary[]> => {
+  const playlists: SpotifyPlaylistSummary[] = [];
+  let cursor: string | null = null;
+
+  while (true) {
+    const page = await fetchSpotifyPage<SpotifyPlaylistSummary>("/api/spotify/playlists-page", cursor);
+    playlists.push(...page.items);
+    if (!page.next) {
+      break;
+    }
+    cursor = page.next;
+    await waitBetweenPages();
+  }
+
+  return playlists;
+};
+
+const loadSelectedPlaylists = async (
+  options: LoadLibraryOptions & { selectedPlaylistIds: string[] },
+  onProgress?: LoadLibraryOptions["onProgress"]
+): Promise<LoadedLibrary> => {
+  const profile = await resolveImportContributor(null, options);
+  const session = createSpotifyImportSession(profile);
+
+  if (options.includeSavedTracks) {
+    reportProgress(onProgress, {
+      phase: "saved-tracks",
+      message: "Loading saved tracks…",
+      percent: 5,
+    });
+    await loadSavedTracksPhase(session, onProgress);
+    await waitBetweenPhases();
+  } else {
+    session.savedTracksComplete = true;
+    persistSession(session);
+  }
+
+  const catalog = options.playlistCatalog ?? (await fetchSpotifyPlaylistCatalog());
+  session.playlists = catalog;
+  session.playlistsListLoaded = true;
+  const readable = filterReadablePlaylists(catalog, profile.id);
+  session.readablePlaylistIds = readable
+    .map((playlist) => playlist.id)
+    .filter((playlistId) => options.selectedPlaylistIds.includes(playlistId));
+  persistSession(session);
+
+  if (session.readablePlaylistIds.length === 0 && !options.includeSavedTracks) {
+    throw new Error("Select at least one playlist or refresh Liked Songs.");
+  }
+
+  if (session.readablePlaylistIds.length > 0) {
+    session.phase = "playlist-tracks";
+    persistSession(session);
+    await loadPlaylistTracksPhase(session, onProgress);
+    await waitBetweenPhases();
+  } else {
+    session.playlistTracksComplete = true;
+    persistSession(session);
+  }
+
+  const genresByArtistId = await loadGenresPhase(session, onProgress);
+
+  reportProgress(onProgress, {
+    phase: "assembling",
+    message: "Merging library updates…",
+    percent: 99,
+  });
+
+  const readablePlaylists = session.readablePlaylistIds
+    .map((playlistId) => session.playlists.find((playlist) => playlist.id === playlistId))
+    .filter((playlist): playlist is SpotifyPlaylistSummary => Boolean(playlist));
+
+  const library = assembleSpotifyLibrary({
+    contributor: session.contributor,
+    savedItems: session.savedItems,
+    readablePlaylists,
+    playlistItemsByPlaylistId: session.playlistItemsByPlaylistId,
+    genresByArtistId,
+  });
+
+  const sanitized = sanitizeLibraryPayload(library);
+  await clearSpotifyImportSession();
+
+  const loaded: LoadedLibrary = {
+    songs: sanitized.songs,
+    stats: sanitized.stats,
+    contributor: sanitized.contributor,
+  };
+
+  if (options.mergeWithExisting) {
+    const merged = mergeLoadedLibraries(options.mergeWithExisting, loaded);
+    reportProgress(onProgress, {
+      phase: "assembling",
+      message: `Merged ${merged.songs.length.toLocaleString()} tracks.`,
+      percent: 100,
+    });
+    return merged;
+  }
+
+  reportProgress(onProgress, {
+    phase: "assembling",
+    message: `Loaded ${loaded.songs.length.toLocaleString()} tracks.`,
+    percent: 100,
+  });
+
+  return loaded;
 };
 
 const collectArtistIds = (
@@ -619,6 +728,16 @@ const loadLibraryInChunks = async (options?: LoadLibraryOptions): Promise<Loaded
   const onProgress = options?.onProgress;
 
   try {
+    if (options?.includeSavedTracks || (options?.selectedPlaylistIds && options.selectedPlaylistIds.length > 0)) {
+      return await loadSelectedPlaylists(
+        {
+          ...options,
+          selectedPlaylistIds: options.selectedPlaylistIds ?? [],
+        } as LoadLibraryOptions & { selectedPlaylistIds: string[] },
+        onProgress
+      );
+    }
+
     if (options?.fresh) {
       await clearSpotifyImportSession();
     }

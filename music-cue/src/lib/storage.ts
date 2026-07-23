@@ -1,14 +1,10 @@
 import bundledClusterLayout from "../data/cluster-layout.json";
 import type { LibraryScopeMode } from "./libraryScope";
-import { defaultCustomClusterCatalog } from "./customClusters";
-
-export type ClusterLayoutScope = LibraryScopeMode | "custom";
 import { MusicServiceId } from "./musicProvider";
 import { isMockContributorId } from "./libraryScope";
 import {
   ClusterCenterOverrides,
   CueBuildMode,
-  CustomClusterCatalog,
   GraphToolMode,
   LayoutConfig,
   LibraryStats,
@@ -18,23 +14,14 @@ import {
 import { defaultLayoutConfig, migrateLegacyLayoutMode } from "./layoutMetrics";
 import { isWebDeployment, isLocalDesktopApp } from "./runtime";
 
+export type ClusterLayoutScope = LibraryScopeMode;
+
 const MUSIC_SERVICE_KEY = "music-cue-music-service";
 const libraryKey = (serviceId: MusicServiceId): string => `music-cue-library-${serviceId}`;
 const statsKey = (serviceId: MusicServiceId): string => `music-cue-library-stats-${serviceId}`;
 const CUSTOM_LAYOUT_KEY = "music-cue-custom-layout";
 const GENRE_CLUSTER_LAYOUT_KEY = "music-cue-genre-cluster-layout";
 const PLAYLIST_CLUSTER_LAYOUT_KEY = "music-cue-playlist-cluster-layout";
-const CUSTOM_CLUSTER_LAYOUT_KEY = "music-cue-custom-cluster-layout";
-const CUSTOM_CLUSTER_CATALOG_KEY = "music-cue-custom-cluster-catalog";
-
-const genreClusterLayoutKey = (scope: ClusterLayoutScope): string =>
-  `${GENRE_CLUSTER_LAYOUT_KEY}-${scope}`;
-const playlistClusterLayoutKey = (scope: ClusterLayoutScope): string =>
-  `${PLAYLIST_CLUSTER_LAYOUT_KEY}-${scope}`;
-const customClusterLayoutKey = (scope: ClusterLayoutScope): string =>
-  `${CUSTOM_CLUSTER_LAYOUT_KEY}-${scope}`;
-const customClusterCatalogKey = (scope: ClusterLayoutScope): string =>
-  `${CUSTOM_CLUSTER_CATALOG_KEY}-${scope}`;
 const LAYOUT_CONFIG_KEY = "music-cue-layout-config";
 const LAYOUT_MODE_KEY = "music-cue-layout-mode";
 const PATH_THRESHOLD_KEY = "music-cue-path-threshold";
@@ -42,6 +29,10 @@ const CUE_LENGTH_KEY = "music-cue-cue-length";
 const BUILD_MODE_KEY = "music-cue-build-mode";
 const GRAPH_TOOL_KEY = "music-cue-graph-tool";
 const PLAYLIST_GRAPH_VIEW_KEY = "music-cue-playlist-graph-view";
+const genreClusterLayoutKey = (scope: ClusterLayoutScope): string =>
+  `${GENRE_CLUSTER_LAYOUT_KEY}-${scope}`;
+const playlistClusterLayoutKey = (scope: ClusterLayoutScope): string =>
+  `${PLAYLIST_CLUSTER_LAYOUT_KEY}-${scope}`;
 export const DEFAULT_PATH_THRESHOLD = 60;
 export const DEFAULT_CUE_LENGTH = 100;
 
@@ -108,8 +99,11 @@ export const saveBuildMode = (mode: CueBuildMode): void => {
 
 export const loadGraphTool = (): GraphToolMode => {
   const stored = localStorage.getItem(GRAPH_TOOL_KEY);
-  if (stored === "draw" || stored === "draw-cluster") {
-    return stored;
+  if (stored === "draw") {
+    return "draw";
+  }
+  if (stored === "draw-cluster") {
+    return "navigate";
   }
   return "navigate";
 };
@@ -190,7 +184,6 @@ export const normalizeClusterCenterOverrides = (
 export const loadClusterCenterOverrides = (scope: ClusterLayoutScope = "isolate"): ClusterCenterOverrides => {
   let genreStored = loadClusterCenterMap(genreClusterLayoutKey(scope));
   let playlistStored = loadClusterCenterMap(playlistClusterLayoutKey(scope));
-  let customStored = loadClusterCenterMap(customClusterLayoutKey(scope));
 
   if (scope === "conglomerate") {
     if (Object.keys(genreStored).length === 0) {
@@ -214,7 +207,7 @@ export const loadClusterCenterOverrides = (scope: ClusterLayoutScope = "isolate"
   const stored: ClusterCenterOverrides = {
     genre: genreStored,
     playlist: playlistStored,
-    custom: customStored,
+    custom: {},
   };
   const defaults = bundledClusterDefaults();
   const merged = normalizeClusterCenterOverrides({
@@ -245,7 +238,6 @@ export const saveClusterCenterOverridesForScope = (
   const normalized = normalizeClusterCenterOverrides(overrides);
   localStorage.setItem(genreClusterLayoutKey(scope), JSON.stringify(normalized.genre));
   localStorage.setItem(playlistClusterLayoutKey(scope), JSON.stringify(normalized.playlist));
-  localStorage.setItem(customClusterLayoutKey(scope), JSON.stringify(normalized.custom));
 };
 
 export const saveGenreClusterCenterOverrides = (
@@ -261,86 +253,6 @@ export const savePlaylistClusterCenterOverrides = (
 ): void => {
   localStorage.setItem(playlistClusterLayoutKey(scope), JSON.stringify(positions));
 };
-
-export const saveCustomClusterCenterOverrides = (
-  positions: Record<string, NormalizedPoint>,
-  scope: ClusterLayoutScope = "isolate"
-): void => {
-  localStorage.setItem(customClusterLayoutKey(scope), JSON.stringify(positions));
-};
-
-const parseCustomClusterCatalog = (raw: string | null): CustomClusterCatalog => {
-  if (!raw) {
-    return defaultCustomClusterCatalog();
-  }
-  try {
-    const parsed = JSON.parse(raw) as CustomClusterCatalog;
-    if (!parsed || !Array.isArray(parsed.clusters)) {
-      return defaultCustomClusterCatalog();
-    }
-    return parsed;
-  } catch {
-    return defaultCustomClusterCatalog();
-  }
-};
-
-export const loadIsolateCustomClusterCatalogStore = (): Record<string, CustomClusterCatalog> => {
-  try {
-    const stored = localStorage.getItem(customClusterCatalogKey("isolate"));
-    if (!stored) {
-      return {};
-    }
-    const parsed = JSON.parse(stored) as Record<string, CustomClusterCatalog>;
-    return parsed && typeof parsed === "object" ? parsed : {};
-  } catch {
-    return {};
-  }
-};
-
-export const saveIsolateCustomClusterCatalogStore = (
-  catalogs: Record<string, CustomClusterCatalog>
-): void => {
-  localStorage.setItem(customClusterCatalogKey("isolate"), JSON.stringify(catalogs));
-};
-
-export const loadCustomClusterCatalogForScope = (
-  scope: ClusterLayoutScope,
-  ownerId?: string | null
-): CustomClusterCatalog => {
-  if (scope === "conglomerate") {
-    return parseCustomClusterCatalog(localStorage.getItem(customClusterCatalogKey("conglomerate")));
-  }
-  if (!ownerId) {
-    return defaultCustomClusterCatalog();
-  }
-  const store = loadIsolateCustomClusterCatalogStore();
-  return store[ownerId] ?? defaultCustomClusterCatalog();
-};
-
-export const saveCustomClusterCatalogForScope = (
-  scope: ClusterLayoutScope,
-  catalog: CustomClusterCatalog,
-  ownerId?: string | null
-): void => {
-  if (scope === "conglomerate") {
-    localStorage.setItem(customClusterCatalogKey("conglomerate"), JSON.stringify(catalog));
-    return;
-  }
-  if (!ownerId) {
-    return;
-  }
-  const store = loadIsolateCustomClusterCatalogStore();
-  store[ownerId] = catalog;
-  saveIsolateCustomClusterCatalogStore(store);
-};
-
-export const loadCustomClusterCatalogState = (): {
-  conglomerate: CustomClusterCatalog;
-  isolateByOwner: Record<string, CustomClusterCatalog>;
-} => ({
-  conglomerate: loadCustomClusterCatalogForScope("conglomerate"),
-  isolateByOwner: loadIsolateCustomClusterCatalogStore(),
-});
 
 export { emptyClusterOverrides };
 

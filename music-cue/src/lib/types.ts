@@ -37,21 +37,7 @@ export type ClusterCenterOverrides = {
 };
 
 export type ViewMode = "cluster" | "axis";
-export type ClusterMode = "genre" | "playlist" | "custom";
-
-export type CustomClusterDefinition = {
-  id: string;
-  label: string;
-  songIds: string[];
-  kind?: "label" | "squiggly";
-  hull?: NormalizedPoint[];
-  color?: string;
-  labelPosition?: NormalizedPoint;
-};
-
-export type CustomClusterCatalog = {
-  clusters: CustomClusterDefinition[];
-};
+export type ClusterMode = "genre" | "playlist";
 export type AxisMetric =
   | "year"
   | "plays"
@@ -74,7 +60,7 @@ export type LayoutConfig = {
 };
 
 export type CueBuildMode = "path" | "manual";
-export type GraphToolMode = "navigate" | "draw" | "draw-cluster";
+export type GraphToolMode = "navigate" | "draw";
 export type PositionResolver = (song: Song) => GraphPoint;
 
 export type GeneratedCue = {

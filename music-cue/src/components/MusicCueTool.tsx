@@ -39,10 +39,6 @@ import {
   type ClusterLayoutSyncMode,
 } from "../lib/collaborativeLayout";
 import {
-  CollaborativeCustomClusterProvider,
-  type RoomCustomClusterCatalogState,
-} from "../lib/collaborativeCustomClusters";
-import {
   CollaborativeSessionProvider,
   CollaborativeSessionUi,
   type CollaborativePresenceLayout,
@@ -50,6 +46,7 @@ import {
 import { getMusicProvider } from "../lib/providers";
 import {
   clearSpotifyImportSession,
+  fetchSpotifyPlaylistCatalog,
   getSpotifyImportContributorHint,
   getSpotifyImportResumeLabel,
   hasResumableSpotifyImport,
@@ -57,6 +54,8 @@ import {
   SpotifyImportPausedError,
   SpotifyImportRateLimitError,
 } from "../lib/providers/spotifyProvider";
+import { filterReadablePlaylists } from "../../shared/spotifyLibraryAssembly";
+import type { SpotifyPlaylistSummary } from "../../shared/spotifyLibraryAssembly";
 import {
   formatSpotifyRateLimitCooldown,
   getSpotifyImportRateLimitCooldownMs,
@@ -82,7 +81,6 @@ import {
   loadBuildMode,
   loadBundledClusterCenterOverrides,
   loadClusterCenterOverrides,
-  loadCustomClusterCatalogState,
   loadGraphTool,
   loadLayoutConfig,
   loadLibrary,
@@ -90,13 +88,9 @@ import {
   loadMusicService,
   loadPathThreshold,
   loadCueLength,
-  loadCustomPositions,
   loadPlaylistGraphView,
-  saveCustomPositions,
   saveBuildMode,
   saveClusterCenterOverridesForScope,
-  saveCustomClusterCatalogForScope,
-  saveCustomClusterCenterOverrides,
   saveGenreClusterCenterOverrides,
   saveGraphTool,
   saveLayoutConfig,
@@ -109,28 +103,7 @@ import {
   type ClusterLayoutScope,
 } from "../lib/storage";
 import { getActiveClusterLayoutScope, getEffectiveLibraryScopeMode, isSingleContributorSharedLibrary } from "../lib/clusterLayoutScope";
-import { defaultCustomClusterCatalog } from "../lib/customClusters";
-import {
-  applyDraggedClusterMembershipPriority,
-  createSquigglyClusterFromStroke,
-  getSquigglyClusters,
-  pruneInvalidSquigglyClusters,
-  removeSquigglyCluster,
-  renameSquigglyCluster,
-  setSquigglyClusterHull,
-  setSquigglyClusterColor,
-  syncSongMembershipForPosition,
-  translateSquigglyClusters,
-} from "../lib/squigglyClusters";
-import {
-  findSquigglyClusterIdsAtPoint,
-  isValidSquigglyHull,
-  nextSquigglyClusterColor,
-  polygonToPath,
-  simplifyPolygon,
-  toGraphPoints,
-} from "../lib/squigglyClusterGeometry";
-import { SquigglyClusterLayer } from "./SquigglyClusterLayer";
+import { SpotifySyncDialog } from "./SpotifySyncDialog";
 import {
   getAxisMetricLabel,
   getAxisMetricsForService,
@@ -166,8 +139,6 @@ import {
   ClusterCenterOverrides,
   ClusterMode,
   CueBuildMode,
-  CustomClusterCatalog,
-  CustomClusterDefinition,
   GeneratedCue,
   GraphPoint,
   GraphToolMode,
@@ -401,7 +372,6 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     }, durationMs);
   }, []);
   const publishClusterLayoutRef = useRef<(overrides: ClusterCenterOverrides) => void>(() => {});
-  const publishCustomClusterCatalogRef = useRef<(state: RoomCustomClusterCatalogState) => void>(() => {});
   const setGraphCursorRef = useRef<(cursor: NormalizedPoint | null) => void>(() => {});
   const clusterDragSessionRef = useRef<{
     clusterIds: string[];
@@ -428,7 +398,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     shiftHeld: boolean;
     metaShiftHeld: boolean;
     boxEnd?: GraphPoint;
-    mode: "pending" | "pan" | "draw" | "draw-cluster" | "box-select";
+    mode: "pending" | "pan" | "draw" | "box-select";
   } | null>(null);
   const viewTransformRef = useRef<ViewTransform>(DEFAULT_VIEW_TRANSFORM);
   const pendingViewTransformRef = useRef<ViewTransform | null>(null);
@@ -525,7 +495,6 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
   const [guestViewContributorId, setGuestViewContributorId] = useState<string | null>(null);
   const [clusterLayoutSyncRevision, setClusterLayoutSyncRevision] = useState(0);
   const publishedRoomClusterRef = useRef(false);
-  const publishedRoomCustomCatalogRef = useRef(false);
   const [libraryScopeMode, setLibraryScopeMode] = useState<LibraryScopeMode>(() => loadLibraryScopeMode());
   const includeMockUsers = areMockUsersEnabled();
   const localContributorId = useMemo(
@@ -575,7 +544,6 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
   const [clusterOverrides, setClusterOverrides] = useState<ClusterCenterOverrides>(() =>
     loadClusterCenterOverrides(getActiveClusterLayoutScope(loadSongSpaceMode(), loadLibraryScopeMode()))
   );
-  const [customClusterCatalogState, setCustomClusterCatalogState] = useState(() => loadCustomClusterCatalogState());
   const conglomerateClusterOverridesRef = useRef<ClusterCenterOverrides>(
     loadClusterCenterOverrides(getActiveClusterLayoutScope(songSpaceMode, "conglomerate", sharedContributorCount))
   );
@@ -587,9 +555,6 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
   const reloadLayoutCaches = useCallback((scope: ClusterLayoutScope) => {
     if (!isSpotifyGuest) {
       setClusterOverrides(loadClusterCenterOverrides(scope));
-    }
-    if (!isSpotifyGuest) {
-      setCustomClusterCatalogState(loadCustomClusterCatalogState());
     }
   }, [isSpotifyGuest]);
 
@@ -623,27 +588,6 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     songSpaceMode,
     useWebPerformanceOptimizations,
   ]);
-
-  const customCatalogForOwner = useCallback(
-    (ownerId: string): CustomClusterCatalog => {
-      if (activeLayoutScope === "conglomerate") {
-        return customClusterCatalogState.conglomerate;
-      }
-      return customClusterCatalogState.isolateByOwner[ownerId] ?? defaultCustomClusterCatalog();
-    },
-    [activeLayoutScope, customClusterCatalogState]
-  );
-
-  const activeCustomCatalog = useMemo((): CustomClusterCatalog => {
-    if (activeLayoutScope === "conglomerate") {
-      return customClusterCatalogState.conglomerate;
-    }
-    const ownerId = songSpaceContributorId ?? localContributorId;
-    if (!ownerId) {
-      return defaultCustomClusterCatalog();
-    }
-    return customClusterCatalogState.isolateByOwner[ownerId] ?? defaultCustomClusterCatalog();
-  }, [activeLayoutScope, customClusterCatalogState, localContributorId, songSpaceContributorId]);
 
   const layoutClusterOverrides = useMemo(() => {
     if (songSpaceMode === "mine" && songSpaceContributorId) {
@@ -696,45 +640,6 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     });
   }, []);
 
-  const scheduleSongDragPreview = useCallback(() => {
-    if (songDragRafRef.current) {
-      return;
-    }
-    songDragRafRef.current = requestAnimationFrame(() => {
-      songDragRafRef.current = 0;
-      setSongDragPreviewTick((value) => value + 1);
-    });
-  }, []);
-
-  const updateClusterDraftPath = useCallback(() => {
-    const pathEl = clusterDraftPathRef.current;
-    if (!pathEl) {
-      return;
-    }
-    const stroke = clusterDrawStrokeRef.current;
-    if (stroke.length < 2) {
-      pathEl.setAttribute("d", "");
-      return;
-    }
-    pathEl.setAttribute("d", polygonToPath(toGraphPoints(stroke, dimensions), false));
-  }, [dimensions]);
-
-  const scheduleClusterDraftPathUpdate = useCallback(() => {
-    if (clusterDraftRafRef.current) {
-      return;
-    }
-    clusterDraftRafRef.current = requestAnimationFrame(() => {
-      clusterDraftRafRef.current = 0;
-      updateClusterDraftPath();
-    });
-  }, [updateClusterDraftPath]);
-
-  useEffect(() => {
-    if (clusterDrawStrokeRef.current.length > 0) {
-      updateClusterDraftPath();
-    }
-  }, [dimensions, updateClusterDraftPath]);
-
   const buildClusterDragOverrides = useCallback(
     (
       current: ClusterCenterOverrides,
@@ -764,47 +669,9 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
       if (layoutConfig.viewMode === "cluster" && layoutConfig.clusterMode === "playlist") {
         return { ...current, playlist: { ...current.playlist, ...scopedUpdates } };
       }
-      if (layoutConfig.viewMode === "cluster" && layoutConfig.clusterMode === "custom") {
-        return { ...current, custom: { ...current.custom, ...scopedUpdates } };
-      }
       return current;
     },
     [dimensions, layoutConfig]
-  );
-
-  const customClusterCatalogStateRef = useRef(customClusterCatalogState);
-  useEffect(() => {
-    customClusterCatalogStateRef.current = customClusterCatalogState;
-  }, [customClusterCatalogState]);
-
-  const persistCustomCatalog = useCallback(
-    (catalog: CustomClusterCatalog, ownerId?: string | null) => {
-      let nextState: RoomCustomClusterCatalogState | null = null;
-      if (activeLayoutScope === "conglomerate") {
-        setCustomClusterCatalogState((current) => {
-          nextState = { ...current, conglomerate: catalog };
-          return nextState;
-        });
-        saveCustomClusterCatalogForScope("conglomerate", catalog);
-      } else {
-        const resolvedOwnerId = ownerId ?? localContributorId;
-        if (!resolvedOwnerId) {
-          return;
-        }
-        setCustomClusterCatalogState((current) => {
-          nextState = {
-            ...current,
-            isolateByOwner: { ...current.isolateByOwner, [resolvedOwnerId]: catalog },
-          };
-          return nextState;
-        });
-        saveCustomClusterCatalogForScope("isolate", catalog, resolvedOwnerId);
-      }
-      if (isWebDeployment && nextState) {
-        publishCustomClusterCatalogRef.current(nextState);
-      }
-    },
-    [activeLayoutScope, localContributorId]
   );
 
   const resolveOverrideOwnerId = useCallback(
@@ -827,7 +694,6 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
   const [isDrawingNewPath, setIsDrawingNewPath] = useState(false);
   const [cue, setCue] = useState<GeneratedCue | null>(null);
   const [hoveredSongId, setHoveredSongId] = useState<string | null>(null);
-  const [draggingSongId, setDraggingSongId] = useState<string | null>(null);
   const [activePlaylistName, setActivePlaylistName] = useState<string | null>(null);
   const [activePersistentId, setActivePersistentId] = useState<string | null>(null);
   const [playbackTrackingEnabled, setPlaybackTrackingEnabled] = useState(false);
@@ -863,6 +729,10 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
   const [isImporting, setIsImporting] = useState(false);
   const isImportingRef = useRef(false);
   const [importProgress, setImportProgress] = useState<LibraryLoadProgress | null>(null);
+  const [spotifySyncOpen, setSpotifySyncOpen] = useState(false);
+  const [spotifySyncLoading, setSpotifySyncLoading] = useState(false);
+  const [spotifySyncError, setSpotifySyncError] = useState<string | null>(null);
+  const [spotifySyncPlaylists, setSpotifySyncPlaylists] = useState<SpotifyPlaylistSummary[]>([]);
   const [importResumeRevision, setImportResumeRevision] = useState(0);
   const [rateLimitCooldownMs, setRateLimitCooldownMs] = useState(0);
   const [playlistGraphView, setPlaylistGraphView] = useState(() => loadPlaylistGraphView());
@@ -871,99 +741,11 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
   const [selectedClusterIds, setSelectedClusterIds] = useState<Set<string>>(() => new Set());
   const clusterOverridesRef = useRef(clusterOverrides);
   const clusterDragRafRef = useRef(0);
-  const songDragRafRef = useRef(0);
-  const [songDragPreviewTick, setSongDragPreviewTick] = useState(0);
   const hoverProbeRafRef = useRef(0);
   const pendingHoverPointRef = useRef<GraphPoint | null>(null);
   const [clusterDragPreviewTick, setClusterDragPreviewTick] = useState(0);
-  const [squigglySongPositions, setSquigglySongPositions] = useState<Record<string, NormalizedPoint>>(() =>
-    loadCustomPositions()
-  );
-  const squigglySongPositionsRef = useRef(squigglySongPositions);
-  const clusterDrawStrokeRef = useRef<NormalizedPoint[]>([]);
-  const clusterDraftPathRef = useRef<SVGPathElement | null>(null);
-  const clusterDraftRafRef = useRef(0);
-  const [squigglyHullPreview, setSquigglyHullPreview] = useState<Record<string, NormalizedPoint[]>>({});
-  const [hoveredSquigglyClusterId, setHoveredSquigglyClusterId] = useState<string | null>(null);
-  const [squigglyPenColor, setSquigglyPenColor] = useState(() => nextSquigglyClusterColor());
-  const [clusterNameDraft, setClusterNameDraft] = useState("");
-  const [redrawDraft, setRedrawDraft] = useState<{
-    clusterId: string;
-    previousHull: NormalizedPoint[];
-    draftHull: NormalizedPoint[];
-  } | null>(null);
-  const redrawClusterIdRef = useRef<string | null>(null);
-  const draggingSquigglyClusterRef = useRef<{
-    clusterIds: string[];
-    primaryClusterId: string;
-    startHulls: Record<string, NormalizedPoint[]>;
-    memberSongIds: string[];
-    startSongPositions: Record<string, NormalizedPoint>;
-    anchor: NormalizedPoint;
-  } | null>(null);
-  const pendingSquigglyClusterDragRef = useRef<{
-    clusterIds: string[];
-    primaryClusterId: string;
-    startHulls: Record<string, NormalizedPoint[]>;
-    memberSongIds: string[];
-    startSongPositions: Record<string, NormalizedPoint>;
-    anchor: NormalizedPoint;
-    clientX: number;
-    clientY: number;
-    pointerId: number;
-  } | null>(null);
-  const draggingSongRef = useRef<{
-    songId: string;
-    start: NormalizedPoint;
-    anchor: NormalizedPoint;
-  } | null>(null);
-  const pendingSongDragRef = useRef<{
-    songId: string;
-    start: NormalizedPoint;
-    anchor: NormalizedPoint;
-    clientX: number;
-    clientY: number;
-    pointerId: number;
-  } | null>(null);
 
-  const isSquigglyCustomMode =
-    layoutConfig.viewMode === "cluster" && layoutConfig.clusterMode === "custom";
-  const squigglyClusters = useMemo(
-    () => getSquigglyClusters(activeCustomCatalog, dimensions),
-    [activeCustomCatalog, dimensions]
-  );
-  const selectedSquigglyCluster = useMemo(() => {
-    const selectedId = [...selectedClusterIds].find((id) =>
-      squigglyClusters.some((cluster) => cluster.id === id)
-    );
-    return selectedId ? squigglyClusters.find((cluster) => cluster.id === selectedId) : undefined;
-  }, [selectedClusterIds, squigglyClusters]);
-  const showToolSidebar =
-    graphTool === "draw" || (graphTool === "draw-cluster" && isSquigglyCustomMode);
-
-  useEffect(() => {
-    setClusterNameDraft(selectedSquigglyCluster?.label ?? "");
-  }, [selectedSquigglyCluster?.id, selectedSquigglyCluster?.label]);
-
-  useEffect(() => {
-    if (dimensions.width <= 0 || dimensions.height <= 0) {
-      return;
-    }
-    const pruned = pruneInvalidSquigglyClusters(activeCustomCatalog, dimensions);
-    if (pruned.clusters.length === activeCustomCatalog.clusters.length) {
-      return;
-    }
-    persistCustomCatalog(pruned);
-    setSelectedClusterIds((current) => {
-      const validIds = new Set(getSquigglyClusters(pruned, dimensions).map((cluster) => cluster.id));
-      return new Set([...current].filter((id) => validIds.has(id)));
-    });
-    setStatusMessage("Removed invalid empty cluster.");
-  }, [activeCustomCatalog, dimensions, persistCustomCatalog]);
-
-  useEffect(() => {
-    squigglySongPositionsRef.current = squigglySongPositions;
-  }, [squigglySongPositions]);
+  const showToolSidebar = graphTool === "draw";
 
   useEffect(() => {
     cueRef.current = cue;
@@ -1267,13 +1049,11 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
           dimensions,
           layoutConfig,
           stats,
-          isSquigglyCustomMode ? squigglySongPositions : {},
           conglomerateClusterOverridesRef.current,
           visibleSongs,
           {
             libraryScopeMode: "conglomerate",
             enabledOwnerIds: activeContributorIds,
-            customClusterCatalog: customClusterCatalogState.conglomerate,
           }
         )
       );
@@ -1282,11 +1062,8 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
   }, [
     activeContributorIds,
     clusterDragPreviewTick,
-    customClusterCatalogState.conglomerate,
-    dimensions,
-    isSquigglyCustomMode,
+        dimensions,
     layoutConfig,
-    squigglySongPositions,
     stats,
     useWebPerformanceOptimizations,
     visibleSongs,
@@ -1308,13 +1085,11 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
           dimensions,
           layoutConfig,
           stats,
-          isSquigglyCustomMode ? squigglySongPositions : {},
           conglomerateClusterOverridesRef.current,
           visibleSongs,
           {
             libraryScopeMode: "conglomerate",
             enabledOwnerIds: activeContributorIds,
-            customClusterCatalog: customClusterCatalogState.conglomerate,
           }
         )
       );
@@ -1323,11 +1098,8 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
   }, [
     activeContributorIds,
     clusterDragPreviewTick,
-    customClusterCatalogState.conglomerate,
-    dimensions,
-    isSquigglyCustomMode,
+        dimensions,
     layoutConfig,
-    squigglySongPositions,
     stats,
     useWebPerformanceOptimizations,
     visibleSongs,
@@ -1398,11 +1170,9 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
       stats,
       clusterOverrides,
       activeContributorIds,
-      customCatalogForOwner
     );
   }, [
     activeContributorIds,
-    customCatalogForOwner,
     dimensions,
     graphSongs,
     layoutConfig,
@@ -1507,13 +1277,11 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
         dimensions,
         config,
         stats,
-        isSquigglyCustomMode ? squigglySongPositions : {},
         conglomerateClusterOverridesRef.current,
         visibleSongs,
         {
           libraryScopeMode: "conglomerate",
           enabledOwnerIds: activeContributorIds,
-          customClusterCatalog: customClusterCatalogState.conglomerate,
         }
       );
     },
@@ -1522,11 +1290,8 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
       axisConglomeratePositionBySongId,
       clusterDragPreviewTick,
       conglomeratePositionBySongId,
-      customClusterCatalogState.conglomerate,
       dimensions,
-      isSquigglyCustomMode,
       layoutConfig,
-      squigglySongPositions,
       stats,
       visibleSongs,
     ]
@@ -1601,21 +1366,17 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
       const clusterOverridesForLayout = draggingClusterIdRef.current
         ? resolveLayoutClusterOverrides()
         : layoutClusterOverrides;
-      return layoutSongPosition(song, dimensions, config, stats, isSquigglyCustomMode ? squigglySongPositions : {}, clusterOverridesForLayout, layoutSongs, {
+      return layoutSongPosition(song, dimensions, config, stats, {}, clusterOverridesForLayout, layoutSongs, {
         libraryScopeMode: scopeMode,
         enabledOwnerIds: activeContributorIds,
         isolateOwnerBounds: ownerBounds,
         skipIsolateCentroidTranslation,
         metaClusterCenterForOwner: getMetaClusterCenter,
-        customClusterCatalog: activeCustomCatalog,
-        customCatalogForOwner,
       });
     },
     [
       activeContributorIds,
-      activeCustomCatalog,
       clusterDragPreviewTick,
-      customCatalogForOwner,
       dimensions,
       getConglomeratePositionForSong,
       getMetaClusterCenter,
@@ -1623,9 +1384,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
       layoutLibraryScopeMode,
       resolveLayoutClusterOverrides,
       skipIsolateCentroidTranslation,
-      isSquigglyCustomMode,
-      squigglySongPositions,
-      stats,
+          stats,
       useWebPerformanceOptimizations,
     ]
   );
@@ -1640,8 +1399,6 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     computeLayoutPosition,
     libraryScopeMode: layoutLibraryScopeMode,
     activeContributorIds,
-    activeCustomCatalog,
-    customCatalogForOwner,
   });
   clusterSnapshotInputsRef.current = {
     graphSongs,
@@ -1653,8 +1410,6 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     computeLayoutPosition,
     libraryScopeMode: layoutLibraryScopeMode,
     activeContributorIds,
-    activeCustomCatalog,
-    customCatalogForOwner,
   };
 
   const buildRegionSnapshot = useCallback(
@@ -1682,7 +1437,6 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
                 stats,
                 clusterOverrides,
                 activeContributorIds,
-                customCatalogForOwner
               )
           : undefined;
 
@@ -1704,7 +1458,6 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
               activeContributorIds,
               stats.playlistNames,
               snapshotOwnerBounds,
-              customCatalogForOwner,
               playlistOwners
             )
           : buildClusterRegions(
@@ -1713,18 +1466,15 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
               positionForSong,
               stats,
               dimensions,
-              overridesForScope,
-              activeCustomCatalog
+              overridesForScope
             );
 
       return innerRegions;
     },
     [
-      activeCustomCatalog,
       activeContributorIds,
       clusterOverrides,
       conglomeratePositionBySongId,
-      customCatalogForOwner,
       dimensions,
       isolateGraphSongs,
       layoutClusterOverrides,
@@ -1796,15 +1546,12 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     if (selectedSongId) {
       ids.add(selectedSongId);
     }
-    if (draggingSongId) {
-      ids.add(draggingSongId);
-    }
     if (activePersistentId) {
       ids.add(activePersistentId);
     }
     cue?.songs.forEach((song) => ids.add(song.id));
     return ids;
-  }, [activePersistentId, cue, draggingSongId, hoveredSongId, selectedSongId]);
+  }, [activePersistentId, cue, hoveredSongId, selectedSongId]);
 
   const enableGraphNodeCulling =
     useWebPerformanceOptimizations && renderGraphSongs.length >= GRAPH_NODE_CULLING_THRESHOLD;
@@ -1817,7 +1564,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     if (!useLazyWebNodeCulling || showIsolateContributorView) {
       return undefined;
     }
-    if (!isClusterView(coldLayoutConfig) || coldLayoutConfig.clusterMode === "custom") {
+    if (!isClusterView(coldLayoutConfig)) {
       return undefined;
     }
     return buildClusterViewportHints(
@@ -1825,11 +1572,9 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
       renderGraphSongs,
       stats,
       dimensions,
-      layoutClusterOverrides,
-      activeCustomCatalog
+      layoutClusterOverrides
     );
   }, [
-    activeCustomCatalog,
     coldLayoutConfig,
     dimensions,
     layoutClusterOverrides,
@@ -1863,20 +1608,6 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     useWebPerformanceOptimizations,
   ]);
 
-  const getSongRenderPosition = useCallback(
-    (song: Song, bakedPosition: GraphPoint): GraphPoint => {
-      if (!isSquigglyCustomMode) {
-        return bakedPosition;
-      }
-      const stored = squigglySongPositionsRef.current[getCanonicalSongId(song.id)];
-      if (!stored) {
-        return bakedPosition;
-      }
-      return fromNormalizedPosition(stored, dimensions);
-    },
-    [dimensions, isSquigglyCustomMode, songDragPreviewTick, squigglySongPositions]
-  );
-
   const renderedPositionedSongsRef = useRef<{ song: Song; position: GraphPoint }[]>([]);
 
   const findHoveredSongAtPoint = useCallback(
@@ -1896,7 +1627,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
           );
 
       nodes.forEach(({ song, position }) => {
-        const renderPosition = getSongRenderPosition(song, position);
+        const renderPosition = position;
         if (bounds && !isPointInGraphViewport(renderPosition, bounds)) {
           return;
         }
@@ -1909,7 +1640,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
 
       return bestId;
     },
-    [bakedPositionedSongs, dimensions, getSongRenderPosition, songDragPreviewTick, useLazyWebNodeCulling]
+    [bakedPositionedSongs, dimensions, useLazyWebNodeCulling]
   );
 
   const scheduleHoverProbe = useCallback(
@@ -1984,14 +1715,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
 
   renderedPositionedSongsRef.current = renderedPositionedSongs;
 
-  const visiblePositionedSongs = useMemo(
-    () =>
-      renderedPositionedSongs.map(({ song, position }) => ({
-        song,
-        position: getSongRenderPosition(song, position),
-      })),
-    [getSongRenderPosition, renderedPositionedSongs, songDragPreviewTick]
-  );
+  const visiblePositionedSongs = renderedPositionedSongs;
 
   const culledNodeCount = enableGraphNodeCulling
     ? Math.max(0, renderGraphSongs.length - visiblePositionedSongs.length)
@@ -2005,12 +1729,11 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     songsToFill.forEach((song) => {
       fills.set(
         song.id,
-        getSongNodeFill(song, layoutConfig, stats, visibleSongs, activeCustomCatalog)
+        getSongNodeFill(song, layoutConfig, stats, visibleSongs)
       );
     });
     return fills;
   }, [
-    activeCustomCatalog,
     enableGraphNodeCulling,
     layoutConfig,
     renderedPositionedSongs,
@@ -2028,7 +1751,6 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     if (
       !useWebPerformanceOptimizations ||
       !isClusterView(coldLayoutConfig) ||
-      coldLayoutConfig.clusterMode === "custom" ||
       !hasMultipleLibraryOwners(graphSongs)
     ) {
       return null;
@@ -2062,16 +1784,13 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
             );
       const ownerStats = buildLibraryStatsFromSongs(ownerSongs, ownerPlaylistNames);
       const ownerOverrides = getClusterOverridesForOwner(layoutClusterOverrides, ownerId, coldLayoutConfig);
-      const ownerCatalog = customCatalogForOwner?.(ownerId);
       const regions = buildClusterRegions(
         coldLayoutConfig.clusterMode,
         ownerSongs,
         getConglomeratePositionForSong,
         ownerStats,
         dimensions,
-        ownerOverrides,
-        ownerCatalog
-      ).map((region) => ({
+        ownerOverrides).map((region) => ({
         ...region,
         id: `owner:${ownerId}:${region.id}`,
       }));
@@ -2083,7 +1802,6 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     activeContributorIds,
     clusterDragPreviewTick,
     coldLayoutConfig,
-    customCatalogForOwner,
     dimensions,
     getConglomeratePositionForSong,
     graphSongs,
@@ -2102,10 +1820,6 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
       : layoutLibraryScopeMode === "isolate";
 
     if (!isClusterView(coldLayoutConfig)) {
-      return [];
-    }
-
-    if (coldLayoutConfig.clusterMode === "custom") {
       return [];
     }
 
@@ -2134,8 +1848,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
         getConglomeratePositionForSong,
         stats,
         dimensions,
-        clusterOverridesForLayout,
-        activeCustomCatalog
+        clusterOverridesForLayout
       );
     }
 
@@ -2153,7 +1866,6 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
           activeContributorIds,
           stats.playlistNames,
           isolateOwnerBounds,
-          customCatalogForOwner,
           playlistOwners
         )
       : buildClusterRegions(
@@ -2162,16 +1874,13 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
           positionForClusterRegions,
           stats,
           dimensions,
-          clusterOverridesForLayout,
-          activeCustomCatalog
+          clusterOverridesForLayout
         );
   }, [
     activeContributorIds,
-    activeCustomCatalog,
     clusterDragPreviewTick,
     clusterOverrides,
     coldLayoutConfig,
-    customCatalogForOwner,
     dimensions,
     graphSongs,
     isolateDisplayContext,
@@ -2193,8 +1902,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     playlistGraphView &&
     songSpaceMode === "mine" &&
     isClusterView(layoutConfig) &&
-    layoutConfig.clusterMode === "playlist" &&
-    !isSquigglyCustomMode;
+    layoutConfig.clusterMode === "playlist";
 
   const playlistMetaGraphSegments = useMemo(() => {
     if (!showPlaylistMetaGraph) {
@@ -2484,10 +2192,6 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     if (!isGuestViewOnly) {
       return;
     }
-    if (graphTool === "draw-cluster") {
-      setGraphTool("navigate");
-      saveGraphTool("navigate");
-    }
     if (buildMode === "manual") {
       setBuildMode("path");
       saveBuildMode("path");
@@ -2533,9 +2237,6 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
 
   const handleGraphToolChange = useCallback(
     (tool: GraphToolMode) => {
-      if (isGuestViewOnly && tool === "draw-cluster") {
-        return;
-      }
       setGraphTool(tool);
       saveGraphTool(tool);
       if (tool === "navigate") {
@@ -2544,10 +2245,6 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
             ? "Navigate: drag to pan · scroll or pinch to zoom."
             : "Navigate: drag to pan · scroll or pinch to zoom · drag cluster labels to move them."
         );
-        return;
-      }
-      if (tool === "draw-cluster") {
-        setStatusMessage("Draw cluster: sketch a loop to create a cluster, or click one to edit it.");
         return;
       }
       setStatusMessage(
@@ -2718,268 +2415,6 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     });
   };
 
-  const beginClusterStroke = (point: GraphPoint) => {
-    const normalized = toNormalizedPosition(point, dimensions);
-    clusterDrawStrokeRef.current = [normalized];
-    scheduleClusterDraftPathUpdate();
-    setStatusMessage(
-      redrawClusterIdRef.current
-        ? "Redraw cluster shape… release to preview, then accept or reject."
-        : "Draw cluster loop… release to close the shape."
-    );
-  };
-
-  const appendClusterStrokePoint = (point: GraphPoint) => {
-    const normalized = toNormalizedPosition(point, dimensions);
-    const current = clusterDrawStrokeRef.current;
-    const last = current[current.length - 1];
-    if (!last || Math.hypot(normalized.x - last.x, normalized.y - last.y) < 0.004) {
-      return;
-    }
-    clusterDrawStrokeRef.current = [...current, normalized];
-    scheduleClusterDraftPathUpdate();
-  };
-
-  const finishClusterDrawing = () => {
-    if (isGuestViewOnly) {
-      clusterDrawStrokeRef.current = [];
-      updateClusterDraftPath();
-      return;
-    }
-    const stroke = clusterDrawStrokeRef.current;
-    clusterDrawStrokeRef.current = [];
-    updateClusterDraftPath();
-
-    if (stroke.length < 3) {
-      setStatusMessage("Draw a longer loop to create a cluster.");
-      return;
-    }
-
-    const hull = simplifyPolygon(stroke);
-    if (!isValidSquigglyHull(hull, dimensions)) {
-      setStatusMessage("Draw a larger loop — the cluster needs visible area.");
-      return;
-    }
-
-    const positionedSongs = graphSongs.map((song) => ({
-      id: getCanonicalSongId(song.id),
-      position: computeLayoutPosition(song, layoutConfig),
-    }));
-
-    if (redrawClusterIdRef.current) {
-      const clusterId = redrawClusterIdRef.current;
-      const existing = squigglyClusters.find((cluster) => cluster.id === clusterId);
-      if (!existing?.hull) {
-        redrawClusterIdRef.current = null;
-        return;
-      }
-      setRedrawDraft({
-        clusterId,
-        previousHull: existing.hull,
-        draftHull: hull,
-      });
-      setStatusMessage("Previewing redraw — accept to keep or reject to undo.");
-      return;
-    }
-
-    const created = createSquigglyClusterFromStroke(
-      activeCustomCatalog,
-      hull,
-      positionedSongs,
-      dimensions,
-      squigglyPenColor
-    );
-    if (!created) {
-      setStatusMessage("Draw a larger loop — the cluster needs visible area.");
-      return;
-    }
-    const { catalog: nextCatalog, cluster } = created;
-    persistCustomCatalog(nextCatalog);
-    setSquigglyPenColor(nextSquigglyClusterColor());
-    setStatusMessage(`Created ${cluster.label} with ${cluster.songIds.length} songs.`);
-  };
-
-  const acceptRedrawDraft = () => {
-    if (!redrawDraft) {
-      return;
-    }
-    if (!isValidSquigglyHull(redrawDraft.draftHull, dimensions)) {
-      setStatusMessage("Draw a larger loop — the cluster needs visible area.");
-      return;
-    }
-    const nextCatalog = setSquigglyClusterHull(
-      activeCustomCatalog,
-      redrawDraft.clusterId,
-      redrawDraft.draftHull
-    );
-    persistCustomCatalog(nextCatalog);
-    setRedrawDraft(null);
-    redrawClusterIdRef.current = null;
-    setStatusMessage("Cluster shape updated.");
-  };
-
-  const rejectRedrawDraft = () => {
-    setRedrawDraft(null);
-    redrawClusterIdRef.current = null;
-    setStatusMessage("Cluster redraw cancelled.");
-  };
-
-  const buildSquigglyDragSession = (
-    clusterIds: string[],
-    primaryClusterId: string,
-    anchor: NormalizedPoint,
-    hullSource: Array<{ id: string; hull?: NormalizedPoint[]; songIds: string[] }>
-  ) => {
-    const memberSongIds = new Set<string>();
-    const startHulls: Record<string, NormalizedPoint[]> = {};
-    const startSongPositions: Record<string, NormalizedPoint> = {};
-
-    clusterIds.forEach((clusterId) => {
-      const cluster = hullSource.find((entry) => entry.id === clusterId);
-      if (!cluster?.hull) {
-        return;
-      }
-      startHulls[clusterId] = cluster.hull.map((vertex) => ({ ...vertex }));
-      cluster.songIds.forEach((songId) => memberSongIds.add(getCanonicalSongId(songId)));
-    });
-
-    memberSongIds.forEach((songId) => {
-      const stored = squigglySongPositionsRef.current[songId];
-      if (stored) {
-        startSongPositions[songId] = { ...stored };
-      }
-    });
-
-    return {
-      clusterIds,
-      primaryClusterId,
-      startHulls,
-      memberSongIds: [...memberSongIds],
-      startSongPositions,
-      anchor,
-    };
-  };
-
-  const getSquigglyClustersForHitTest = () =>
-    squigglyClusters.map((cluster) => ({
-      id: cluster.id,
-      hull:
-        squigglyHullPreview[cluster.id] ??
-        (redrawDraft?.clusterId === cluster.id ? redrawDraft.draftHull : cluster.hull),
-      songIds: cluster.songIds,
-    }));
-
-  const startClusterShapeEdit = useCallback(
-    (cluster: CustomClusterDefinition) => {
-      setGraphTool("draw-cluster");
-      saveGraphTool("draw-cluster");
-      setSelectedClusterIds(new Set([cluster.id]));
-      redrawClusterIdRef.current = cluster.id;
-      setRedrawDraft(null);
-      setStatusMessage(`Redraw ${cluster.label}: draw a new loop on the graph.`);
-    },
-    []
-  );
-
-  const handleSquigglyClusterPointerDown = (
-    event: React.PointerEvent<SVGPathElement>,
-    cluster: CustomClusterDefinition
-  ) => {
-    if (isGuestViewOnly) {
-      return;
-    }
-    if (redrawDraft) {
-      return;
-    }
-    event.stopPropagation();
-
-    if (graphTool === "draw-cluster") {
-      setSelectedClusterIds(new Set([cluster.id]));
-      return;
-    }
-
-    if (graphTool !== "navigate") {
-      return;
-    }
-
-    const graphPoint = getLocalPoint(event, event.currentTarget.ownerSVGElement!, contentGroupRef.current);
-    const anchor = toNormalizedPosition(graphPoint, dimensions);
-    const hullSource = getSquigglyClustersForHitTest();
-    const clusterIds = findSquigglyClusterIdsAtPoint(graphPoint, hullSource, dimensions);
-    const hitClusterIds = clusterIds.length > 0 ? clusterIds : [cluster.id];
-    pendingSquigglyClusterDragRef.current = {
-      ...buildSquigglyDragSession(hitClusterIds, cluster.id, anchor, hullSource),
-      clientX: event.clientX,
-      clientY: event.clientY,
-      pointerId: event.pointerId,
-    };
-    setSelectedClusterIds(new Set(hitClusterIds));
-  };
-
-  const handleSquigglyClusterDoubleClick = (
-    event: React.MouseEvent<SVGPathElement>,
-    cluster: CustomClusterDefinition
-  ) => {
-    if (isGuestViewOnly) {
-      return;
-    }
-    event.stopPropagation();
-    if (draggingSquigglyClusterRef.current) {
-      return;
-    }
-    pendingSquigglyClusterDragRef.current = null;
-    startClusterShapeEdit(cluster);
-  };
-
-  const handleBeginEditClusterShape = () => {
-    if (!selectedSquigglyCluster) {
-      return;
-    }
-    startClusterShapeEdit(selectedSquigglyCluster);
-  };
-
-  const handleClusterNameCommit = () => {
-    if (!selectedSquigglyCluster) {
-      return;
-    }
-    const nextLabel = clusterNameDraft.trim();
-    if (!nextLabel || nextLabel === selectedSquigglyCluster.label) {
-      setClusterNameDraft(selectedSquigglyCluster.label);
-      return;
-    }
-    persistCustomCatalog(renameSquigglyCluster(activeCustomCatalog, selectedSquigglyCluster.id, nextLabel));
-    setStatusMessage(`Renamed cluster to ${nextLabel}.`);
-  };
-
-  const handleSelectedClusterColorChange = (color: string) => {
-    if (!selectedSquigglyCluster) {
-      return;
-    }
-    persistCustomCatalog(setSquigglyClusterColor(activeCustomCatalog, selectedSquigglyCluster.id, color));
-  };
-
-  const handleDeleteCluster = () => {
-    if (!selectedSquigglyCluster) {
-      return;
-    }
-    const clusterLabel = selectedSquigglyCluster.label;
-    if (
-      !window.confirm(
-        `Delete "${clusterLabel}"? Songs will stay on the graph but won't belong to any cluster.`
-      )
-    ) {
-      return;
-    }
-    persistCustomCatalog(removeSquigglyCluster(activeCustomCatalog, selectedSquigglyCluster.id));
-    setSelectedClusterIds(new Set());
-    setClusterNameDraft("");
-    if (redrawDraft?.clusterId === selectedSquigglyCluster.id) {
-      setRedrawDraft(null);
-      redrawClusterIdRef.current = null;
-    }
-    setStatusMessage(`Deleted ${clusterLabel}.`);
-  };
-
   const finishStrokeDrawing = () => {
     const currentStroke = strokeRef.current;
     isDrawingRef.current = false;
@@ -3033,9 +2468,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     const overrideMap =
       layoutConfig.clusterMode === "genre"
         ? activeOverrides.genre
-        : layoutConfig.clusterMode === "playlist"
-          ? activeOverrides.playlist
-          : activeOverrides.custom;
+        : activeOverrides.playlist;
     const clustersToMove =
       selectedClusterIds.size > 0 && selectedClusterIds.has(clusterId)
         ? [...selectedClusterIds]
@@ -3092,34 +2525,6 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
 
   const handleNodePointerDown = (event: React.PointerEvent<SVGCircleElement>, song: Song) => {
     event.stopPropagation();
-    if (
-      isSquigglyCustomMode &&
-      graphTool === "navigate" &&
-      !redrawDraft &&
-      !isGuestViewOnly
-    ) {
-      const canonicalId = getCanonicalSongId(song.id);
-      let start = squigglySongPositionsRef.current[canonicalId];
-      if (!start) {
-        const position = computeLayoutPosition(song, layoutConfig);
-        start = toNormalizedPosition(position, dimensions);
-        const seeded = { ...squigglySongPositionsRef.current, [canonicalId]: start };
-        squigglySongPositionsRef.current = seeded;
-        setSquigglySongPositions(seeded);
-      }
-      pendingSongDragRef.current = {
-        songId: canonicalId,
-        start: { ...start },
-        anchor: toNormalizedPosition(
-          getLocalPoint(event, event.currentTarget.ownerSVGElement!, contentGroupRef.current),
-          dimensions
-        ),
-        clientX: event.clientX,
-        clientY: event.clientY,
-        pointerId: event.pointerId,
-      };
-      return;
-    }
     nodePointerStartRef.current = {
       songId: song.id,
       clientX: event.clientX,
@@ -3130,14 +2535,6 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
   const handleNodePointerUp = (event: React.PointerEvent<SVGCircleElement>, song: Song) => {
     event.stopPropagation();
     const canonicalId = getCanonicalSongId(song.id);
-    if (draggingSongRef.current?.songId === canonicalId) {
-      return;
-    }
-    if (pendingSongDragRef.current?.songId === canonicalId) {
-      pendingSongDragRef.current = null;
-      void handleNodeSelect(song);
-      return;
-    }
     const start = nodePointerStartRef.current;
     nodePointerStartRef.current = null;
 
@@ -3157,8 +2554,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     }
     return Boolean(
       target.closest(".music-cue-node-hit") ||
-        target.closest(".music-cue-cluster-label-draggable") ||
-        target.closest(".music-cue-squiggly-cluster-fill")
+        target.closest(".music-cue-cluster-label-draggable")
     );
   };
 
@@ -3221,93 +2617,12 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
       isWebDeployment &&
       !pinchSessionRef.current &&
       panSessionRef.current?.mode !== "pan" &&
-      !draggingClusterIdRef.current &&
-      !draggingSquigglyClusterRef.current &&
-      !draggingSongRef.current
+      !draggingClusterIdRef.current
     ) {
       const point = getLocalPoint(event, svgRef.current, contentGroupRef.current);
       setGraphCursorRef.current(toNormalizedPosition(point, dimensions));
     }
 
-    if (pendingSquigglyClusterDragRef.current && !draggingSquigglyClusterRef.current) {
-      const pending = pendingSquigglyClusterDragRef.current;
-      if (pending.pointerId === event.pointerId) {
-        const moved = Math.hypot(event.clientX - pending.clientX, event.clientY - pending.clientY);
-        if (moved >= DRAG_THRESHOLD) {
-          const { clientX: _clientX, clientY: _clientY, pointerId: _pointerId, ...session } = pending;
-          draggingSquigglyClusterRef.current = session;
-          pendingSquigglyClusterDragRef.current = null;
-          svgRef.current.setPointerCapture(event.pointerId);
-          setStatusMessage(`Dragging ${session.clusterIds.length} cluster(s)…`);
-        }
-      }
-    }
-
-    if (pendingSongDragRef.current && !draggingSongRef.current) {
-      const pending = pendingSongDragRef.current;
-      if (pending.pointerId === event.pointerId) {
-        const moved = Math.hypot(event.clientX - pending.clientX, event.clientY - pending.clientY);
-        if (moved >= DRAG_THRESHOLD) {
-          const { clientX: _clientX, clientY: _clientY, pointerId: _pointerId, ...session } = pending;
-          draggingSongRef.current = session;
-          setDraggingSongId(session.songId);
-          pendingSongDragRef.current = null;
-          svgRef.current.setPointerCapture(event.pointerId);
-        }
-      }
-    }
-
-    if (draggingSquigglyClusterRef.current) {
-      const point = getLocalPoint(event, svgRef.current, contentGroupRef.current);
-      const normalized = toNormalizedPosition(point, dimensions);
-      const session = draggingSquigglyClusterRef.current;
-      const delta = {
-        x: normalized.x - session.anchor.x,
-        y: normalized.y - session.anchor.y,
-      };
-      const nextPreview: Record<string, NormalizedPoint[]> = {};
-      session.clusterIds.forEach((clusterId) => {
-        const startHull = session.startHulls[clusterId];
-        if (!startHull) {
-          return;
-        }
-        nextPreview[clusterId] = startHull.map((vertex) => ({
-          x: vertex.x + delta.x,
-          y: vertex.y + delta.y,
-        }));
-      });
-      setSquigglyHullPreview(nextPreview);
-      const nextPositions = { ...squigglySongPositionsRef.current };
-      session.memberSongIds.forEach((songId) => {
-        const start = session.startSongPositions[songId];
-        if (start) {
-          nextPositions[songId] = { x: start.x + delta.x, y: start.y + delta.y };
-        }
-      });
-      squigglySongPositionsRef.current = nextPositions;
-      scheduleSongDragPreview();
-      return;
-    }
-
-    if (draggingSongRef.current) {
-      const point = getLocalPoint(event, svgRef.current, contentGroupRef.current);
-      const normalized = toNormalizedPosition(point, dimensions);
-      const session = draggingSongRef.current;
-      const delta = {
-        x: normalized.x - session.anchor.x,
-        y: normalized.y - session.anchor.y,
-      };
-      const nextPositions = {
-        ...squigglySongPositionsRef.current,
-        [session.songId]: {
-          x: session.start.x + delta.x,
-          y: session.start.y + delta.y,
-        },
-      };
-      squigglySongPositionsRef.current = nextPositions;
-      scheduleSongDragPreview();
-      return;
-    }
 
     if (draggingClusterIdRef.current) {
       const point = getLocalPoint(event, svgRef.current, contentGroupRef.current);
@@ -3337,9 +2652,6 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     if (
       (enableGraphNodeCulling || isLocalDesktopApp) &&
       !draggingClusterIdRef.current &&
-      !draggingSquigglyClusterRef.current &&
-      !draggingSongRef.current &&
-      !pendingSongDragRef.current &&
       graphTool === "navigate"
     ) {
       const point = getLocalPoint(event, svgRef.current, contentGroupRef.current);
@@ -3367,10 +2679,6 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
           x2: point.x,
           y2: point.y,
         });
-      } else if (graphTool === "draw-cluster" && isSquigglyCustomMode && !isGuestViewOnly) {
-        session.mode = "draw-cluster";
-        beginClusterStroke(session.graphStart);
-        appendClusterStrokePoint(getLocalPoint(event, svgRef.current, contentGroupRef.current));
       } else if (graphTool === "draw" && graphSongs.length > 0) {
         session.mode = "draw";
         beginNewStroke(session.graphStart);
@@ -3403,10 +2711,6 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
       return;
     }
 
-    if (session.mode === "draw-cluster") {
-      appendClusterStrokePoint(getLocalPoint(event, svgRef.current, contentGroupRef.current));
-      return;
-    }
 
     if (session.mode === "draw" && isDrawingRef.current) {
       appendStrokePoint(getLocalPoint(event, svgRef.current, contentGroupRef.current));
@@ -3418,57 +2722,6 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
       releasePointer(event);
     }
 
-    pendingSquigglyClusterDragRef.current = null;
-    pendingSongDragRef.current = null;
-
-    if (draggingSquigglyClusterRef.current) {
-      const session = draggingSquigglyClusterRef.current;
-      const previewClusterId = session.clusterIds[0];
-      const previewHull = previewClusterId ? squigglyHullPreview[previewClusterId] : undefined;
-      const startHull = previewClusterId ? session.startHulls[previewClusterId] : undefined;
-      const delta =
-        previewHull && startHull && previewHull.length > 0 && startHull.length > 0
-          ? {
-              x: previewHull[0].x - startHull[0].x,
-              y: previewHull[0].y - startHull[0].y,
-            }
-          : { x: 0, y: 0 };
-      let nextCatalog = translateSquigglyClusters(activeCustomCatalog, session.clusterIds, delta);
-      nextCatalog = applyDraggedClusterMembershipPriority(nextCatalog, session.primaryClusterId);
-      persistCustomCatalog(nextCatalog);
-      saveCustomPositions(squigglySongPositionsRef.current);
-      draggingSquigglyClusterRef.current = null;
-      setSquigglySongPositions({ ...squigglySongPositionsRef.current });
-      setSquigglyHullPreview({});
-      setStatusMessage("Squiggly cluster moved.");
-      if (event && svgRef.current?.hasPointerCapture(event.pointerId)) {
-        svgRef.current.releasePointerCapture(event.pointerId);
-      }
-      return;
-    }
-
-    if (draggingSongRef.current) {
-      const dragSession = draggingSongRef.current;
-      draggingSongRef.current = null;
-      setDraggingSongId(null);
-      setSquigglySongPositions({ ...squigglySongPositionsRef.current });
-      const finalPosition = squigglySongPositionsRef.current[dragSession.songId];
-      if (finalPosition) {
-        saveCustomPositions(squigglySongPositionsRef.current);
-        persistCustomCatalog(
-          syncSongMembershipForPosition(
-            activeCustomCatalog,
-            dragSession.songId,
-            finalPosition,
-            dimensions
-          )
-        );
-      }
-      if (event && svgRef.current?.hasPointerCapture(event.pointerId)) {
-        svgRef.current.releasePointerCapture(event.pointerId);
-      }
-      return;
-    }
 
     if (draggingClusterIdRef.current) {
       draggingClusterIdRef.current = null;
@@ -3481,8 +2734,6 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
       } else if (layoutConfig.viewMode === "cluster" && layoutConfig.clusterMode === "playlist") {
         savePlaylistClusterCenterOverrides(nextOverrides.playlist, activeLayoutScope);
         invalidatePlaylistOverlapLayoutCache();
-      } else if (layoutConfig.viewMode === "cluster" && layoutConfig.clusterMode === "custom") {
-        saveCustomClusterCenterOverrides(nextOverrides.custom, activeLayoutScope);
       }
       invalidateLayoutPositionCaches();
       setStatusMessage(
@@ -3532,9 +2783,6 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
       finishStrokeDrawing();
     }
 
-    if (session.mode === "draw-cluster") {
-      finishClusterDrawing();
-    }
 
     resetPanSession();
   };
@@ -3887,24 +3135,6 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     publishClusterLayoutRef.current(clusterOverridesRef.current);
   }, [isSpotifyGuest, musicService, songs.length, spotifyStatus?.connected]);
 
-  useEffect(() => {
-    if (!isWebDeployment || musicService !== "spotify" || !spotifyStatus?.connected || isSpotifyGuest) {
-      publishedRoomCustomCatalogRef.current = false;
-      return;
-    }
-    if (songs.length === 0 || publishedRoomCustomCatalogRef.current) {
-      return;
-    }
-    publishedRoomCustomCatalogRef.current = true;
-    publishCustomClusterCatalogRef.current(customClusterCatalogStateRef.current);
-  }, [isSpotifyGuest, musicService, songs.length, spotifyStatus?.connected]);
-
-  useEffect(() => {
-    if (!isWebDeployment || isSpotifyGuest || !spotifyStatus?.connected) {
-      return;
-    }
-    publishCustomClusterCatalogRef.current(customClusterCatalogStateRef.current);
-  }, [customClusterCatalogState, isSpotifyGuest, spotifyStatus?.connected]);
 
   const handleSongSpaceChange = (mode: SongSpaceMode) => {
     if (mode === songSpaceMode) {
@@ -4158,6 +3388,166 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     }
   };
 
+  const getLocalSpotifyLibraryForMerge = useCallback((): {
+    songs: Song[];
+    stats: LibraryStats;
+  } | null => {
+    if (songs.length > 0 && stats) {
+      return { songs, stats };
+    }
+    const cached = loadPersonalSpotifyLibrary();
+    if (cached.songs.length > 0 && cached.stats) {
+      return { songs: cached.songs, stats: cached.stats };
+    }
+    return null;
+  }, [songs, stats]);
+
+  const handleOpenSpotifySync = async () => {
+    if (!spotifyCanLoadLibrary || isImportingRef.current) {
+      return;
+    }
+    const cooldownMs = getSpotifyImportRateLimitCooldownMs();
+    if (cooldownMs > 0) {
+      setStatusMessage(
+        `Spotify rate limit — wait ${formatSpotifyRateLimitCooldown(cooldownMs)} before syncing.`
+      );
+      return;
+    }
+    setSpotifySyncOpen(true);
+    setSpotifySyncLoading(true);
+    setSpotifySyncError(null);
+    try {
+      const catalog = await fetchSpotifyPlaylistCatalog();
+      const filtered = spotifyStatus?.userId
+        ? filterReadablePlaylists(catalog, spotifyStatus.userId)
+        : catalog;
+      setSpotifySyncPlaylists(filtered);
+    } catch (error) {
+      setSpotifySyncError(error instanceof Error ? error.message : "Could not fetch playlists.");
+    } finally {
+      setSpotifySyncLoading(false);
+    }
+  };
+
+  const handleConfirmSpotifySync = async ({
+    playlistIds,
+    includeSavedTracks,
+  }: {
+    playlistIds: string[];
+    includeSavedTracks: boolean;
+  }) => {
+    if (!musicProvider.loadLibrary) {
+      setSpotifySyncOpen(false);
+      return;
+    }
+    if (playlistIds.length === 0 && !includeSavedTracks) {
+      return;
+    }
+    setSpotifySyncOpen(false);
+    if (isImportingRef.current) {
+      return;
+    }
+    const cooldownMs = getSpotifyImportRateLimitCooldownMs();
+    if (cooldownMs > 0) {
+      setStatusMessage(
+        `Spotify rate limit — wait ${formatSpotifyRateLimitCooldown(cooldownMs)} before syncing.`
+      );
+      return;
+    }
+
+    const existing = getLocalSpotifyLibraryForMerge();
+    setIsImporting(true);
+    isImportingRef.current = true;
+    setImportProgress({
+      phase: "saved-tracks",
+      message: includeSavedTracks ? "Refreshing Liked Songs…" : "Syncing selected playlists…",
+      percent: 5,
+    });
+    let keepProgress = false;
+    try {
+      const loaded = await musicProvider.loadLibrary({
+        selectedPlaylistIds: playlistIds,
+        includeSavedTracks,
+        playlistCatalog: spotifySyncPlaylists,
+        mergeWithExisting: existing
+          ? {
+              songs: existing.songs,
+              stats: existing.stats,
+              playlistOwners,
+            }
+          : undefined,
+        knownContributor:
+          spotifyStatus?.userId
+            ? { id: spotifyStatus.userId, name: spotifyStatus.displayName || "Spotify user" }
+            : getSpotifyImportContributorHint() ?? undefined,
+        onProgress: (progress) => {
+          setImportProgress(progress);
+          setStatusMessage(progress.message);
+        },
+      });
+      applyLoadedLibrary(
+        loaded.songs,
+        loaded.stats,
+        `Synced ${playlistIds.length} playlist${playlistIds.length === 1 ? "" : "s"}${
+          includeSavedTracks ? " and Liked Songs" : ""
+        } · ${loaded.songs.length.toLocaleString()} tracks total.`,
+        loaded.playlistOwners ?? playlistOwners
+      );
+      if (isWebDeployment) {
+        try {
+          const published = await publishSharedLibrary(
+            loaded.contributor
+              ? {
+                  contributor: loaded.contributor,
+                  songs: loaded.songs,
+                  stats: loaded.stats,
+                }
+              : undefined
+          );
+          saveLocalContributorId(published.contributor.id);
+          await refreshSharedContributors({ loadLibrary: songSpaceMode === "shared" });
+          setStatusMessage(
+            `Synced and shared ${published.trackCount} tracks as ${published.contributor.name}.`
+          );
+        } catch (error) {
+          setStatusMessage(
+            error instanceof Error
+              ? `Synced your library, but sharing failed: ${error.message}`
+              : "Synced your library, but sharing failed."
+          );
+        }
+      }
+    } catch (error) {
+      if (error instanceof SpotifyImportPausedError) {
+        keepProgress = true;
+        setImportProgress({
+          phase: "saved-tracks",
+          message: error.message,
+          percent: error.percent,
+        });
+        setStatusMessage(error.message);
+      } else if (error instanceof SpotifyImportRateLimitError) {
+        keepProgress = true;
+        const nextCooldownMs = getSpotifyImportRateLimitCooldownMs();
+        setRateLimitCooldownMs(nextCooldownMs);
+        setStatusMessage(
+          nextCooldownMs > 0
+            ? `Spotify is rate-limiting this app. Wait ${formatSpotifyRateLimitCooldown(nextCooldownMs)} before resuming — progress is saved.`
+            : error.message
+        );
+      } else {
+        setStatusMessage(error instanceof Error ? error.message : "Could not sync Spotify library.");
+      }
+    } finally {
+      isImportingRef.current = false;
+      setIsImporting(false);
+      if (!keepProgress) {
+        setImportProgress(null);
+      }
+      setImportResumeRevision((revision) => revision + 1);
+    }
+  };
+
   const handleImportFile = async (file: File) => {
     if (!musicProvider.loadLibraryFromFile) {
       return;
@@ -4240,27 +3630,11 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     updateLayoutConfig(nextConfig, "Axis layout — pick X and Y metrics below.");
   };
 
-  const squigglyClustersForRender = useMemo(
-    () =>
-      squigglyClusters.map((cluster) => ({
-        ...cluster,
-        hull:
-          squigglyHullPreview[cluster.id] ??
-          (redrawDraft?.clusterId === cluster.id ? redrawDraft.draftHull : cluster.hull),
-      })),
-    [redrawDraft, squigglyClusters, squigglyHullPreview]
-  );
-
   const handleClusterModeChange = (clusterMode: ClusterMode) => {
-    if (clusterMode !== "custom" && graphTool === "draw-cluster") {
-      handleGraphToolChange("navigate");
-    }
     const message =
       clusterMode === "playlist"
         ? `Playlist overlap layout (${stats.playlistIds.length} playlists).`
-        : clusterMode === "custom"
-          ? "Custom clusters — create groups and assign songs."
-          : "Genre cluster layout — drag labels to move groups.";
+        : "Genre cluster layout — drag labels to move groups.";
     updateLayoutConfig({ ...layoutConfig, viewMode: "cluster", clusterMode }, message);
   };
 
@@ -4569,13 +3943,11 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     if (!hoveredSong) {
       return null;
     }
-    return getSongRenderPosition(hoveredSong, getPosition(hoveredSong));
+    return getPosition(hoveredSong);
   }, [
     getPosition,
-    getSongRenderPosition,
     hoveredSong,
     hoveredSongId,
-    songDragPreviewTick,
     visiblePositionedSongs,
   ]);
 
@@ -4595,7 +3967,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     () =>
       isSharedSongSpace
         ? loadBundledClusterCenterOverrides()
-        : loadClusterCenterOverrides(activeLayoutScope === "custom" ? "isolate" : activeLayoutScope),
+        : loadClusterCenterOverrides(activeLayoutScope),
     [activeLayoutScope, isSharedSongSpace]
   );
 
@@ -4883,10 +4255,8 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
               {visibleSongs.length > LABEL_THRESHOLD ? " · hover nodes for titles" : ""}
               {graphTool === "draw"
                 ? " · drag to draw path · scroll or pinch to zoom"
-                : graphTool === "draw-cluster"
-                  ? " · drag to draw squiggly cluster loop · scroll or pinch to zoom"
-                  : " · drag to pan · scroll or pinch to zoom"}
-              {graphTool === "navigate" && isClusterLayout && !isSquigglyCustomMode && !isGuestViewOnly
+                : " · drag to pan · scroll or pinch to zoom"}
+              {graphTool === "navigate" && isClusterLayout && !isGuestViewOnly
                 ? " · drag labels to move clusters · ⌘⇧ drag to box-select"
                 : ""}
             </p>
@@ -4978,6 +4348,17 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
                   }
                 >
                   Start fresh
+                </button>
+              ) : null}
+              {spotifyCanLoadLibrary &&
+              (songs.length > 0 || (getLocalSpotifyLibraryForMerge()?.songs.length ?? 0) > 0) ? (
+                <button
+                  type="button"
+                  onClick={() => void handleOpenSpotifySync()}
+                  disabled={isImporting || spotifyStatusLoading || rateLimitCooldownMs > 0}
+                  title="Import only new or changed playlists"
+                >
+                  Sync updates
                 </button>
               ) : null}
               {isWebDeployment && spotifyStatus?.connected ? (
@@ -5080,11 +4461,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
                     className={layoutConfig.clusterMode === clusterMode ? "music-cue-layout-active" : ""}
                     onClick={() => handleClusterModeChange(clusterMode)}
                   >
-                    {clusterMode === "genre"
-                      ? "Genre"
-                      : clusterMode === "playlist"
-                        ? "Playlists"
-                        : "Custom"}
+                    {clusterMode === "genre" ? "Genre" : "Playlists"}
                   </button>
                 ))}
               </div>
@@ -5109,13 +4486,6 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
               {showPlaylistMetaGraph ? (
                 <span className="music-cue-axis-note">
                   Lines connect playlists that share songs. Drag playlist labels to rearrange.
-                </span>
-              ) : null}
-              {layoutConfig.clusterMode === "custom" && isSquigglyCustomMode ? (
-                <span className="music-cue-axis-note">
-                  {isGuestViewOnly
-                    ? "Custom clusters are view-only for guests."
-                    : "Use the square tool to draw clusters · click a cluster to edit it in the side panel"}
                 </span>
               ) : null}
             </>
@@ -5249,34 +4619,6 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
                 </svg>
               </button>
             ) : null}
-            {isSquigglyCustomMode && !isGuestViewOnly ? (
-              <>
-                <button
-                  type="button"
-                  className={`music-cue-graph-tool-btn ${graphTool === "draw-cluster" ? "is-active" : ""}`}
-                  onClick={() => handleGraphToolChange("draw-cluster")}
-                  title="Draw squiggly cluster"
-                  aria-label="Draw squiggly cluster"
-                  aria-pressed={graphTool === "draw-cluster"}
-                >
-                  <svg viewBox="0 0 16 16" aria-hidden>
-                    <polygon
-                      points="8,2.8 12.2,5.8 10.8,11.2 5.2,11.2 3.8,5.8"
-                      fill="currentColor"
-                      fillOpacity="0.12"
-                      stroke="currentColor"
-                      strokeWidth="1.2"
-                      strokeLinejoin="round"
-                    />
-                    <circle cx="8" cy="2.8" r="0.9" fill="currentColor" />
-                    <circle cx="12.2" cy="5.8" r="0.9" fill="currentColor" />
-                    <circle cx="10.8" cy="11.2" r="0.9" fill="currentColor" />
-                    <circle cx="5.2" cy="11.2" r="0.9" fill="currentColor" />
-                    <circle cx="3.8" cy="5.8" r="0.9" fill="currentColor" />
-                  </svg>
-                </button>
-              </>
-            ) : null}
           </div>
           {graphTool === "draw" ? (
             <button
@@ -5397,29 +4739,6 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
                 <path d={cueEdgePath} className="music-cue-edge-path" />
               )}
 
-              {isSquigglyCustomMode ? (
-                <>
-                  <path
-                    ref={clusterDraftPathRef}
-                    className="music-cue-squiggly-cluster-draft"
-                    fill="none"
-                    pointerEvents="none"
-                  />
-                  <SquigglyClusterLayer
-                    clusters={squigglyClustersForRender}
-                    dimensions={dimensions}
-                    hoveredClusterId={hoveredSquigglyClusterId}
-                    selectedClusterIds={selectedClusterIds}
-                    redrawDraft={redrawDraft}
-                    readOnly={isGuestViewOnly}
-                    onClusterPointerDown={handleSquigglyClusterPointerDown}
-                    onClusterDoubleClick={handleSquigglyClusterDoubleClick}
-                    onClusterHover={setHoveredSquigglyClusterId}
-                    onAcceptRedraw={acceptRedrawDraft}
-                    onRejectRedraw={rejectRedrawDraft}
-                  />
-                </>
-              ) : null}
 
               {visiblePositionedSongs.map(({ song, position }) => {
                 const canonicalId = getCanonicalSongId(song.id);
@@ -5482,8 +4801,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
                 ))}
 
               {isClusterLayout &&
-                !isSquigglyCustomMode &&
-                clusterRegions.map((region) => {
+clusterRegions.map((region) => {
                   const offset = region.displayOffset;
                   const transform = offset ? `translate(${offset.x} ${offset.y})` : undefined;
                   return (
@@ -5532,77 +4850,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
         </div>
 
         {showToolSidebar ? (
-        <aside
-          className={`music-cue-cue-sidebar ${
-            graphTool === "draw-cluster" ? "music-cue-cluster-sidebar" : ""
-          }`}
-        >
-          {graphTool === "draw-cluster" && isSquigglyCustomMode ? (
-            <>
-              <h2 className="music-cue-cluster-panel-title">Cluster</h2>
-              {selectedSquigglyCluster ? (
-                <>
-                  <label className="music-cue-cluster-panel-field">
-                    Name
-                    <input
-                      type="text"
-                      value={clusterNameDraft}
-                      onChange={(event) => setClusterNameDraft(event.target.value)}
-                      onBlur={handleClusterNameCommit}
-                      onKeyDown={(event) => {
-                        if (event.key === "Enter") {
-                          event.currentTarget.blur();
-                        }
-                      }}
-                    />
-                  </label>
-                  <button
-                    type="button"
-                    className="music-cue-cluster-edit-shape-btn"
-                    onClick={handleBeginEditClusterShape}
-                  >
-                    Edit cluster shape
-                  </button>
-                  <label className="music-cue-cluster-panel-field">
-                    Color
-                    <input
-                      type="color"
-                      value={selectedSquigglyCluster.color ?? "#4a90d9"}
-                      onChange={(event) => handleSelectedClusterColorChange(event.target.value)}
-                    />
-                  </label>
-                  <button
-                    type="button"
-                    className="music-cue-cluster-delete-btn"
-                    onClick={handleDeleteCluster}
-                  >
-                    Delete cluster
-                  </button>
-                  {redrawDraft?.clusterId === selectedSquigglyCluster.id ? (
-                    <p className="music-cue-cluster-panel-note">
-                      Draw the new shape on the graph, then accept or reject using the prompt below the cluster
-                      label.
-                    </p>
-                  ) : null}
-                </>
-              ) : (
-                <>
-                  <p className="music-cue-cluster-panel-note">
-                    Draw a loop on the graph to create a cluster, or click an existing cluster to edit it.
-                  </p>
-                  <label className="music-cue-cluster-panel-field">
-                    New cluster color
-                    <input
-                      type="color"
-                      value={squigglyPenColor}
-                      onChange={(event) => setSquigglyPenColor(event.target.value)}
-                    />
-                  </label>
-                </>
-              )}
-            </>
-          ) : null}
-
+        <aside className="music-cue-cue-sidebar">
           {graphTool === "draw" ? (
             <>
           <label className="music-cue-slider-label music-cue-cue-path-slider music-cue-cue-path-slider-sidebar">
@@ -5720,26 +4968,32 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
         ) : null}
       </div>
     </div>
+      <SpotifySyncDialog
+        open={spotifySyncOpen}
+        loading={spotifySyncLoading}
+        error={spotifySyncError}
+        playlists={spotifySyncPlaylists}
+        localStats={stats}
+        onClose={() => {
+          if (!spotifySyncLoading) {
+            setSpotifySyncOpen(false);
+          }
+        }}
+        onConfirm={(selection) => void handleConfirmSpotifySync(selection)}
+      />
       <CollaborativePlayProvider>
         <CollaborativeLayoutProvider
           clusterOverrides={clusterOverrides}
           setClusterOverrides={applyClusterOverrides}
           draggingClusterIdRef={draggingClusterIdRef}
           layoutSyncPausedRef={layoutSyncPausedRef}
-          layoutScope={activeLayoutScope === "custom" ? "isolate" : activeLayoutScope}
+          layoutScope={activeLayoutScope}
           roomLayoutSeed={roomClusterLayoutSeed}
           clusterLayoutSyncMode={clusterLayoutSyncMode}
           enableRemoteClusterPublish={isSharedSongSpace && !isSpotifyGuest}
           publishRef={publishClusterLayoutRef}
           clusterLayoutSyncRevision={clusterLayoutSyncRevision}
         >
-          <CollaborativeCustomClusterProvider
-            customClusterCatalogState={customClusterCatalogState}
-            setCustomClusterCatalogState={setCustomClusterCatalogState}
-            customClusterSyncMode={clusterLayoutSyncMode}
-            enableRemotePublish={isSharedSongSpace && !isSpotifyGuest}
-            publishRef={publishCustomClusterCatalogRef}
-          >
           <CollaborativeSessionProvider
             displayName={collaboratorDisplayName}
             presenceLayout={presenceLayout}
@@ -5755,7 +5009,6 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
               participantsHostRef={participantsHostRef}
             />
           </CollaborativeSessionProvider>
-          </CollaborativeCustomClusterProvider>
         </CollaborativeLayoutProvider>
       </CollaborativePlayProvider>
     </>

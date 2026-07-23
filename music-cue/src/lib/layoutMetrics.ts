@@ -23,7 +23,7 @@ export const getAxisMetricsForService = (serviceId: MusicServiceId): AxisMetric[
   serviceId === "spotify" ? SPOTIFY_AXIS_METRICS : APPLE_AXIS_METRICS;
 
 export const getClusterModesForService = (serviceId: MusicServiceId): ClusterMode[] =>
-  serviceId === "spotify" ? ["playlist", "custom"] : ["genre", "playlist", "custom"];
+  serviceId === "spotify" ? ["playlist"] : ["genre", "playlist"];
 
 export const normalizeLayoutConfigForService = (
   config: LayoutConfig,
@@ -112,11 +112,9 @@ export const migrateLegacyLayoutMode = (
       config = {
         viewMode: parsed.viewMode === "axis" ? "axis" : "cluster",
         clusterMode:
-          parsed.clusterMode === "playlist"
+          parsed.clusterMode === "playlist" || parsed.clusterMode === "custom"
             ? "playlist"
-            : parsed.clusterMode === "custom"
-              ? "custom"
-              : "genre",
+            : "genre",
         axisX: (parsed.axisX as AxisMetric) ?? defaults.axisX,
         axisY: (parsed.axisY as AxisMetric) ?? defaults.axisY,
       };
