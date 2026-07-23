@@ -484,6 +484,9 @@ export const createSpotifyClient = (store: SpotifySessionStore) => {
   const normalizeArtistIds = (artistIds: string[]): string[] =>
     [...new Set(artistIds.filter((artistId) => typeof artistId === "string" && artistId.trim()))];
 
+  /** Dev Mode no longer allows batch GET /artists?ids=; fetch one artist at a time. */
+  const ARTIST_GENRE_LOOKUP_CONCURRENCY = 6;
+
   const fetchArtistGenreBatch = async (artistIds: string[]): Promise<ArtistGenreBatchResult> => {
     const genresByArtistId: Record<string, string[]> = {};
     const chunk = normalizeArtistIds(artistIds).slice(0, 50);
@@ -496,27 +499,47 @@ export const createSpotifyClient = (store: SpotifySessionStore) => {
     if (chunk.length === 0) {
       return { genresByArtistId, stats };
     }
-    try {
-      const payload = await spotifyFetch<{ artists: ({ id: string; genres: string[] } | null)[] }>(
-        `/artists?ids=${encodeURIComponent(chunk.join(","))}`
-      );
-      for (const artist of payload.artists ?? []) {
-        if (!artist?.id) {
-          continue;
+
+    const failures: string[] = [];
+    const results = await mapWithConcurrency(chunk, ARTIST_GENRE_LOOKUP_CONCURRENCY, async (artistId) => {
+      try {
+        const artist = await spotifyFetch<{ id: string; genres: string[] }>(`/artists/${artistId}`);
+        return { ok: true as const, artist };
+      } catch (error) {
+        if (error instanceof SpotifyRateLimitError) {
+          throw error;
         }
-        stats.resolved += 1;
-        const genres = artist.genres ?? [];
-        genresByArtistId[artist.id] = genres;
-        if (genres.length > 0) {
-          stats.withGenres += 1;
-        } else {
-          stats.emptyGenres += 1;
-        }
+        return {
+          ok: false as const,
+          error: error instanceof Error ? error.message : String(error),
+        };
       }
-    } catch (error) {
-      stats.error = error instanceof Error ? error.message : String(error);
+    });
+
+    for (const result of results) {
+      if (!result.ok) {
+        failures.push(result.error);
+        continue;
+      }
+      const artist = result.artist;
+      if (!artist?.id) {
+        continue;
+      }
+      stats.resolved += 1;
+      const genres = artist.genres ?? [];
+      genresByArtistId[artist.id] = genres;
+      if (genres.length > 0) {
+        stats.withGenres += 1;
+      } else {
+        stats.emptyGenres += 1;
+      }
+    }
+
+    if (failures.length > 0 && stats.resolved === 0) {
+      stats.error = failures[0];
       console.warn("[spotify] Artist genre batch failed:", stats.error);
     }
+
     return { genresByArtistId, stats };
   };
 
