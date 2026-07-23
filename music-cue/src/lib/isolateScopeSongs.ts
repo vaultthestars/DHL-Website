@@ -1,3 +1,4 @@
+import { asStringArray, getSongPlaylists } from "./arrayUtils";
 import type { GeneratedCue, Song } from "./types";
 
 export const ISOLATE_SCOPE_ID_SEPARATOR = "::isolate::";
@@ -41,7 +42,7 @@ export const filterPlaylistsForOwner = (
   ownerId: string,
   playlistOwners: Record<string, string>
 ): string[] =>
-  (playlists ?? []).filter((playlistId) => playlistOwners[playlistId] === ownerId);
+  asStringArray(playlists).filter((playlistId) => playlistOwners[playlistId] === ownerId);
 
 export const scopeSongPlaylistsForOwner = (
   song: Song,
@@ -65,8 +66,8 @@ export const scopeSongPlaylistsForIsolateOwner = (
   if (Object.keys(playlistOwners).length === 0) {
     return song;
   }
-  const playlists = filterPlaylistsForOwner(song.playlists, ownerId, playlistOwners);
-  if (playlists.length === (song.playlists ?? []).length) {
+  const playlists = filterPlaylistsForOwner(getSongPlaylists(song), ownerId, playlistOwners);
+  if (playlists.length === getSongPlaylists(song).length) {
     return song;
   }
   return { ...song, playlists };

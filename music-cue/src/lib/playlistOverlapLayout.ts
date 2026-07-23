@@ -1,3 +1,4 @@
+import { asStringArray, getSongPlaylists } from "./arrayUtils";
 import { ClusterCenterOverrides, GraphPoint, LibraryStats, Song } from "./types";
 import { UNASSIGNED_PLAYLIST_CLUSTER_ID } from "./playlistConstants";
 import { GraphDimensions, resolveClusterCenter } from "./graphLayout";
@@ -44,7 +45,7 @@ const buildPlaylistSongSets = (playlistIds: string[], songs: Song[]): Map<string
   const sets = new Map<string, Set<string>>();
   playlistIds.forEach((playlistId) => sets.set(playlistId, new Set()));
   songs.forEach((song) => {
-    (song.playlists ?? []).forEach((playlistId) => {
+    getSongPlaylists(song).forEach((playlistId) => {
       sets.get(playlistId)?.add(song.id);
     });
   });
@@ -151,7 +152,7 @@ const buildLayoutKey = (
   clusterOverrides: ClusterCenterOverrides
 ): string =>
   JSON.stringify({
-    playlistIds: stats.playlistIds,
+    playlistIds: asStringArray(stats.playlistIds),
     songCount: songs.length,
     dimensions,
     overrides: clusterOverrides.playlist,
@@ -168,7 +169,7 @@ export const getPlaylistOverlapLayoutContext = (
     return cachedLayoutContext;
   }
 
-  const playlistIds = stats.playlistIds ?? [];
+  const playlistIds = asStringArray(stats.playlistIds);
   const songSets = buildPlaylistSongSets(playlistIds, songs);
   const groupedPlaylistIds = clusterPlaylistsByOverlap(playlistIds, songSets);
   const playlistCenters = new Map<string, GraphPoint>();
@@ -220,7 +221,7 @@ const positionSongInGroup = (
   group: OverlapGroup,
   context: PlaylistOverlapLayoutContext
 ): GraphPoint => {
-  const memberships = group.playlistIds.filter((playlistId) => (song.playlists ?? []).includes(playlistId));
+  const memberships = group.playlistIds.filter((playlistId) => getSongPlaylists(song).includes(playlistId));
   const groupSize = group.playlistIds.length;
   const membershipCount = memberships.length;
 
@@ -256,7 +257,7 @@ export const layoutPlaylistOverlapSong = (
   song: Song,
   context: PlaylistOverlapLayoutContext
 ): GraphPoint => {
-  const playlists = song.playlists ?? [];
+  const playlists = getSongPlaylists(song);
   if (playlists.length === 0) {
     return scatterAroundCenter(song, context.unassignedCenter, coreSpread(1, context.dimensions) * 0.85);
   }

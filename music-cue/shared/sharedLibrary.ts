@@ -1,4 +1,5 @@
 import type { LibraryStats, Song } from "../src/lib/types";
+import { asStringArray, getSongPlaylists } from "../src/lib/arrayUtils";
 import { sanitizeLibraryPayload } from "./librarySanitize";
 
 export type LibraryContributor = {
@@ -35,7 +36,7 @@ export const buildPlaylistOwnersFromSnapshots = (
   const playlistOwners: Record<string, string> = {};
   snapshots.forEach((snapshot) => {
     snapshot.songs.forEach((song) => {
-      (song.playlists ?? []).forEach((playlistId) => {
+      getSongPlaylists(song).forEach((playlistId) => {
         if (!playlistOwners[playlistId]) {
           playlistOwners[playlistId] = snapshot.contributor.id;
         }
@@ -76,7 +77,7 @@ export const buildLibraryStatsFromSongs = (
     minYear = Math.min(minYear, song.year);
     maxYear = Math.max(maxYear, song.year);
     maxPlayCount = Math.max(maxPlayCount, song.playCount);
-    (song.playlists ?? []).forEach((playlistId) => {
+    getSongPlaylists(song).forEach((playlistId) => {
       playlistIdSet.add(playlistId);
       playlistCounts[playlistId] = (playlistCounts[playlistId] ?? 0) + 1;
     });
@@ -116,7 +117,7 @@ const mergeSongOwners = (
   );
 
   const ownerIds = new Set(owners.map((owner) => owner.id));
-  const playlistSet = new Set([...(left.playlists ?? []), ...(right.playlists ?? [])]);
+  const playlistSet = new Set([...getSongPlaylists(left), ...getSongPlaylists(right)]);
   const playlists = [...playlistSet].filter((playlistId) => {
     const creatorId = playlistOwners[playlistId];
     return creatorId !== undefined && ownerIds.has(creatorId);

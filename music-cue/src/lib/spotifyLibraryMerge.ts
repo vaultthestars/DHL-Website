@@ -1,9 +1,10 @@
 import { buildLibraryStatsFromSongs } from "../../shared/sharedLibrary";
+import { asStringArray, getSongPlaylists } from "./arrayUtils";
 import type { LoadedLibrary } from "./musicProvider";
 import type { LibraryStats, Song } from "./types";
 
 const mergeSong = (left: Song, right: Song): Song => {
-  const playlistSet = new Set([...(left.playlists ?? []), ...(right.playlists ?? [])]);
+  const playlistSet = new Set([...getSongPlaylists(left), ...getSongPlaylists(right)]);
   return {
     ...left,
     ...right,
@@ -47,7 +48,7 @@ export const diffPlaylistCatalog = (
   newPlaylists: Array<{ id: string; name: string }>;
   existingPlaylists: Array<{ id: string; name: string }>;
 } => {
-  const localIds = new Set(localStats?.playlistIds ?? []);
+  const localIds = new Set(asStringArray(localStats?.playlistIds));
   const newPlaylists: Array<{ id: string; name: string }> = [];
   const existingPlaylists: Array<{ id: string; name: string }> = [];
 

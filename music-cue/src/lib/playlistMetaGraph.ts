@@ -1,3 +1,4 @@
+import { asStringArray, getSongPlaylists } from "./arrayUtils";
 import type { GraphPoint, Song } from "./types";
 
 export type PlaylistMetaGraphEdge = {
@@ -14,11 +15,11 @@ export const buildPlaylistMetaGraphEdges = (
   playlistIds: string[],
   songs: Song[]
 ): PlaylistMetaGraphEdge[] => {
-  const allowedIds = new Set(playlistIds);
+  const allowedIds = new Set(asStringArray(playlistIds));
   const edgeCounts = new Map<string, { leftId: string; rightId: string; sharedSongCount: number }>();
 
   songs.forEach((song) => {
-    const memberships = (song.playlists ?? []).filter((playlistId) => allowedIds.has(playlistId));
+    const memberships = getSongPlaylists(song).filter((playlistId) => allowedIds.has(playlistId));
     for (let leftIndex = 0; leftIndex < memberships.length; leftIndex += 1) {
       for (let rightIndex = leftIndex + 1; rightIndex < memberships.length; rightIndex += 1) {
         const leftId = memberships[leftIndex];

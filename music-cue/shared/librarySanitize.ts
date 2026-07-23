@@ -1,4 +1,5 @@
 import type { LibraryStats, Song } from "../src/lib/types";
+import { asStringArray, getSongPlaylists } from "../src/lib/arrayUtils";
 import { isExcludedPlaylistName } from "./playlistNames";
 import { buildLibraryStatsFromSongs } from "./sharedLibrary";
 
@@ -16,7 +17,7 @@ export const sanitizeLibraryPayload = <T extends { songs: Song[]; stats: Library
 
   const songs = payload.songs.map((song) => ({
     ...song,
-    playlists: (song.playlists ?? []).filter((playlistId) => Boolean(keptNames[playlistId])),
+    playlists: getSongPlaylists(song).filter((playlistId) => Boolean(keptNames[playlistId])),
   }));
 
   return {

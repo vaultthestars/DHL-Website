@@ -1,3 +1,4 @@
+import { asStringArray } from "./arrayUtils";
 import { ClusterCenterOverrides, GraphPoint, LayoutConfig, LibraryStats, NormalizedPoint, Song } from "./types";
 import {
   getAxisMetricLabel,
@@ -149,8 +150,9 @@ export const getDefaultGenreClusterCenter = (
   stats: LibraryStats,
   dimensions: GraphDimensions
 ): { x: number; y: number } => {
-  const genreIndex = Math.max(0, stats.genres.indexOf(genre));
-  return getClusterCenter(genreIndex, stats.genres.length, dimensions, genre, {
+  const genres = asStringArray(stats.genres);
+  const genreIndex = Math.max(0, genres.indexOf(genre));
+  return getClusterCenter(genreIndex, genres.length, dimensions, genre, {
     orbitScale: 0.44,
     wobbleScale: 0.45,
   });
@@ -161,7 +163,7 @@ export const getDefaultPlaylistClusterCenter = (
   stats: LibraryStats,
   dimensions: GraphDimensions
 ): { x: number; y: number } => {
-  const playlistIds = stats.playlistIds ?? [];
+  const playlistIds = asStringArray(stats.playlistIds);
   const playlistIndex = Math.max(0, playlistIds.indexOf(playlistId));
   const wobbleSeed = stats.playlistNames?.[playlistId] ?? playlistId;
   return getClusterCenter(playlistIndex, playlistIds.length, dimensions, wobbleSeed, {

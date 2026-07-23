@@ -1921,7 +1921,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
       (region) => region.id !== UNASSIGNED_PLAYLIST_CLUSTER_ID && !region.id.startsWith("owner:")
     );
     const centerByPlaylistId = new Map(playlistRegions.map((region) => [region.id, region.center]));
-    const edges = buildPlaylistMetaGraphEdges(stats.playlistIds ?? [], graphSongs);
+    const edges = buildPlaylistMetaGraphEdges(asStringArray(stats.playlistIds), graphSongs);
     return buildPlaylistMetaGraphSegments(edges, centerByPlaylistId);
   }, [clusterRegions, graphSongs, showPlaylistMetaGraph, stats.playlistIds]);
 
@@ -4543,7 +4543,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
                 Genre
                 <select value={genreFilter} onChange={(event) => setGenreFilter(event.target.value)}>
                   <option value="">All genres</option>
-                  {stats.genres.map((genre) => (
+                  {asStringArray(stats.genres).map((genre) => (
                     <option key={genre} value={genre}>
                       {genre}
                     </option>
