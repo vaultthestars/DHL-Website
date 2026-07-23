@@ -20,7 +20,7 @@ import type { SongSpaceMode } from "./sharedLibraryApi";
 import { layoutConfigKey } from "./layoutMetrics";
 import { isWebDeployment } from "./runtime";
 import type { LayoutConfig, NormalizedPoint } from "./types";
-import { usePlayhtmlCursorMessages } from "./usePlayhtmlCursorChat";
+import { usePlayhtmlCursorMessages, usePlayhtmlLocalCursorChat } from "./usePlayhtmlCursorChat";
 
 export const SESSION_PRESENCE_CHANNEL = "session";
 
@@ -364,10 +364,46 @@ export const CollaborativeParticipantsPanel = () => {
   );
 };
 
+const formatCursorChatLabel = (message: string | undefined): string | null => {
+  if (!message) {
+    return null;
+  }
+  return message.length > 36 ? `${message.slice(0, 35)}…` : message;
+};
+
+const CursorChatBubble = ({
+  color,
+  messageLabel,
+}: {
+  color: string;
+  messageLabel: string;
+}) => {
+  const messageWidth = Math.min(220, 16 + messageLabel.length * 6.2);
+
+  return (
+    <g className="music-cue-remote-cursor-chat-wrap">
+      <rect
+        className="music-cue-remote-cursor-chat-bubble"
+        x={8}
+        y={-30}
+        width={messageWidth}
+        height={18}
+        rx={9}
+        fill={color}
+      />
+      <text className="music-cue-remote-cursor-chat-text" x={16} y={-17}>
+        {messageLabel}
+      </text>
+    </g>
+  );
+};
+
 const CollaborativeGraphCursorsInner = memo(({ dimensions }: { dimensions: GraphDimensions }) => {
   const { presences } = usePresence<SessionPresenceData>(SESSION_PRESENCE_CHANNEL);
   const { myPresenceLayout, syncWithParticipant } = useCollaborativeSession();
+  const { color: myColor } = usePlayerIdentity();
   const cursorMessagesByPublicKey = usePlayhtmlCursorMessages();
+  const localCursorChat = usePlayhtmlLocalCursorChat();
   const [cursors, setCursors] = useState<
     Array<{
       id: string;
@@ -382,11 +418,13 @@ const CollaborativeGraphCursorsInner = memo(({ dimensions }: { dimensions: Graph
   const frameRef = useRef(0);
   const presencesRef = useRef(presences);
   const messagesRef = useRef(cursorMessagesByPublicKey);
+  const localChatRef = useRef(localCursorChat);
   const layoutRef = useRef(myPresenceLayout);
   const dimensionsRef = useRef(dimensions);
 
   presencesRef.current = presences;
   messagesRef.current = cursorMessagesByPublicKey;
+  localChatRef.current = localCursorChat;
   layoutRef.current = myPresenceLayout;
   dimensionsRef.current = dimensions;
 
@@ -452,20 +490,54 @@ const CollaborativeGraphCursorsInner = memo(({ dimensions }: { dimensions: Graph
         frameRef.current = 0;
       }
     };
-  }, [cursorMessagesByPublicKey, dimensions, myPresenceLayout, presences]);
+  }, [cursorMessagesByPublicKey, dimensions, localCursorChat, myPresenceLayout, presences]);
 
-  if (cursors.length === 0) {
+  const mySession = useMemo(() => {
+    for (const [, presence] of presences.entries()) {
+      if (!presence.isMe) {
+        continue;
+      }
+      return getSessionData(presence as Record<string, unknown>);
+    }
+    return null;
+  }, [presences]);
+
+  const localCursor = useMemo(() => {
+    const displayMessage = localCursorChat.displayMessage;
+    if (!displayMessage || !mySession?.graphCursor) {
+      return null;
+    }
+    const graphPoint = fromNormalizedPosition(mySession.graphCursor, dimensions);
+    return {
+      displayName: mySession.displayName,
+      color: myColor,
+      x: graphPoint.x,
+      y: graphPoint.y,
+      message: displayMessage,
+    };
+  }, [dimensions, localCursorChat.displayMessage, myColor, mySession]);
+
+  if (cursors.length === 0 && !localCursor) {
     return null;
   }
 
   return (
     <g className="music-cue-remote-cursors-svg" aria-hidden>
+      {localCursor ? (
+        <g
+          className="music-cue-remote-cursor-svg music-cue-remote-cursor-svg-local music-cue-remote-cursor-svg-synced"
+          transform={`translate(${localCursor.x}, ${localCursor.y})`}
+          pointerEvents="none"
+        >
+          <CursorChatBubble key={localCursor.message} color={localCursor.color} messageLabel={localCursor.message} />
+          <circle className="music-cue-remote-cursor-svg-dot" r={5} fill={localCursor.color} />
+          <text className="music-cue-remote-cursor-svg-label" x={8} y={4}>
+            {localCursor.displayName}
+          </text>
+        </g>
+      ) : null}
       {cursors.map((cursor) => {
-        const messageLabel =
-          cursor.message && cursor.message.length > 36
-            ? `${cursor.message.slice(0, 35)}…`
-            : cursor.message;
-        const messageWidth = messageLabel ? Math.min(220, 16 + messageLabel.length * 6.2) : 0;
+        const messageLabel = formatCursorChatLabel(cursor.message);
 
         return (
           <g
@@ -477,20 +549,7 @@ const CollaborativeGraphCursorsInner = memo(({ dimensions }: { dimensions: Graph
           >
             <title>{`Sync with ${cursor.displayName}`}</title>
             {messageLabel ? (
-              <>
-                <rect
-                  className="music-cue-remote-cursor-chat-bubble"
-                  x={8}
-                  y={-30}
-                  width={messageWidth}
-                  height={18}
-                  rx={9}
-                  fill={cursor.color}
-                />
-                <text className="music-cue-remote-cursor-chat-text" x={16} y={-17}>
-                  {messageLabel}
-                </text>
-              </>
+              <CursorChatBubble key={messageLabel} color={cursor.color} messageLabel={messageLabel} />
             ) : null}
             <circle className="music-cue-remote-cursor-svg-dot" r={5} fill={cursor.color} />
             <text className="music-cue-remote-cursor-svg-label" x={8} y={4}>

@@ -876,6 +876,16 @@ body {
   opacity: 1;
 }
 
+.music-cue-remote-cursor-svg-local {
+  opacity: 1;
+  pointer-events: none;
+}
+
+/* Compose UI is rendered on the graph at the local cursor; keep PlayHTML's handler only. */
+.playhtml-chat-container {
+  display: none !important;
+}
+
 .music-cue-remote-cursor-svg-dot {
   stroke: rgba(255, 255, 255, 0.9);
   stroke-width: 1;

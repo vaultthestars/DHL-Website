@@ -31,6 +31,11 @@ type TransportPresence = {
   };
 };
 
+type CursorChatReader = {
+  listening: boolean;
+  getCurrentMessage: () => string | null;
+};
+
 type CursorClientReader = {
   presenceTransport?: unknown;
   presenceStore?: {
@@ -38,6 +43,7 @@ type CursorClientReader = {
   };
   getMyPlayerIdentity: () => { publicKey: string };
   getProvider: () => { awareness: CursorAwareness };
+  chat?: CursorChatReader;
 };
 
 const getCursorClient = (): CursorClientReader | null => {
@@ -181,4 +187,69 @@ export const usePlayhtmlCursorMessages = (): Map<string, string> => {
   }, [isLoading, isProviderMissing]);
 
   return messagesByPublicKey;
+};
+
+export type LocalCursorChatState = {
+  isListening: boolean;
+  message: string | null;
+  /** Text shown on the graph bubble (message, or "..." while composing). */
+  displayMessage: string | null;
+};
+
+const readLocalCursorChat = (client: CursorClientReader): LocalCursorChatState => {
+  const chat = client.chat;
+  if (!chat) {
+    return { isListening: false, message: null, displayMessage: null };
+  }
+
+  const isListening = chat.listening;
+  const message = chat.getCurrentMessage();
+  const displayMessage = message ?? (isListening ? "..." : null);
+
+  return { isListening, message, displayMessage };
+};
+
+const localChatEqual = (left: LocalCursorChatState, right: LocalCursorChatState): boolean =>
+  left.isListening === right.isListening &&
+  left.message === right.message &&
+  left.displayMessage === right.displayMessage;
+
+export const usePlayhtmlLocalCursorChat = (): LocalCursorChatState => {
+  const { isLoading, isProviderMissing } = usePlayContext();
+  const [localChat, setLocalChat] = useState<LocalCursorChatState>(() => ({
+    isListening: false,
+    message: null,
+    displayMessage: null,
+  }));
+  const latestRef = useRef(localChat);
+
+  useEffect(() => {
+    latestRef.current = localChat;
+  }, [localChat]);
+
+  useEffect(() => {
+    if (isLoading || isProviderMissing) {
+      return;
+    }
+
+    const client = getCursorClient();
+    if (!client?.chat) {
+      return;
+    }
+
+    const commit = () => {
+      const next = readLocalCursorChat(client);
+      if (localChatEqual(next, latestRef.current)) {
+        return;
+      }
+      latestRef.current = next;
+      setLocalChat(next);
+    };
+
+    commit();
+    const pollId = window.setInterval(commit, MESSAGE_POLL_MS);
+    return () => window.clearInterval(pollId);
+  }, [isLoading, isProviderMissing]);
+
+  return localChat;
 };
