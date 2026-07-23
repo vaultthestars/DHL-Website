@@ -152,6 +152,50 @@ export const applyIsolateDisplayPosition = (
   );
 };
 
+/** Display-only: pull per-owner Y bands toward graph center in shared axis conglomerate view. */
+export const compressSharedAxisConglomerateBandGap = (
+  positions: Map<string, GraphPoint>,
+  songs: Song[],
+  dimensions: { height: number },
+  enabledOwnerIds: string[] | undefined,
+  bandCompression = 0.55
+): Map<string, GraphPoint> => {
+  const ownerSums = new Map<string, { y: number; count: number }>();
+  songs.forEach((song) => {
+    const position = positions.get(song.id);
+    if (!position) {
+      return;
+    }
+    const ownerId = resolveIsolateDisplayOwnerId(song, enabledOwnerIds);
+    const bucket = ownerSums.get(ownerId) ?? { y: 0, count: 0 };
+    bucket.y += position.y;
+    bucket.count += 1;
+    ownerSums.set(ownerId, bucket);
+  });
+
+  const centerY = dimensions.height / 2;
+  const ownerMeanY = new Map<string, number>();
+  ownerSums.forEach((bucket, ownerId) => {
+    ownerMeanY.set(ownerId, bucket.y / Math.max(bucket.count, 1));
+  });
+
+  const compressed = new Map<string, GraphPoint>();
+  songs.forEach((song) => {
+    const position = positions.get(song.id);
+    if (!position) {
+      return;
+    }
+    const ownerId = resolveIsolateDisplayOwnerId(song, enabledOwnerIds);
+    const meanY = ownerMeanY.get(ownerId) ?? position.y;
+    const compressedMeanY = centerY + (meanY - centerY) * bandCompression;
+    compressed.set(song.id, {
+      x: position.x,
+      y: compressedMeanY + (position.y - meanY),
+    });
+  });
+  return compressed;
+};
+
 /** One-shot position map for web rendering — O(1) lookup during pan/zoom culling. */
 export const buildWebDisplayPositionCache = (
   songs: Song[],

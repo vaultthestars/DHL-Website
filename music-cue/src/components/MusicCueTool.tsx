@@ -173,6 +173,7 @@ import {
 } from "../lib/isolateClusterLayout";
 import {
   buildWebDisplayPositionCache,
+  compressSharedAxisConglomerateBandGap,
   computeIsolateDisplayContext,
 } from "../lib/isolateDisplayTransform";
 import { getEnabledOwnerMetaClusters, hasMultipleLibraryOwners, resolveIsolateDisplayOwnerId } from "../lib/libraryScope";
@@ -559,8 +560,12 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
   useEffect(() => {
     if (activeLayoutScope === "conglomerate") {
       conglomerateClusterOverridesRef.current = clusterOverrides;
+      return;
     }
-  }, [activeLayoutScope, clusterOverrides]);
+    if (songSpaceMode === "mine" || isSingleContributorSharedLibrary(sharedContributorCount)) {
+      conglomerateClusterOverridesRef.current = layoutClusterOverrides;
+    }
+  }, [activeLayoutScope, clusterOverrides, layoutClusterOverrides, sharedContributorCount, songSpaceMode]);
   const reloadLayoutCaches = useCallback((scope: ClusterLayoutScope) => {
     if (!isSpotifyGuest) {
       setClusterOverrides(loadClusterCenterOverrides(scope));
@@ -1044,11 +1049,35 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
 
   const showIsolateContributorView =
     libraryScopeMode === "isolate" && hasMultipleLibraryOwners(visibleSongs);
+  const isSharedIsolateClusterDragDisabled =
+    songSpaceMode === "shared" && libraryScopeMode === "isolate";
+
+  const resolveConglomerateOverridesForLayout = useCallback((): ClusterCenterOverrides => {
+    if (draggingClusterIdRef.current) {
+      return resolveLayoutClusterOverrides(clusterOverridesRef.current);
+    }
+    if (songSpaceMode === "mine" || isSingleContributorSharedLibrary(sharedContributorCount)) {
+      return layoutClusterOverrides;
+    }
+    if (activeLayoutScope === "conglomerate") {
+      return clusterOverrides;
+    }
+    return conglomerateClusterOverridesRef.current;
+  }, [
+    activeLayoutScope,
+    clusterDragPreviewTick,
+    clusterOverrides,
+    layoutClusterOverrides,
+    resolveLayoutClusterOverrides,
+    sharedContributorCount,
+    songSpaceMode,
+  ]);
 
   const conglomeratePositionBySongId = useMemo(() => {
     if (!useWebPerformanceOptimizations || !isClusterView(layoutConfig)) {
       return null;
     }
+    const overridesForLayout = resolveConglomerateOverridesForLayout();
     const positions = new Map<string, GraphPoint>();
     visibleSongs.forEach((song) => {
       positions.set(
@@ -1059,7 +1088,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
           layoutConfig,
           stats,
           {},
-          conglomerateClusterOverridesRef.current,
+          overridesForLayout,
           visibleSongs,
           {
             libraryScopeMode: "conglomerate",
@@ -1072,8 +1101,9 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
   }, [
     activeContributorIds,
     clusterDragPreviewTick,
-        dimensions,
+    dimensions,
     layoutConfig,
+    resolveConglomerateOverridesForLayout,
     stats,
     useWebPerformanceOptimizations,
     visibleSongs,
@@ -1086,6 +1116,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     if (libraryScopeMode === "isolate") {
       return null;
     }
+    const overridesForLayout = resolveConglomerateOverridesForLayout();
     const positions = new Map<string, GraphPoint>();
     visibleSongs.forEach((song) => {
       positions.set(
@@ -1096,7 +1127,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
           layoutConfig,
           stats,
           {},
-          conglomerateClusterOverridesRef.current,
+          overridesForLayout,
           visibleSongs,
           {
             libraryScopeMode: "conglomerate",
@@ -1109,12 +1140,13 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
   }, [
     activeContributorIds,
     clusterDragPreviewTick,
-        dimensions,
+    dimensions,
     layoutConfig,
+    libraryScopeMode,
+    resolveConglomerateOverridesForLayout,
     stats,
     useWebPerformanceOptimizations,
     visibleSongs,
-    libraryScopeMode,
   ]);
 
   const isolateDisplayContext = useMemo(() => {
@@ -1289,7 +1321,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
         config,
         stats,
         {},
-        conglomerateClusterOverridesRef.current,
+        resolveConglomerateOverridesForLayout(),
         visibleSongs,
         {
           libraryScopeMode: "conglomerate",
@@ -1304,6 +1336,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
       conglomeratePositionBySongId,
       dimensions,
       layoutConfig,
+      resolveConglomerateOverridesForLayout,
       stats,
       visibleSongs,
     ]
@@ -1340,7 +1373,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
       return null;
     }
 
-    return buildWebDisplayPositionCache(
+    const displayPositions = buildWebDisplayPositionCache(
       visibleSongs,
       conglomeratePositions,
       isolateContext,
@@ -1348,14 +1381,34 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
       stats,
       getConglomeratePositionForSong
     );
+
+    if (
+      songSpaceMode === "shared" &&
+      libraryScopeMode === "conglomerate" &&
+      !isClusterView(layoutConfig) &&
+      hasMultipleLibraryOwners(visibleSongs) &&
+      !isolateContext
+    ) {
+      return compressSharedAxisConglomerateBandGap(
+        displayPositions,
+        visibleSongs,
+        dimensions,
+        activeContributorIds
+      );
+    }
+
+    return displayPositions;
   }, [
+    activeContributorIds,
     axisConglomeratePositionBySongId,
     conglomeratePositionBySongId,
+    dimensions,
     getConglomeratePositionForSong,
     isolateDisplayContext,
     layoutConfig,
     libraryScopeMode,
     showIsolateContributorView,
+    songSpaceMode,
     stats,
     useWebPerformanceOptimizations,
     visibleSongs,
@@ -2470,7 +2523,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     clusterId: string,
     label: string
   ) => {
-    if (isGuestViewOnly || !isClusterLayout) {
+    if (isGuestViewOnly || !isClusterLayout || isSharedIsolateClusterDragDisabled) {
       return;
     }
     event.stopPropagation();
@@ -2681,7 +2734,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
         return;
       }
 
-      if (session.metaShiftHeld && isClusterLayout && !isGuestViewOnly) {
+      if (session.metaShiftHeld && isClusterLayout && !isGuestViewOnly && !isSharedIsolateClusterDragDisabled) {
         session.mode = "box-select";
         const point = getLocalPoint(event, svgRef.current, contentGroupRef.current);
         session.boxEnd = point;
@@ -4822,12 +4875,20 @@ clusterRegions.map((region) => {
                       x={region.center.x}
                       y={region.center.y}
                       className={`music-cue-cluster-label ${
-                        effectiveClusterRevealOpacity >= 1 && !isGuestViewOnly
+                        effectiveClusterRevealOpacity >= 1 &&
+                        !isGuestViewOnly &&
+                        !isSharedIsolateClusterDragDisabled
                           ? "music-cue-cluster-label-draggable"
                           : ""
                       } ${selectedClusterIds.has(region.id) ? "music-cue-cluster-label-selected" : ""}`}
                       opacity={effectiveClusterRevealOpacity}
-                      pointerEvents={effectiveClusterRevealOpacity >= 1 && !isGuestViewOnly ? undefined : "none"}
+                      pointerEvents={
+                        effectiveClusterRevealOpacity >= 1 &&
+                        !isGuestViewOnly &&
+                        !isSharedIsolateClusterDragDisabled
+                          ? undefined
+                          : "none"
+                      }
                       transform={transform}
                       onPointerDown={
                       isGuestViewOnly
