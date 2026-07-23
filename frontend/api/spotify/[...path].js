@@ -154,6 +154,259 @@ var mapWithConcurrency = async (items, concurrency, mapper) => {
   return results;
 };
 
+// server-lib/spotify/sharedLibraryRemoteStore.ts
+var import_client_s3 = require("@aws-sdk/client-s3");
+var isVercelProduction = () => process.env.VERCEL === "1";
+var useS3Storage = () => {
+  const override = process.env.SHARED_LIBRARY_STORAGE?.toLowerCase();
+  if (override === "blob") {
+    return false;
+  }
+  if (override === "s3" || override === "r2") {
+    return Boolean(
+      process.env.SHARED_LIBRARY_S3_BUCKET && process.env.SHARED_LIBRARY_S3_ACCESS_KEY_ID && process.env.SHARED_LIBRARY_S3_SECRET_ACCESS_KEY
+    );
+  }
+  return Boolean(
+    process.env.SHARED_LIBRARY_S3_BUCKET && process.env.SHARED_LIBRARY_S3_ACCESS_KEY_ID && process.env.SHARED_LIBRARY_S3_SECRET_ACCESS_KEY
+  );
+};
+var useBlobStorage = () => {
+  const override = process.env.SHARED_LIBRARY_STORAGE?.toLowerCase();
+  if (override === "s3" || override === "r2") {
+    return false;
+  }
+  if (override === "blob") {
+    return Boolean(process.env.BLOB_READ_WRITE_TOKEN || isVercelProduction() && process.env.BLOB_STORE_ID);
+  }
+  if (useS3Storage()) {
+    return false;
+  }
+  if (process.env.BLOB_READ_WRITE_TOKEN) {
+    return true;
+  }
+  if (isVercelProduction() && process.env.BLOB_STORE_ID) {
+    return true;
+  }
+  return false;
+};
+var streamToString = async (body) => {
+  if (!body) {
+    return "";
+  }
+  if (typeof body === "string") {
+    return body;
+  }
+  if (body instanceof Uint8Array) {
+    return new TextDecoder().decode(body);
+  }
+  if (typeof body.transformToByteArray === "function") {
+    const bytes = await body.transformToByteArray();
+    return new TextDecoder().decode(bytes);
+  }
+  const stream = body;
+  if (stream && typeof stream[Symbol.asyncIterator] === "function") {
+    const chunks = [];
+    for await (const chunk of stream) {
+      chunks.push(chunk);
+    }
+    if (chunks.length === 0) {
+      return "";
+    }
+    const totalLength = chunks.reduce((sum, chunk) => sum + chunk.length, 0);
+    const merged = new Uint8Array(totalLength);
+    let offset = 0;
+    for (const chunk of chunks) {
+      merged.set(chunk, offset);
+      offset += chunk.length;
+    }
+    return new TextDecoder().decode(merged);
+  }
+  return "";
+};
+var s3Client = null;
+var getS3Client = () => {
+  if (s3Client) {
+    return s3Client;
+  }
+  const endpoint = process.env.SHARED_LIBRARY_S3_ENDPOINT;
+  s3Client = new import_client_s3.S3Client({
+    region: process.env.SHARED_LIBRARY_S3_REGION ?? "auto",
+    endpoint: endpoint || void 0,
+    forcePathStyle: Boolean(endpoint),
+    credentials: {
+      accessKeyId: process.env.SHARED_LIBRARY_S3_ACCESS_KEY_ID,
+      secretAccessKey: process.env.SHARED_LIBRARY_S3_SECRET_ACCESS_KEY
+    }
+  });
+  return s3Client;
+};
+var createS3RemoteStore = () => {
+  const bucket = process.env.SHARED_LIBRARY_S3_BUCKET;
+  return {
+    backend: "s3",
+    readJson: async (key) => {
+      try {
+        const result = await getS3Client().send(
+          new import_client_s3.GetObjectCommand({
+            Bucket: bucket,
+            Key: key
+          })
+        );
+        const text = await streamToString(result.Body);
+        if (!text) {
+          return null;
+        }
+        return JSON.parse(text);
+      } catch {
+        return null;
+      }
+    },
+    writeJson: async (key, payload) => {
+      await getS3Client().send(
+        new import_client_s3.PutObjectCommand({
+          Bucket: bucket,
+          Key: key,
+          Body: JSON.stringify(payload),
+          ContentType: "application/json"
+        })
+      );
+    },
+    listJsonKeys: async (prefix) => {
+      const entries = [];
+      let continuationToken;
+      do {
+        const result = await getS3Client().send(
+          new import_client_s3.ListObjectsV2Command({
+            Bucket: bucket,
+            Prefix: prefix,
+            ContinuationToken: continuationToken
+          })
+        );
+        (result.Contents ?? []).forEach((object) => {
+          if (!object.Key) {
+            return;
+          }
+          entries.push({
+            key: object.Key,
+            updatedAt: object.LastModified ?? /* @__PURE__ */ new Date(0)
+          });
+        });
+        continuationToken = result.IsTruncated ? result.NextContinuationToken : void 0;
+      } while (continuationToken);
+      return entries;
+    }
+  };
+};
+var getBlobModule = async () => import("@vercel/blob");
+var createBlobRemoteStore = () => ({
+  backend: "blob",
+  readJson: async (key) => {
+    const { get } = await getBlobModule();
+    try {
+      const result = await get(key, { access: "private", useCache: false });
+      if (!result || result.statusCode !== 200 || !result.stream) {
+        return null;
+      }
+      const text = await new Response(result.stream).text();
+      return JSON.parse(text);
+    } catch {
+      return null;
+    }
+  },
+  writeJson: async (key, payload) => {
+    const { put } = await getBlobModule();
+    await put(key, JSON.stringify(payload), {
+      access: "private",
+      addRandomSuffix: false,
+      allowOverwrite: true,
+      contentType: "application/json"
+    });
+  },
+  listJsonKeys: async (prefix) => {
+    const { list } = await getBlobModule();
+    const { blobs } = await list({ prefix });
+    return blobs.map((blob) => ({
+      key: blob.pathname,
+      updatedAt: blob.uploadedAt
+    }));
+  }
+});
+var getRemoteJsonStore = () => {
+  if (useS3Storage()) {
+    return createS3RemoteStore();
+  }
+  if (useBlobStorage()) {
+    return createBlobRemoteStore();
+  }
+  return null;
+};
+var isRemoteStorageConfigured = () => getRemoteJsonStore() !== null;
+
+// server-lib/spotify/artistGenreCache.ts
+var CACHE_PREFIX = "music-cue/artist-genres/by-id";
+var cacheKey = (artistId) => `${CACHE_PREFIX}/${artistId}.json`;
+var readLocalGenreCache = () => {
+  return /* @__PURE__ */ new Map();
+};
+var localGenreCache = null;
+var getLocalGenreCache = () => {
+  if (!localGenreCache) {
+    localGenreCache = readLocalGenreCache();
+  }
+  return localGenreCache;
+};
+var getCachedArtistGenres = async (artistIds) => {
+  const uniqueIds = [...new Set(artistIds.filter((artistId) => artistId.trim()))];
+  const genresByArtistId = {};
+  if (uniqueIds.length === 0) {
+    return genresByArtistId;
+  }
+  const remote = getRemoteJsonStore();
+  if (!remote) {
+    const local = getLocalGenreCache();
+    uniqueIds.forEach((artistId) => {
+      const cached = local.get(artistId);
+      if (cached) {
+        genresByArtistId[artistId] = cached.genres;
+      }
+    });
+    return genresByArtistId;
+  }
+  await Promise.all(
+    uniqueIds.map(async (artistId) => {
+      const cached = await remote.readJson(cacheKey(artistId));
+      if (cached && Array.isArray(cached.genres)) {
+        genresByArtistId[artistId] = cached.genres;
+      }
+    })
+  );
+  return genresByArtistId;
+};
+var saveCachedArtistGenres = async (genresByArtistId) => {
+  const entries = Object.entries(genresByArtistId);
+  if (entries.length === 0) {
+    return;
+  }
+  const updatedAt = (/* @__PURE__ */ new Date()).toISOString();
+  const remote = getRemoteJsonStore();
+  if (!remote) {
+    const local = getLocalGenreCache();
+    entries.forEach(([artistId, genres]) => {
+      local.set(artistId, { genres, updatedAt });
+    });
+    return;
+  }
+  await Promise.all(
+    entries.map(
+      ([artistId, genres]) => remote.writeJson(cacheKey(artistId), {
+        genres,
+        updatedAt
+      })
+    )
+  );
+};
+
 // server-lib/spotify/spotifySession.ts
 var import_node_crypto = require("node:crypto");
 var SPOTIFY_SESSION_COOKIE = "music_cue_spotify_session";
@@ -233,6 +486,7 @@ var SPOTIFY_SCOPES = [
   "user-modify-playback-state"
 ].join(" ");
 var NO_DEVICES_MESSAGE = "No Spotify devices found. Open the Spotify app, play any song once, then try Play again.";
+var sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 var SPOTIFY_API_ORIGIN = "https://api.spotify.com";
 var SPOTIFY_REQUEST_TIMEOUT_MS = 6e3;
 var SPOTIFY_TOKEN_TIMEOUT_MS = 4e3;
@@ -561,12 +815,14 @@ var createSpotifyClient = (store) => {
     };
   };
   const normalizeArtistIds = (artistIds) => [...new Set(artistIds.filter((artistId) => typeof artistId === "string" && artistId.trim()))];
-  const ARTIST_GENRE_LOOKUP_CONCURRENCY = 6;
+  const ARTIST_GENRE_LOOKUP_DELAY_MS = 400;
+  const MAX_ARTISTS_PER_GENRE_BATCH = 12;
   const fetchArtistGenreBatch = async (artistIds) => {
     const genresByArtistId = {};
-    const chunk = normalizeArtistIds(artistIds).slice(0, 50);
+    const chunk = normalizeArtistIds(artistIds).slice(0, MAX_ARTISTS_PER_GENRE_BATCH);
     const stats = {
       requested: chunk.length,
+      cacheHits: 0,
       resolved: 0,
       withGenres: 0,
       emptyGenres: 0
@@ -574,40 +830,58 @@ var createSpotifyClient = (store) => {
     if (chunk.length === 0) {
       return { genresByArtistId, stats };
     }
+    const cached = await getCachedArtistGenres(chunk);
+    const spotifyIds = [];
+    for (const artistId of chunk) {
+      if (artistId in cached) {
+        stats.cacheHits += 1;
+        const genres = cached[artistId] ?? [];
+        genresByArtistId[artistId] = genres;
+        stats.resolved += 1;
+        if (genres.length > 0) {
+          stats.withGenres += 1;
+        } else {
+          stats.emptyGenres += 1;
+        }
+      } else {
+        spotifyIds.push(artistId);
+      }
+    }
+    if (spotifyIds.length === 0) {
+      return { genresByArtistId, stats };
+    }
     const failures = [];
-    const results = await mapWithConcurrency(chunk, ARTIST_GENRE_LOOKUP_CONCURRENCY, async (artistId) => {
+    const fetchedByArtistId = {};
+    for (let index = 0; index < spotifyIds.length; index += 1) {
+      if (index > 0) {
+        await sleep(ARTIST_GENRE_LOOKUP_DELAY_MS);
+      }
+      const artistId = spotifyIds[index];
       try {
         const artist = await spotifyFetch(`/artists/${artistId}`);
-        return { ok: true, artist };
+        if (!artist?.id) {
+          continue;
+        }
+        stats.resolved += 1;
+        const genres = artist.genres ?? [];
+        genresByArtistId[artist.id] = genres;
+        fetchedByArtistId[artist.id] = genres;
+        if (genres.length > 0) {
+          stats.withGenres += 1;
+        } else {
+          stats.emptyGenres += 1;
+        }
       } catch (error) {
         if (error instanceof SpotifyRateLimitError) {
           throw error;
         }
-        return {
-          ok: false,
-          error: error instanceof Error ? error.message : String(error)
-        };
-      }
-    });
-    for (const result of results) {
-      if (!result.ok) {
-        failures.push(result.error);
-        continue;
-      }
-      const artist = result.artist;
-      if (!artist?.id) {
-        continue;
-      }
-      stats.resolved += 1;
-      const genres = artist.genres ?? [];
-      genresByArtistId[artist.id] = genres;
-      if (genres.length > 0) {
-        stats.withGenres += 1;
-      } else {
-        stats.emptyGenres += 1;
+        failures.push(error instanceof Error ? error.message : String(error));
       }
     }
-    if (failures.length > 0 && stats.resolved === 0) {
+    if (Object.keys(fetchedByArtistId).length > 0) {
+      await saveCachedArtistGenres(fetchedByArtistId);
+    }
+    if (failures.length > 0 && spotifyIds.length === failures.length) {
       stats.error = failures[0];
       console.warn("[spotify] Artist genre batch failed:", stats.error);
     }
@@ -618,19 +892,24 @@ var createSpotifyClient = (store) => {
     const uniqueArtistIds = normalizeArtistIds(artistIds);
     const stats = {
       requested: uniqueArtistIds.length,
+      cacheHits: 0,
       resolved: 0,
       withGenres: 0,
       emptyGenres: 0
     };
     const errors = [];
-    for (let index = 0; index < uniqueArtistIds.length; index += 50) {
-      const batch = await fetchArtistGenreBatch(uniqueArtistIds.slice(index, index + 50));
+    for (let index = 0; index < uniqueArtistIds.length; index += MAX_ARTISTS_PER_GENRE_BATCH) {
+      const batch = await fetchArtistGenreBatch(uniqueArtistIds.slice(index, index + MAX_ARTISTS_PER_GENRE_BATCH));
       Object.assign(genresByArtistId, batch.genresByArtistId);
+      stats.cacheHits += batch.stats.cacheHits;
       stats.resolved += batch.stats.resolved;
       stats.withGenres += batch.stats.withGenres;
       stats.emptyGenres += batch.stats.emptyGenres;
       if (batch.stats.error) {
         errors.push(batch.stats.error);
+      }
+      if (index + MAX_ARTISTS_PER_GENRE_BATCH < uniqueArtistIds.length) {
+        await sleep(ARTIST_GENRE_LOOKUP_DELAY_MS * 2);
       }
     }
     if (errors.length > 0) {
@@ -919,195 +1198,6 @@ var sanitizeLibraryPayload = (payload) => {
     stats: buildLibraryStatsFromSongs(songs, keptNames)
   };
 };
-
-// server-lib/spotify/sharedLibraryRemoteStore.ts
-var import_client_s3 = require("@aws-sdk/client-s3");
-var isVercelProduction = () => process.env.VERCEL === "1";
-var useS3Storage = () => {
-  const override = process.env.SHARED_LIBRARY_STORAGE?.toLowerCase();
-  if (override === "blob") {
-    return false;
-  }
-  if (override === "s3" || override === "r2") {
-    return Boolean(
-      process.env.SHARED_LIBRARY_S3_BUCKET && process.env.SHARED_LIBRARY_S3_ACCESS_KEY_ID && process.env.SHARED_LIBRARY_S3_SECRET_ACCESS_KEY
-    );
-  }
-  return Boolean(
-    process.env.SHARED_LIBRARY_S3_BUCKET && process.env.SHARED_LIBRARY_S3_ACCESS_KEY_ID && process.env.SHARED_LIBRARY_S3_SECRET_ACCESS_KEY
-  );
-};
-var useBlobStorage = () => {
-  const override = process.env.SHARED_LIBRARY_STORAGE?.toLowerCase();
-  if (override === "s3" || override === "r2") {
-    return false;
-  }
-  if (override === "blob") {
-    return Boolean(process.env.BLOB_READ_WRITE_TOKEN || isVercelProduction() && process.env.BLOB_STORE_ID);
-  }
-  if (useS3Storage()) {
-    return false;
-  }
-  if (process.env.BLOB_READ_WRITE_TOKEN) {
-    return true;
-  }
-  if (isVercelProduction() && process.env.BLOB_STORE_ID) {
-    return true;
-  }
-  return false;
-};
-var streamToString = async (body) => {
-  if (!body) {
-    return "";
-  }
-  if (typeof body === "string") {
-    return body;
-  }
-  if (body instanceof Uint8Array) {
-    return new TextDecoder().decode(body);
-  }
-  if (typeof body.transformToByteArray === "function") {
-    const bytes = await body.transformToByteArray();
-    return new TextDecoder().decode(bytes);
-  }
-  const stream = body;
-  if (stream && typeof stream[Symbol.asyncIterator] === "function") {
-    const chunks = [];
-    for await (const chunk of stream) {
-      chunks.push(chunk);
-    }
-    if (chunks.length === 0) {
-      return "";
-    }
-    const totalLength = chunks.reduce((sum, chunk) => sum + chunk.length, 0);
-    const merged = new Uint8Array(totalLength);
-    let offset = 0;
-    for (const chunk of chunks) {
-      merged.set(chunk, offset);
-      offset += chunk.length;
-    }
-    return new TextDecoder().decode(merged);
-  }
-  return "";
-};
-var s3Client = null;
-var getS3Client = () => {
-  if (s3Client) {
-    return s3Client;
-  }
-  const endpoint = process.env.SHARED_LIBRARY_S3_ENDPOINT;
-  s3Client = new import_client_s3.S3Client({
-    region: process.env.SHARED_LIBRARY_S3_REGION ?? "auto",
-    endpoint: endpoint || void 0,
-    forcePathStyle: Boolean(endpoint),
-    credentials: {
-      accessKeyId: process.env.SHARED_LIBRARY_S3_ACCESS_KEY_ID,
-      secretAccessKey: process.env.SHARED_LIBRARY_S3_SECRET_ACCESS_KEY
-    }
-  });
-  return s3Client;
-};
-var createS3RemoteStore = () => {
-  const bucket = process.env.SHARED_LIBRARY_S3_BUCKET;
-  return {
-    backend: "s3",
-    readJson: async (key) => {
-      try {
-        const result = await getS3Client().send(
-          new import_client_s3.GetObjectCommand({
-            Bucket: bucket,
-            Key: key
-          })
-        );
-        const text = await streamToString(result.Body);
-        if (!text) {
-          return null;
-        }
-        return JSON.parse(text);
-      } catch {
-        return null;
-      }
-    },
-    writeJson: async (key, payload) => {
-      await getS3Client().send(
-        new import_client_s3.PutObjectCommand({
-          Bucket: bucket,
-          Key: key,
-          Body: JSON.stringify(payload),
-          ContentType: "application/json"
-        })
-      );
-    },
-    listJsonKeys: async (prefix) => {
-      const entries = [];
-      let continuationToken;
-      do {
-        const result = await getS3Client().send(
-          new import_client_s3.ListObjectsV2Command({
-            Bucket: bucket,
-            Prefix: prefix,
-            ContinuationToken: continuationToken
-          })
-        );
-        (result.Contents ?? []).forEach((object) => {
-          if (!object.Key) {
-            return;
-          }
-          entries.push({
-            key: object.Key,
-            updatedAt: object.LastModified ?? /* @__PURE__ */ new Date(0)
-          });
-        });
-        continuationToken = result.IsTruncated ? result.NextContinuationToken : void 0;
-      } while (continuationToken);
-      return entries;
-    }
-  };
-};
-var getBlobModule = async () => import("@vercel/blob");
-var createBlobRemoteStore = () => ({
-  backend: "blob",
-  readJson: async (key) => {
-    const { get } = await getBlobModule();
-    try {
-      const result = await get(key, { access: "private", useCache: false });
-      if (!result || result.statusCode !== 200 || !result.stream) {
-        return null;
-      }
-      const text = await new Response(result.stream).text();
-      return JSON.parse(text);
-    } catch {
-      return null;
-    }
-  },
-  writeJson: async (key, payload) => {
-    const { put } = await getBlobModule();
-    await put(key, JSON.stringify(payload), {
-      access: "private",
-      addRandomSuffix: false,
-      allowOverwrite: true,
-      contentType: "application/json"
-    });
-  },
-  listJsonKeys: async (prefix) => {
-    const { list } = await getBlobModule();
-    const { blobs } = await list({ prefix });
-    return blobs.map((blob) => ({
-      key: blob.pathname,
-      updatedAt: blob.uploadedAt
-    }));
-  }
-});
-var getRemoteJsonStore = () => {
-  if (useS3Storage()) {
-    return createS3RemoteStore();
-  }
-  if (useBlobStorage()) {
-    return createBlobRemoteStore();
-  }
-  return null;
-};
-var isRemoteStorageConfigured = () => getRemoteJsonStore() !== null;
 
 // server-lib/spotify/sharedLibraryStore.ts
 var LOCAL_LIBRARY_DIR = import_node_path.default.resolve(process.cwd(), ".data/shared-libraries");

@@ -65,6 +65,8 @@ export type SpotifyImportSession = {
   genresByArtistId?: Record<string, string[]>;
   genresNextArtistIndex?: number;
   genresArtistCount?: number;
+  /** Artists still needing lookup when genre phase started (subset of genresArtistCount). */
+  genresPendingArtistCount?: number;
 };
 
 type SpotifyImportHint = {
@@ -108,8 +110,10 @@ const isSessionResumable = (session: SpotifyImportSession): boolean => {
     return true;
   }
   if (
-    typeof session.genresArtistCount === "number" &&
-    (session.genresNextArtistIndex ?? 0) < session.genresArtistCount
+    typeof session.genresPendingArtistCount === "number"
+      ? (session.genresNextArtistIndex ?? 0) < session.genresPendingArtistCount
+      : typeof session.genresArtistCount === "number" &&
+        (session.genresNextArtistIndex ?? 0) < session.genresArtistCount
   ) {
     return true;
   }

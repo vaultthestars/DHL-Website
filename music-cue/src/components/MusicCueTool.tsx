@@ -3360,6 +3360,14 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
       );
       return;
     }
+    if (
+      !options?.fresh &&
+      !hasResumableSpotifyImport() &&
+      (songs.length > 0 || (getLocalSpotifyLibraryForMerge()?.songs.length ?? 0) > 0)
+    ) {
+      await handleOpenSpotifySync();
+      return;
+    }
     if (options?.fresh) {
       await clearSpotifyImportSession();
       setImportResumeRevision((revision) => revision + 1);
@@ -4400,7 +4408,9 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
                     ? "Checking Spotify…"
                     : spotifyImportResumeLabel
                       ? "Resume load & share"
-                      : "Load & share library"}
+                      : songs.length > 0 || (getLocalSpotifyLibraryForMerge()?.songs.length ?? 0) > 0
+                        ? "Sync library"
+                        : "Load & share library"}
               </button>
               {spotifyImportResumeLabel && !isImporting && spotifyCanLoadLibrary ? (
                 <button
@@ -4417,6 +4427,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
                 </button>
               ) : null}
               {spotifyCanLoadLibrary &&
+              !spotifyImportResumeLabel &&
               (songs.length > 0 || (getLocalSpotifyLibraryForMerge()?.songs.length ?? 0) > 0) ? (
                 <button
                   type="button"

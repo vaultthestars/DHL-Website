@@ -112,8 +112,8 @@ export const SpotifySyncDialog = ({
           ) : (
             <>
               <p className="music-cue-modal-hint">
-                Pick what to import. New playlists are pre-selected. Existing playlists are only
-                re-fetched if you check them — useful if a playlist changed a lot.
+                Pick what to import. New playlists are pre-selected. Already-loaded playlists are
+                skipped unless you check them — useful if a playlist changed a lot.
               </p>
               {renderPlaylistGroup(
                 "New playlists",
