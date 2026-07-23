@@ -598,30 +598,19 @@ export const createSpotifyClient = (store: SpotifySessionStore) => {
     return { genresByArtistId, stats };
   };
 
-  const buildLibraryPayload = async (input: {
+  const buildLibraryPayload = (input: {
     contributor: SpotifyLibraryPayload["contributor"];
     savedItems: SpotifySavedTrackItem[];
     readablePlaylists: SpotifyPlaylistSummary[];
     playlistItemsByPlaylistId: Record<string, SpotifyPlaylistItem[]>;
-  }): Promise<SpotifyLibraryPayload> => {
-    const artistIds = [
-      ...input.savedItems.flatMap((item) => (item.track ? item.track.artists.map((artist) => artist.id) : [])),
-      ...Object.values(input.playlistItemsByPlaylistId).flatMap((entries) =>
-        entries.flatMap((entry) => {
-          const track = entry.item ?? entry.track;
-          return track ? track.artists.map((artist) => artist.id) : [];
-        })
-      ),
-    ];
-    const { genresByArtistId } = await fetchArtistGenres(artistIds);
-    return assembleSpotifyLibrary({
+  }): SpotifyLibraryPayload =>
+    assembleSpotifyLibrary({
       contributor: input.contributor,
       savedItems: input.savedItems,
       readablePlaylists: input.readablePlaylists,
       playlistItemsByPlaylistId: input.playlistItemsByPlaylistId,
-      genresByArtistId,
+      genresByArtistId: {},
     });
-  };
 
   const fetchLibrary = async (): Promise<SpotifyLibraryPayload> => {
     const contributor = await fetchContributorProfile();

@@ -109,14 +109,6 @@ const isSessionResumable = (session: SpotifyImportSession): boolean => {
   if (session.completedPlaylistIds.length < session.readablePlaylistIds.length) {
     return true;
   }
-  if (
-    typeof session.genresPendingArtistCount === "number"
-      ? (session.genresNextArtistIndex ?? 0) < session.genresPendingArtistCount
-      : typeof session.genresArtistCount === "number" &&
-        (session.genresNextArtistIndex ?? 0) < session.genresArtistCount
-  ) {
-    return true;
-  }
   return false;
 };
 
@@ -130,12 +122,6 @@ const buildResumeLabel = (session: SpotifyImportSession): string => {
   }
   if (session.phase === "playlist-tracks") {
     return `Resume playlists (${session.completedPlaylistIds.length}/${session.readablePlaylistIds.length} done)`;
-  }
-  if (
-    typeof session.genresArtistCount === "number" &&
-    (session.genresNextArtistIndex ?? 0) < session.genresArtistCount
-  ) {
-    return "Resume genre lookup";
   }
   return "Resume library import";
 };

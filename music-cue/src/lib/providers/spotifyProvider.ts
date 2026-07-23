@@ -55,7 +55,7 @@ type SpotifyFetchOptions = {
 };
 
 const isSpotifyImportApiRequest = (url: string): boolean =>
-  /\/api\/spotify\/(saved-tracks-page|playlists-page|playlist-tracks-page|artist-genres|library)(\/|$|\?)/.test(
+  /\/api\/spotify\/(saved-tracks-page|playlists-page|playlist-tracks-page|library)(\/|$|\?)/.test(
     url
   );
 
@@ -290,7 +290,7 @@ const loadSelectedPlaylists = async (
     persistSession(session);
   }
 
-  const genresByArtistId = await loadGenresPhase(session, onProgress);
+  const genresByArtistId: Record<string, string[]> = {};
 
   reportProgress(onProgress, {
     phase: "assembling",
@@ -336,73 +336,6 @@ const loadSelectedPlaylists = async (
   });
 
   return loaded;
-};
-
-const collectArtistIds = (
-  savedItems: SpotifySavedTrackItem[],
-  playlistItemsByPlaylistId: Record<string, SpotifyPlaylistItem[]>
-): string[] => {
-  const artistIds = savedItems.flatMap((item) =>
-    item.track ? item.track.artists.map((artist) => artist.id) : []
-  );
-  Object.values(playlistItemsByPlaylistId).forEach((entries) => {
-    entries.forEach((entry) => {
-      const track = entry.item ?? entry.track;
-      if (track) {
-        artistIds.push(...track.artists.map((artist) => artist.id));
-      }
-    });
-  });
-  return [...new Set(artistIds.filter((artistId) => typeof artistId === "string" && artistId.trim()))];
-};
-
-type ArtistGenreLookupStats = {
-  requested: number;
-  cacheHits: number;
-  resolved: number;
-  withGenres: number;
-  emptyGenres: number;
-  error?: string;
-};
-
-const summarizeGenreLookup = (
-  artistCount: number,
-  totalWithGenres: number,
-  totalResolved: number,
-  totalCacheHits: number,
-  lastError?: string
-): string => {
-  if (artistCount === 0) {
-    return "No artists to look up.";
-  }
-  const cacheNote =
-    totalCacheHits > 0 ? ` (${totalCacheHits.toLocaleString()} from shared cache)` : "";
-  if (totalWithGenres > 0) {
-    return `Genres found for ${totalWithGenres.toLocaleString()} of ${artistCount.toLocaleString()} artists${cacheNote}.`;
-  }
-  if (lastError) {
-    return `Genre lookup failed: ${lastError}`;
-  }
-  if (totalResolved > 0) {
-    return `Spotify returned no genres for ${totalResolved.toLocaleString()} artists${cacheNote}.`;
-  }
-  return "Genre lookup returned no artist data.";
-};
-
-const waitForSpotifyRateLimitCooldown = async (
-  onProgress?: LoadLibraryOptions["onProgress"]
-): Promise<void> => {
-  const cooldownMs = getSpotifyImportRateLimitCooldownMs();
-  if (cooldownMs <= 0) {
-    return;
-  }
-  reportProgress(onProgress, {
-    phase: "genres",
-    message: `Waiting for Spotify rate limit to clear (${formatSpotifyRateLimitCooldown(cooldownMs)})…`,
-    percent: 88,
-  });
-  await sleep(cooldownMs);
-  await sleep(POST_COOLDOWN_BUFFER_MS);
 };
 
 const loadSavedTracksPhase = async (
@@ -717,122 +650,6 @@ const loadPlaylistTracksPhase = async (
   }
 };
 
-const loadGenresPhase = async (
-  session: SpotifyImportSession,
-  onProgress?: LoadLibraryOptions["onProgress"]
-): Promise<Record<string, string[]>> => {
-  session.phase = "genres";
-  const genresByArtistId = { ...(session.genresByArtistId ?? {}) };
-  const allArtistIds = collectArtistIds(session.savedItems, session.playlistItemsByPlaylistId);
-  const pendingArtistIds = allArtistIds.filter((artistId) => !(artistId in genresByArtistId));
-  session.genresArtistCount = allArtistIds.length;
-  session.genresPendingArtistCount = pendingArtistIds.length;
-  let nextIndex = 0;
-  if (
-    session.genresPendingArtistCount === pendingArtistIds.length &&
-    typeof session.genresNextArtistIndex === "number"
-  ) {
-    nextIndex = Math.min(session.genresNextArtistIndex, pendingArtistIds.length);
-  }
-
-  if (pendingArtistIds.length === 0) {
-    session.genresNextArtistIndex = pendingArtistIds.length;
-    persistSession(session);
-    reportProgress(onProgress, {
-      phase: "genres",
-      message:
-        allArtistIds.length > 0
-          ? `All ${allArtistIds.length.toLocaleString()} artist genres already known — skipping lookup.`
-          : "No artists to look up.",
-      percent: 98,
-    });
-    return genresByArtistId;
-  }
-
-  await waitForSpotifyRateLimitCooldown(onProgress);
-
-  let totalWithGenres = 0;
-  let totalResolved = 0;
-  let totalCacheHits = 0;
-  let lastGenreError: string | undefined;
-  const alreadyKnown = allArtistIds.length - pendingArtistIds.length;
-
-  while (nextIndex < pendingArtistIds.length) {
-    const artistId = pendingArtistIds[nextIndex];
-    const artistNumber = alreadyKnown + nextIndex + 1;
-    reportProgress(onProgress, {
-      phase: "genres",
-      message: `Looking up genres (artist ${artistNumber.toLocaleString()} of ${allArtistIds.length.toLocaleString()})…`,
-      percent: 88 + ((nextIndex + 1) / Math.max(1, pendingArtistIds.length)) * 10,
-    });
-
-    let fromCache = false;
-    try {
-      const genresPayload = await fetchJson<{
-        genresByArtistId: Record<string, string[]>;
-        fromCache?: boolean;
-        genreLookupStats?: ArtistGenreLookupStats;
-      }>("/api/spotify/artist-genres", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ artistId }),
-      });
-      fromCache = genresPayload.fromCache === true;
-      Object.assign(genresByArtistId, genresPayload.genresByArtistId ?? {});
-      if (genresPayload.genreLookupStats) {
-        totalWithGenres += genresPayload.genreLookupStats.withGenres;
-        totalResolved += genresPayload.genreLookupStats.resolved;
-        totalCacheHits += genresPayload.genreLookupStats.cacheHits;
-        if (genresPayload.genreLookupStats.error) {
-          lastGenreError = genresPayload.genreLookupStats.error;
-          console.warn("[spotify-import] Genre lookup failed:", genresPayload.genreLookupStats.error);
-        }
-      }
-    } catch (error) {
-      if (error instanceof SpotifyImportRateLimitError) {
-        throw error;
-      }
-      lastGenreError = error instanceof Error ? error.message : String(error);
-      console.warn("[spotify-import] Genre lookup request failed:", lastGenreError);
-    }
-
-    nextIndex += 1;
-    session.genresByArtistId = genresByArtistId;
-    session.genresNextArtistIndex = nextIndex;
-    persistSession(session);
-
-    if (SINGLE_STEP_IMPORT && nextIndex < pendingArtistIds.length) {
-      pauseImportAfterStep(
-        session,
-        `Looked up genres for ${artistNumber.toLocaleString()} of ${allArtistIds.length.toLocaleString()} artists…`,
-        onProgress
-      );
-    }
-
-    if (nextIndex >= pendingArtistIds.length) {
-      break;
-    }
-
-    if (!fromCache) {
-      await waitBetweenPages();
-    }
-  }
-
-  reportProgress(onProgress, {
-    phase: "genres",
-    message: summarizeGenreLookup(
-      allArtistIds.length,
-      totalWithGenres,
-      totalResolved,
-      totalCacheHits,
-      lastGenreError
-    ),
-    percent: 98,
-  });
-
-  return genresByArtistId;
-};
-
 const loadLibraryInChunks = async (options?: LoadLibraryOptions): Promise<LoadedLibrary> => {
   if (spotifyImportInFlight) {
     throw new Error("Spotify import is already running. Wait for it to finish before clicking Resume again.");
@@ -913,7 +730,7 @@ const loadLibraryInChunks = async (options?: LoadLibraryOptions): Promise<Loaded
 
     await refreshSessionPlaylistCatalog(session);
 
-    const genresByArtistId = await loadGenresPhase(session, onProgress);
+    const genresByArtistId: Record<string, string[]> = {};
 
     reportProgress(onProgress, {
       phase: "assembling",
