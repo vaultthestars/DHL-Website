@@ -1,8 +1,26 @@
 {
-  "rewrites": [
+  "routes": [
+    { "handle": "filesystem" },
     {
-      "source": "/music-cue/spotify/callback",
-      "destination": "/music-cue/index.html"
+      "src": "/music-cue/assets/(.*)",
+      "missing": [{ "type": "filesystem" }],
+      "status": 404
+    },
+    {
+      "src": "/music-cue/spotify/callback",
+      "dest": "/music-cue/index.html"
+    },
+    {
+      "src": "/music-cue",
+      "dest": "/music-cue/index.html"
+    },
+    {
+      "src": "/music-cue/(.*)",
+      "dest": "/music-cue/index.html"
+    },
+    {
+      "src": "/(.*)",
+      "dest": "/index.html"
     }
   ],
   "functions": {

@@ -491,6 +491,7 @@ var SPOTIFY_API_ORIGIN = "https://api.spotify.com";
 var SPOTIFY_REQUEST_TIMEOUT_MS = 6e3;
 var SPOTIFY_TOKEN_TIMEOUT_MS = 4e3;
 var PLAYLISTS_PAGE_DEFAULT_PATH = "/me/playlists?limit=50";
+var SPOTIFY_PAGE_REQUEST_DELAY_MS = 750;
 var tryDecodeURIComponent = (value) => {
   try {
     return decodeURIComponent(value);
@@ -815,11 +816,27 @@ var createSpotifyClient = (store) => {
     };
   };
   const normalizeArtistIds = (artistIds) => [...new Set(artistIds.filter((artistId) => typeof artistId === "string" && artistId.trim()))];
-  const ARTIST_GENRE_LOOKUP_DELAY_MS = 400;
-  const MAX_ARTISTS_PER_GENRE_BATCH = 12;
+  const fetchArtistGenre = async (artistId) => {
+    const normalized = artistId.trim();
+    if (!normalized) {
+      return { artistId: normalized, genres: [], fromCache: false };
+    }
+    const cached = await getCachedArtistGenres([normalized]);
+    if (normalized in cached) {
+      return {
+        artistId: normalized,
+        genres: cached[normalized] ?? [],
+        fromCache: true
+      };
+    }
+    const artist = await spotifyFetch(`/artists/${normalized}`);
+    const resolvedId = artist?.id ?? normalized;
+    const genres = artist?.id ? artist.genres ?? [] : [];
+    await saveCachedArtistGenres({ [resolvedId]: genres });
+    return { artistId: resolvedId, genres, fromCache: false };
+  };
   const fetchArtistGenreBatch = async (artistIds) => {
-    const genresByArtistId = {};
-    const chunk = normalizeArtistIds(artistIds).slice(0, MAX_ARTISTS_PER_GENRE_BATCH);
+    const chunk = normalizeArtistIds(artistIds).slice(0, 1);
     const stats = {
       requested: chunk.length,
       cacheHits: 0,
@@ -827,63 +844,28 @@ var createSpotifyClient = (store) => {
       withGenres: 0,
       emptyGenres: 0
     };
+    const genresByArtistId = {};
     if (chunk.length === 0) {
       return { genresByArtistId, stats };
     }
-    const cached = await getCachedArtistGenres(chunk);
-    const spotifyIds = [];
-    for (const artistId of chunk) {
-      if (artistId in cached) {
-        stats.cacheHits += 1;
-        const genres = cached[artistId] ?? [];
-        genresByArtistId[artistId] = genres;
-        stats.resolved += 1;
-        if (genres.length > 0) {
-          stats.withGenres += 1;
-        } else {
-          stats.emptyGenres += 1;
-        }
+    try {
+      const result = await fetchArtistGenre(chunk[0]);
+      genresByArtistId[result.artistId] = result.genres;
+      stats.resolved = 1;
+      if (result.fromCache) {
+        stats.cacheHits = 1;
+      }
+      if (result.genres.length > 0) {
+        stats.withGenres = 1;
       } else {
-        spotifyIds.push(artistId);
+        stats.emptyGenres = 1;
       }
-    }
-    if (spotifyIds.length === 0) {
-      return { genresByArtistId, stats };
-    }
-    const failures = [];
-    const fetchedByArtistId = {};
-    for (let index = 0; index < spotifyIds.length; index += 1) {
-      if (index > 0) {
-        await sleep(ARTIST_GENRE_LOOKUP_DELAY_MS);
+    } catch (error) {
+      stats.error = error instanceof Error ? error.message : String(error);
+      if (error instanceof SpotifyRateLimitError) {
+        throw error;
       }
-      const artistId = spotifyIds[index];
-      try {
-        const artist = await spotifyFetch(`/artists/${artistId}`);
-        if (!artist?.id) {
-          continue;
-        }
-        stats.resolved += 1;
-        const genres = artist.genres ?? [];
-        genresByArtistId[artist.id] = genres;
-        fetchedByArtistId[artist.id] = genres;
-        if (genres.length > 0) {
-          stats.withGenres += 1;
-        } else {
-          stats.emptyGenres += 1;
-        }
-      } catch (error) {
-        if (error instanceof SpotifyRateLimitError) {
-          throw error;
-        }
-        failures.push(error instanceof Error ? error.message : String(error));
-      }
-    }
-    if (Object.keys(fetchedByArtistId).length > 0) {
-      await saveCachedArtistGenres(fetchedByArtistId);
-    }
-    if (failures.length > 0 && spotifyIds.length === failures.length) {
-      stats.error = failures[0];
-      console.warn("[spotify] Artist genre batch failed:", stats.error);
+      console.warn("[spotify] Artist genre lookup failed:", stats.error);
     }
     return { genresByArtistId, stats };
   };
@@ -898,18 +880,27 @@ var createSpotifyClient = (store) => {
       emptyGenres: 0
     };
     const errors = [];
-    for (let index = 0; index < uniqueArtistIds.length; index += MAX_ARTISTS_PER_GENRE_BATCH) {
-      const batch = await fetchArtistGenreBatch(uniqueArtistIds.slice(index, index + MAX_ARTISTS_PER_GENRE_BATCH));
-      Object.assign(genresByArtistId, batch.genresByArtistId);
-      stats.cacheHits += batch.stats.cacheHits;
-      stats.resolved += batch.stats.resolved;
-      stats.withGenres += batch.stats.withGenres;
-      stats.emptyGenres += batch.stats.emptyGenres;
-      if (batch.stats.error) {
-        errors.push(batch.stats.error);
+    for (let index = 0; index < uniqueArtistIds.length; index += 1) {
+      if (index > 0) {
+        await sleep(SPOTIFY_PAGE_REQUEST_DELAY_MS);
       }
-      if (index + MAX_ARTISTS_PER_GENRE_BATCH < uniqueArtistIds.length) {
-        await sleep(ARTIST_GENRE_LOOKUP_DELAY_MS * 2);
+      try {
+        const result = await fetchArtistGenre(uniqueArtistIds[index]);
+        genresByArtistId[result.artistId] = result.genres;
+        stats.resolved += 1;
+        if (result.fromCache) {
+          stats.cacheHits += 1;
+        }
+        if (result.genres.length > 0) {
+          stats.withGenres += 1;
+        } else {
+          stats.emptyGenres += 1;
+        }
+      } catch (error) {
+        if (error instanceof SpotifyRateLimitError) {
+          throw error;
+        }
+        errors.push(error instanceof Error ? error.message : String(error));
       }
     }
     if (errors.length > 0) {
@@ -1109,6 +1100,7 @@ var createSpotifyClient = (store) => {
     fetchPlaylistTrackItems,
     fetchPlaylistTracksPage,
     fetchArtistGenres,
+    fetchArtistGenre,
     fetchArtistGenreBatch,
     warmupAccessToken,
     buildLibraryPayload,
@@ -1422,11 +1414,22 @@ var handleSpotifyRoute = async (route, req, res) => {
     }
     if (route === "artist-genres" && req.method === "POST") {
       const body = req.body;
-      const artistIds = Array.isArray(body?.artistIds) ? body.artistIds : [];
-      const result = await client.fetchArtistGenreBatch(artistIds);
+      const artistId = typeof body?.artistId === "string" && body.artistId.trim() ? body.artistId.trim() : Array.isArray(body?.artistIds) && typeof body.artistIds[0] === "string" ? body.artistIds[0].trim() : "";
+      if (!artistId) {
+        finish(400, { error: "artistId is required." });
+        return;
+      }
+      const result = await client.fetchArtistGenre(artistId);
       finish(200, {
-        genresByArtistId: result.genresByArtistId,
-        genreLookupStats: result.stats
+        genresByArtistId: { [result.artistId]: result.genres },
+        fromCache: result.fromCache,
+        genreLookupStats: {
+          requested: 1,
+          cacheHits: result.fromCache ? 1 : 0,
+          resolved: 1,
+          withGenres: result.genres.length > 0 ? 1 : 0,
+          emptyGenres: result.genres.length === 0 ? 1 : 0
+        }
       });
       return;
     }

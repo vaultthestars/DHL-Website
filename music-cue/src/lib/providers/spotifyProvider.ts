@@ -42,8 +42,6 @@ type SpotifyPage<T> = {
 const PAGE_REQUEST_DELAY_MS = 750;
 const PHASE_COOLDOWN_MS = 4_000;
 const POST_COOLDOWN_BUFFER_MS = 3_000;
-const GENRE_BATCH_SIZE = 12;
-const GENRE_BATCH_DELAY_MS = 2_500;
 /** When true, each loadLibrary() call performs one Spotify request then pauses (manual resume). */
 const SINGLE_STEP_IMPORT = false;
 
@@ -739,34 +737,33 @@ const loadGenresPhase = async (
 
   await waitForSpotifyRateLimitCooldown(onProgress);
 
-  const genreBatchCount = Math.ceil(pendingArtistIds.length / GENRE_BATCH_SIZE);
   let totalWithGenres = 0;
   let totalResolved = 0;
   let totalCacheHits = 0;
   let lastGenreError: string | undefined;
+  const alreadyKnown = allArtistIds.length - pendingArtistIds.length;
 
   while (nextIndex < pendingArtistIds.length) {
-    const batchIndex = Math.floor(nextIndex / GENRE_BATCH_SIZE) + 1;
+    const artistId = pendingArtistIds[nextIndex];
+    const artistNumber = alreadyKnown + nextIndex + 1;
     reportProgress(onProgress, {
       phase: "genres",
-      message: `Looking up genres (batch ${batchIndex} of ${genreBatchCount}, ${(allArtistIds.length - pendingArtistIds.length + nextIndex).toLocaleString()} of ${allArtistIds.length.toLocaleString()} artists done)…`,
-      percent: 88 + (batchIndex / genreBatchCount) * 10,
+      message: `Looking up genres (artist ${artistNumber.toLocaleString()} of ${allArtistIds.length.toLocaleString()})…`,
+      percent: 88 + ((nextIndex + 1) / Math.max(1, pendingArtistIds.length)) * 10,
     });
 
+    let fromCache = false;
     try {
       const genresPayload = await fetchJson<{
         genresByArtistId: Record<string, string[]>;
+        fromCache?: boolean;
         genreLookupStats?: ArtistGenreLookupStats;
-      }>(
-        "/api/spotify/artist-genres",
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            artistIds: pendingArtistIds.slice(nextIndex, nextIndex + GENRE_BATCH_SIZE),
-          }),
-        }
-      );
+      }>("/api/spotify/artist-genres", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ artistId }),
+      });
+      fromCache = genresPayload.fromCache === true;
       Object.assign(genresByArtistId, genresPayload.genresByArtistId ?? {});
       if (genresPayload.genreLookupStats) {
         totalWithGenres += genresPayload.genreLookupStats.withGenres;
@@ -774,7 +771,7 @@ const loadGenresPhase = async (
         totalCacheHits += genresPayload.genreLookupStats.cacheHits;
         if (genresPayload.genreLookupStats.error) {
           lastGenreError = genresPayload.genreLookupStats.error;
-          console.warn("[spotify-import] Genre batch failed:", genresPayload.genreLookupStats.error);
+          console.warn("[spotify-import] Genre lookup failed:", genresPayload.genreLookupStats.error);
         }
       }
     } catch (error) {
@@ -785,7 +782,7 @@ const loadGenresPhase = async (
       console.warn("[spotify-import] Genre lookup request failed:", lastGenreError);
     }
 
-    nextIndex = Math.min(nextIndex + GENRE_BATCH_SIZE, pendingArtistIds.length);
+    nextIndex += 1;
     session.genresByArtistId = genresByArtistId;
     session.genresNextArtistIndex = nextIndex;
     persistSession(session);
@@ -793,7 +790,7 @@ const loadGenresPhase = async (
     if (SINGLE_STEP_IMPORT && nextIndex < pendingArtistIds.length) {
       pauseImportAfterStep(
         session,
-        `Loaded genre batch ${batchIndex}/${genreBatchCount}…`,
+        `Looked up genres for ${artistNumber.toLocaleString()} of ${allArtistIds.length.toLocaleString()} artists…`,
         onProgress
       );
     }
@@ -802,7 +799,9 @@ const loadGenresPhase = async (
       break;
     }
 
-    await sleep(GENRE_BATCH_DELAY_MS);
+    if (!fromCache) {
+      await waitBetweenPages();
+    }
   }
 
   reportProgress(onProgress, {

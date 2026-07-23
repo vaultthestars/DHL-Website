@@ -172,12 +172,28 @@ export const handleSpotifyRoute = async (
     }
 
     if (route === "artist-genres" && req.method === "POST") {
-      const body = req.body as { artistIds?: string[] };
-      const artistIds = Array.isArray(body?.artistIds) ? body.artistIds : [];
-      const result = await client.fetchArtistGenreBatch(artistIds);
+      const body = req.body as { artistId?: string; artistIds?: string[] };
+      const artistId =
+        typeof body?.artistId === "string" && body.artistId.trim()
+          ? body.artistId.trim()
+          : Array.isArray(body?.artistIds) && typeof body.artistIds[0] === "string"
+            ? body.artistIds[0].trim()
+            : "";
+      if (!artistId) {
+        finish(400, { error: "artistId is required." });
+        return;
+      }
+      const result = await client.fetchArtistGenre(artistId);
       finish(200, {
-        genresByArtistId: result.genresByArtistId,
-        genreLookupStats: result.stats,
+        genresByArtistId: { [result.artistId]: result.genres },
+        fromCache: result.fromCache,
+        genreLookupStats: {
+          requested: 1,
+          cacheHits: result.fromCache ? 1 : 0,
+          resolved: 1,
+          withGenres: result.genres.length > 0 ? 1 : 0,
+          emptyGenres: result.genres.length === 0 ? 1 : 0,
+        },
       });
       return;
     }

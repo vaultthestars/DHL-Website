@@ -43,6 +43,12 @@ export type ArtistGenreBatchResult = {
   stats: ArtistGenreLookupStats;
 };
 
+export type ArtistGenreLookupResult = {
+  artistId: string;
+  genres: string[];
+  fromCache: boolean;
+};
+
 const SPOTIFY_ACCOUNTS_URL = "https://accounts.spotify.com";
 const SPOTIFY_API_URL = "https://api.spotify.com/v1";
 export const SPOTIFY_NOW_PLAYING_PLAYLIST_NAME = "MusicCue — Now Playing";
@@ -84,6 +90,8 @@ const SPOTIFY_API_ORIGIN = "https://api.spotify.com";
 const SPOTIFY_REQUEST_TIMEOUT_MS = 6_000;
 const SPOTIFY_TOKEN_TIMEOUT_MS = 4_000;
 const PLAYLISTS_PAGE_DEFAULT_PATH = "/me/playlists?limit=50";
+/** Match client PAGE_REQUEST_DELAY_MS — one Spotify call per serverless invocation. */
+const SPOTIFY_PAGE_REQUEST_DELAY_MS = 750;
 
 const tryDecodeURIComponent = (value: string): string => {
   try {
@@ -489,13 +497,31 @@ export const createSpotifyClient = (store: SpotifySessionStore) => {
   const normalizeArtistIds = (artistIds: string[]): string[] =>
     [...new Set(artistIds.filter((artistId) => typeof artistId === "string" && artistId.trim()))];
 
-  /** Dev Mode no longer allows batch GET /artists?ids=; fetch one artist at a time. */
-  const ARTIST_GENRE_LOOKUP_DELAY_MS = 400;
-  const MAX_ARTISTS_PER_GENRE_BATCH = 12;
+  /** One artist per call — mirrors saved-tracks-page (one Spotify request per serverless invocation). */
+  const fetchArtistGenre = async (artistId: string): Promise<ArtistGenreLookupResult> => {
+    const normalized = artistId.trim();
+    if (!normalized) {
+      return { artistId: normalized, genres: [], fromCache: false };
+    }
+
+    const cached = await getCachedArtistGenres([normalized]);
+    if (normalized in cached) {
+      return {
+        artistId: normalized,
+        genres: cached[normalized] ?? [],
+        fromCache: true,
+      };
+    }
+
+    const artist = await spotifyFetch<{ id: string; genres: string[] }>(`/artists/${normalized}`);
+    const resolvedId = artist?.id ?? normalized;
+    const genres = artist?.id ? (artist.genres ?? []) : [];
+    await saveCachedArtistGenres({ [resolvedId]: genres });
+    return { artistId: resolvedId, genres, fromCache: false };
+  };
 
   const fetchArtistGenreBatch = async (artistIds: string[]): Promise<ArtistGenreBatchResult> => {
-    const genresByArtistId: Record<string, string[]> = {};
-    const chunk = normalizeArtistIds(artistIds).slice(0, MAX_ARTISTS_PER_GENRE_BATCH);
+    const chunk = normalizeArtistIds(artistIds).slice(0, 1);
     const stats: ArtistGenreLookupStats = {
       requested: chunk.length,
       cacheHits: 0,
@@ -503,68 +529,29 @@ export const createSpotifyClient = (store: SpotifySessionStore) => {
       withGenres: 0,
       emptyGenres: 0,
     };
+    const genresByArtistId: Record<string, string[]> = {};
     if (chunk.length === 0) {
       return { genresByArtistId, stats };
     }
 
-    const cached = await getCachedArtistGenres(chunk);
-    const spotifyIds: string[] = [];
-    for (const artistId of chunk) {
-      if (artistId in cached) {
-        stats.cacheHits += 1;
-        const genres = cached[artistId] ?? [];
-        genresByArtistId[artistId] = genres;
-        stats.resolved += 1;
-        if (genres.length > 0) {
-          stats.withGenres += 1;
-        } else {
-          stats.emptyGenres += 1;
-        }
+    try {
+      const result = await fetchArtistGenre(chunk[0]);
+      genresByArtistId[result.artistId] = result.genres;
+      stats.resolved = 1;
+      if (result.fromCache) {
+        stats.cacheHits = 1;
+      }
+      if (result.genres.length > 0) {
+        stats.withGenres = 1;
       } else {
-        spotifyIds.push(artistId);
+        stats.emptyGenres = 1;
       }
-    }
-
-    if (spotifyIds.length === 0) {
-      return { genresByArtistId, stats };
-    }
-
-    const failures: string[] = [];
-    const fetchedByArtistId: Record<string, string[]> = {};
-    for (let index = 0; index < spotifyIds.length; index += 1) {
-      if (index > 0) {
-        await sleep(ARTIST_GENRE_LOOKUP_DELAY_MS);
+    } catch (error) {
+      stats.error = error instanceof Error ? error.message : String(error);
+      if (error instanceof SpotifyRateLimitError) {
+        throw error;
       }
-      const artistId = spotifyIds[index];
-      try {
-        const artist = await spotifyFetch<{ id: string; genres: string[] }>(`/artists/${artistId}`);
-        if (!artist?.id) {
-          continue;
-        }
-        stats.resolved += 1;
-        const genres = artist.genres ?? [];
-        genresByArtistId[artist.id] = genres;
-        fetchedByArtistId[artist.id] = genres;
-        if (genres.length > 0) {
-          stats.withGenres += 1;
-        } else {
-          stats.emptyGenres += 1;
-        }
-      } catch (error) {
-        if (error instanceof SpotifyRateLimitError) {
-          throw error;
-        }
-        failures.push(error instanceof Error ? error.message : String(error));
-      }
-    }
-
-    if (Object.keys(fetchedByArtistId).length > 0) {
-      await saveCachedArtistGenres(fetchedByArtistId);
-    }
-
-    if (failures.length > 0 && spotifyIds.length === failures.length) {
-      stats.error = failures[0];
-      console.warn("[spotify] Artist genre batch failed:", stats.error);
+      console.warn("[spotify] Artist genre lookup failed:", stats.error);
     }
 
     return { genresByArtistId, stats };
@@ -581,18 +568,27 @@ export const createSpotifyClient = (store: SpotifySessionStore) => {
       emptyGenres: 0,
     };
     const errors: string[] = [];
-    for (let index = 0; index < uniqueArtistIds.length; index += MAX_ARTISTS_PER_GENRE_BATCH) {
-      const batch = await fetchArtistGenreBatch(uniqueArtistIds.slice(index, index + MAX_ARTISTS_PER_GENRE_BATCH));
-      Object.assign(genresByArtistId, batch.genresByArtistId);
-      stats.cacheHits += batch.stats.cacheHits;
-      stats.resolved += batch.stats.resolved;
-      stats.withGenres += batch.stats.withGenres;
-      stats.emptyGenres += batch.stats.emptyGenres;
-      if (batch.stats.error) {
-        errors.push(batch.stats.error);
+    for (let index = 0; index < uniqueArtistIds.length; index += 1) {
+      if (index > 0) {
+        await sleep(SPOTIFY_PAGE_REQUEST_DELAY_MS);
       }
-      if (index + MAX_ARTISTS_PER_GENRE_BATCH < uniqueArtistIds.length) {
-        await sleep(ARTIST_GENRE_LOOKUP_DELAY_MS * 2);
+      try {
+        const result = await fetchArtistGenre(uniqueArtistIds[index]);
+        genresByArtistId[result.artistId] = result.genres;
+        stats.resolved += 1;
+        if (result.fromCache) {
+          stats.cacheHits += 1;
+        }
+        if (result.genres.length > 0) {
+          stats.withGenres += 1;
+        } else {
+          stats.emptyGenres += 1;
+        }
+      } catch (error) {
+        if (error instanceof SpotifyRateLimitError) {
+          throw error;
+        }
+        errors.push(error instanceof Error ? error.message : String(error));
       }
     }
     if (errors.length > 0) {
@@ -816,6 +812,7 @@ export const createSpotifyClient = (store: SpotifySessionStore) => {
     fetchPlaylistTrackItems,
     fetchPlaylistTracksPage,
     fetchArtistGenres,
+    fetchArtistGenre,
     fetchArtistGenreBatch,
     warmupAccessToken,
     buildLibraryPayload,
