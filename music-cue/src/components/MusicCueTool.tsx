@@ -15,6 +15,7 @@ import {
 import { invalidatePlaylistOverlapLayoutCache } from "../lib/playlistOverlapLayout";
 import { buildPlaylistMetaGraphEdges, buildPlaylistMetaGraphSegments } from "../lib/playlistMetaGraph";
 import { UNASSIGNED_PLAYLIST_CLUSTER_ID, isExcludedPlaylistName } from "../lib/playlistConstants";
+import { asStringArray } from "../lib/arrayUtils";
 import { applyPlaybackAdvance } from "../lib/cuePlaybackTracking";
 import { formatDuration, sumDuration } from "../lib/formatDuration";
 import { getSongNodeFill } from "../lib/graphColors";
@@ -272,10 +273,10 @@ const defaultStats = (): LibraryStats => ({
   playlistCounts: {},
 });
 
-const getSongPlaylists = (song: Song): string[] => song.playlists ?? [];
+const getSongPlaylists = (song: Song): string[] => asStringArray(song.playlists);
 
 const filterExcludedPlaylists = (stats: LibraryStats): LibraryStats => {
-  const playlistIds = (stats.playlistIds ?? []).filter(
+  const playlistIds = asStringArray(stats.playlistIds).filter(
     (playlistId) => !isExcludedPlaylistName(stats.playlistNames?.[playlistId] ?? "")
   );
   const playlistNames: Record<string, string> = {};
@@ -299,10 +300,15 @@ const normalizeStats = (stats: LibraryStats | null, songs: Song[]): LibraryStats
       return counts;
     }, {});
   const playlistIds =
-    filteredStats.playlistIds ??
-    [...new Set(songs.flatMap((song) => getSongPlaylists(song)))].sort((left, right) =>
-      (filteredStats.playlistNames?.[left] ?? left).localeCompare(filteredStats.playlistNames?.[right] ?? right)
-    );
+    asStringArray(filteredStats.playlistIds).length > 0
+      ? asStringArray(filteredStats.playlistIds)
+      : [...new Set(songs.flatMap((song) => getSongPlaylists(song)))].sort((left, right) =>
+          (filteredStats.playlistNames?.[left] ?? left).localeCompare(filteredStats.playlistNames?.[right] ?? right)
+        );
+  const genres =
+    asStringArray(filteredStats.genres).length > 0
+      ? asStringArray(filteredStats.genres)
+      : Object.keys(genreCounts).sort((left, right) => left.localeCompare(right));
   const playlistCounts =
     filteredStats.playlistCounts ??
     songs.reduce<Record<string, number>>((counts, song) => {
@@ -314,6 +320,7 @@ const normalizeStats = (stats: LibraryStats | null, songs: Song[]): LibraryStats
   return {
     ...defaultStats(),
     ...filteredStats,
+    genres,
     genreCounts,
     playlistIds,
     playlistNames: filteredStats.playlistNames ?? {},
@@ -322,11 +329,11 @@ const normalizeStats = (stats: LibraryStats | null, songs: Song[]): LibraryStats
 };
 
 const normalizeSong = (song: Song, stats: LibraryStats | null): Song => {
-  const allowedPlaylistIds = new Set(stats?.playlistIds ?? []);
+  const allowedPlaylistIds = new Set(asStringArray(stats?.playlistIds));
   return {
     ...song,
     durationMs: song.durationMs ?? 0,
-    playlists: (song.playlists ?? []).filter((playlistId) => allowedPlaylistIds.has(playlistId)),
+    playlists: getSongPlaylists(song).filter((playlistId) => allowedPlaylistIds.has(playlistId)),
   };
 };
 
@@ -540,7 +547,9 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
   const [songs, setSongs] = useState<Song[]>(() => initialSongs);
   const [playlistOwners, setPlaylistOwners] = useState<Record<string, string>>({});
   const [stats, setStats] = useState<LibraryStats>(() => normalizeStats(initialLibrary.stats, initialSongs));
-  const [layoutConfig, setLayoutConfig] = useState<LayoutConfig>(() => loadLayoutConfig(initialMusicService));
+  const [layoutConfig, setLayoutConfig] = useState<LayoutConfig>(() =>
+    normalizeLayoutConfigForService(loadLayoutConfig(initialMusicService), initialMusicService)
+  );
   const [clusterOverrides, setClusterOverrides] = useState<ClusterCenterOverrides>(() =>
     loadClusterCenterOverrides(getActiveClusterLayoutScope(loadSongSpaceMode(), loadLibraryScopeMode()))
   );

@@ -18,6 +18,7 @@ import { isClusterView } from "./layoutMetrics";
 import { useWebPerformanceOptimizations } from "./runtime";
 import { buildLibraryStatsFromSongs } from "../../shared/sharedLibrary";
 import { UNASSIGNED_PLAYLIST_CLUSTER_ID } from "./playlistConstants";
+import { asStringArray } from "./arrayUtils";
 
 export const LARGE_LIBRARY_CLUSTER_HULL_THRESHOLD = 300;
 
@@ -269,7 +270,7 @@ export const buildClusterMemberIndex = (visibleSongs: Song[]): ClusterMemberInde
     genreMembers.push(song);
     byGenre.set(song.genre, genreMembers);
 
-    const playlists = song.playlists ?? [];
+    const playlists = asStringArray(song.playlists);
     if (playlists.length === 0) {
       unassignedPlaylistSongs.push(song);
       return;
@@ -320,9 +321,9 @@ const getClusterMembers = (
   }
   if (clusterMode === "playlist") {
     if (clusterId === UNASSIGNED_PLAYLIST_CLUSTER_ID) {
-      return visibleSongs.filter((song) => (song.playlists ?? []).length === 0);
+      return visibleSongs.filter((song) => asStringArray(song.playlists).length === 0);
     }
-    return visibleSongs.filter((song) => (song.playlists ?? []).includes(clusterId));
+    return visibleSongs.filter((song) => asStringArray(song.playlists).includes(clusterId));
   }
   return [];
 };
@@ -343,24 +344,26 @@ const buildClusterEntries = (
   memberIndex?: ClusterMemberIndex
 ): ClusterEntry[] => {
   if (clusterMode === "genre") {
-    return stats.genres.map((genre, index) => ({
+    const genres = asStringArray(stats.genres);
+    return genres.map((genre, index) => ({
       id: genre,
       label: genre,
-      hue: clusterHue(index, stats.genres.length),
+      hue: clusterHue(index, genres.length),
       center: getGenreClusterCenter(genre, stats, dimensions, clusterOverrides),
     }));
   }
   if (clusterMode === "playlist") {
-    const entries: ClusterEntry[] = stats.playlistIds.map((playlistId, index) => ({
+    const playlistIds = asStringArray(stats.playlistIds);
+    const entries: ClusterEntry[] = playlistIds.map((playlistId, index) => ({
       id: playlistId,
       label: stats.playlistNames[playlistId] ?? playlistId,
-      hue: clusterHue(index, stats.playlistIds.length),
+      hue: clusterHue(index, playlistIds.length),
       center: getPlaylistClusterCenter(playlistId, stats, dimensions, clusterOverrides, visibleSongs),
     }));
     if (
       memberIndex
         ? memberIndex.unassignedPlaylistSongs.length > 0
-        : visibleSongs.some((song) => (song.playlists ?? []).length === 0)
+        : visibleSongs.some((song) => asStringArray(song.playlists).length === 0)
     ) {
       entries.push({
         id: UNASSIGNED_PLAYLIST_CLUSTER_ID,
@@ -700,11 +703,11 @@ export const findNearestCluster = (
 
   const clusters =
     clusterMode === "genre"
-      ? stats.genres.map((genre) => ({
+      ? asStringArray(stats.genres).map((genre) => ({
           id: genre,
           center: getGenreClusterCenter(genre, stats, dimensions, clusterOverrides),
         }))
-      : stats.playlistIds.map((playlistId) => ({
+      : asStringArray(stats.playlistIds).map((playlistId) => ({
           id: playlistId,
           center: getPlaylistClusterCenter(playlistId, stats, dimensions, clusterOverrides, []),
         }));

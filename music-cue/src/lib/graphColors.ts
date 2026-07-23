@@ -1,4 +1,5 @@
 import { getMetricRange, getMetricValue, isClusterView } from "./layoutMetrics";
+import { asStringArray } from "./arrayUtils";
 import { LayoutConfig, LibraryStats, Song } from "./types";
 
 const NODE_SATURATION = 72;
@@ -36,13 +37,14 @@ export const valueToRainbowHue = (value: number, min: number, max: number): numb
 };
 
 const getGenreHue = (song: Song, stats: LibraryStats): number => {
-  const genreIndex = Math.max(0, stats.genres.indexOf(song.genre));
-  return clusterHue(genreIndex, stats.genres.length);
+  const genres = asStringArray(stats.genres);
+  const genreIndex = Math.max(0, genres.indexOf(song.genre));
+  return clusterHue(genreIndex, genres.length);
 };
 
 const getPlaylistHue = (song: Song, stats: LibraryStats): number => {
-  const playlists = song.playlists ?? [];
-  const playlistIds = stats.playlistIds ?? [];
+  const playlists = asStringArray(song.playlists);
+  const playlistIds = asStringArray(stats.playlistIds);
   if (playlists.length === 0) {
     return 0;
   }

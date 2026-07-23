@@ -13,6 +13,7 @@ import {
 } from "./types";
 import { defaultLayoutConfig, migrateLegacyLayoutMode } from "./layoutMetrics";
 import { isWebDeployment, isLocalDesktopApp } from "./runtime";
+import { asStringArray } from "./arrayUtils";
 
 export type ClusterLayoutScope = LibraryScopeMode;
 
@@ -283,7 +284,7 @@ export const loadLibrary = (
       songs: (JSON.parse(songsRaw) as Song[]).map((song) => ({
         ...song,
         durationMs: song.durationMs ?? 0,
-        playlists: song.playlists ?? [],
+        playlists: asStringArray(song.playlists),
       })),
       stats: statsRaw ? (JSON.parse(statsRaw) as LibraryStats) : null,
     };
