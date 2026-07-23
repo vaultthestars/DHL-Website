@@ -557,15 +557,6 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
   const conglomerateClusterOverridesRef = useRef<ClusterCenterOverrides>(
     loadClusterCenterOverrides(getActiveClusterLayoutScope(songSpaceMode, "conglomerate", sharedContributorCount))
   );
-  useEffect(() => {
-    if (activeLayoutScope === "conglomerate") {
-      conglomerateClusterOverridesRef.current = clusterOverrides;
-      return;
-    }
-    if (songSpaceMode === "mine" || isSingleContributorSharedLibrary(sharedContributorCount)) {
-      conglomerateClusterOverridesRef.current = layoutClusterOverrides;
-    }
-  }, [activeLayoutScope, clusterOverrides, layoutClusterOverrides, sharedContributorCount, songSpaceMode]);
   const reloadLayoutCaches = useCallback((scope: ClusterLayoutScope) => {
     if (!isSpotifyGuest) {
       setClusterOverrides(loadClusterCenterOverrides(scope));
@@ -625,6 +616,16 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     songSpaceContributorId,
     songSpaceMode,
   ]);
+
+  useEffect(() => {
+    if (activeLayoutScope === "conglomerate") {
+      conglomerateClusterOverridesRef.current = clusterOverrides;
+      return;
+    }
+    if (songSpaceMode === "mine" || isSingleContributorSharedLibrary(sharedContributorCount)) {
+      conglomerateClusterOverridesRef.current = layoutClusterOverrides;
+    }
+  }, [activeLayoutScope, clusterOverrides, layoutClusterOverrides, sharedContributorCount, songSpaceMode]);
 
   const resolveLayoutClusterOverrides = useCallback(
     (overrides: ClusterCenterOverrides = clusterOverridesRef.current): ClusterCenterOverrides => {
