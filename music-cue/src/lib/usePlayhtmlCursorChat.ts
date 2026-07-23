@@ -3,7 +3,7 @@ import { playhtml } from "playhtml";
 import { useEffect, useRef, useState } from "react";
 
 const PLAYHTML_CURSOR_AWARENESS_KEY = "__playhtml_cursors__";
-const MESSAGE_FALLBACK_POLL_MS = 250;
+const MESSAGE_POLL_MS = 150;
 
 type CursorAwarenessState = {
   message?: string | null;
@@ -38,7 +38,6 @@ type CursorClientReader = {
   };
   getMyPlayerIdentity: () => { publicKey: string };
   getProvider: () => { awareness: CursorAwareness };
-  onCursorPresencesChange?: (callback: () => void) => () => void;
 };
 
 const getCursorClient = (): CursorClientReader | null => {
@@ -122,11 +121,7 @@ export const usePlayhtmlCursorMessages = (): Map<string, string> => {
       return;
     }
 
-    const awareness = client.getProvider().awareness;
     const usesTransport = Boolean(client.presenceTransport);
-
-    let flushRafId = 0;
-    let needsSync = false;
 
     const commitAllMessages = () => {
       const next = readCursorMessages(client);
@@ -137,63 +132,51 @@ export const usePlayhtmlCursorMessages = (): Map<string, string> => {
       setMessagesByPublicKey(next);
     };
 
-    const isMessageRelevant = (state: Record<string, unknown> | undefined): boolean => {
-      const presence = state?.[PLAYHTML_CURSOR_AWARENESS_KEY] as CursorAwarenessState | undefined;
-      const publicKey = presence?.playerIdentity?.publicKey;
-      if (!publicKey) {
-        return false;
-      }
-      if (presence?.message?.trim()) {
-        return true;
-      }
-      return latestRef.current.has(publicKey);
-    };
+    commitAllMessages();
 
-    const scheduleCommit = () => {
-      needsSync = true;
-      if (flushRafId) {
-        return;
-      }
-      flushRafId = requestAnimationFrame(() => {
-        flushRafId = 0;
-        if (!needsSync) {
+    // PlayHTML's presence transport routes chat outside Yjs awareness. Poll that
+    // store instead of hooking onCursorPresencesChange, which also fires on every
+    // cursor move and was blocking the "/" chat hotkey on the main thread.
+    let awareness: CursorAwareness | null = null;
+    let handleAwarenessChange: ((change: AwarenessChange) => void) | null = null;
+
+    if (!usesTransport) {
+      awareness = client.getProvider().awareness;
+
+      const isMessageRelevant = (state: Record<string, unknown> | undefined): boolean => {
+        const presence = state?.[PLAYHTML_CURSOR_AWARENESS_KEY] as CursorAwarenessState | undefined;
+        const publicKey = presence?.playerIdentity?.publicKey;
+        if (!publicKey) {
+          return false;
+        }
+        if (presence?.message?.trim()) {
+          return true;
+        }
+        return latestRef.current.has(publicKey);
+      };
+
+      handleAwarenessChange = (change: AwarenessChange) => {
+        if (change.removed.length > 0 && latestRef.current.size > 0) {
+          commitAllMessages();
           return;
         }
-        needsSync = false;
-        commitAllMessages();
-      });
-    };
 
-    const handleAwarenessChange = (change: AwarenessChange) => {
-      if (usesTransport) {
-        return;
-      }
+        const states = awareness!.getStates();
+        if ([...change.added, ...change.updated].some((clientId) => isMessageRelevant(states.get(clientId)))) {
+          commitAllMessages();
+        }
+      };
 
-      if (change.removed.length > 0 && latestRef.current.size > 0) {
-        scheduleCommit();
-        return;
-      }
+      awareness.on("change", handleAwarenessChange);
+    }
 
-      const states = awareness.getStates();
-      if ([...change.added, ...change.updated].some((clientId) => isMessageRelevant(states.get(clientId)))) {
-        scheduleCommit();
-      }
-    };
-
-    commitAllMessages();
-    awareness.on("change", handleAwarenessChange);
-    const unsubscribePresences = client.onCursorPresencesChange?.(() => {
-      scheduleCommit();
-    });
-    const pollId = window.setInterval(commitAllMessages, MESSAGE_FALLBACK_POLL_MS);
+    const pollId = window.setInterval(commitAllMessages, MESSAGE_POLL_MS);
 
     return () => {
-      awareness.off("change", handleAwarenessChange);
-      unsubscribePresences?.();
-      window.clearInterval(pollId);
-      if (flushRafId) {
-        cancelAnimationFrame(flushRafId);
+      if (awareness && handleAwarenessChange) {
+        awareness.off("change", handleAwarenessChange);
       }
+      window.clearInterval(pollId);
     };
   }, [isLoading, isProviderMissing]);
 
