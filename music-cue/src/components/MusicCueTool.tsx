@@ -1058,6 +1058,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
           dimensions,
           layoutConfig,
           stats,
+          {},
           conglomerateClusterOverridesRef.current,
           visibleSongs,
           {
@@ -1094,6 +1095,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
           dimensions,
           layoutConfig,
           stats,
+          {},
           conglomerateClusterOverridesRef.current,
           visibleSongs,
           {
@@ -1286,6 +1288,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
         dimensions,
         config,
         stats,
+        {},
         conglomerateClusterOverridesRef.current,
         visibleSongs,
         {
