@@ -145,7 +145,7 @@ const loadClusterCenterMap = (key: string): Record<string, NormalizedPoint> => {
 const mergeClusterCenterMaps = (
   base: Record<string, NormalizedPoint>,
   overrides: Record<string, NormalizedPoint>
-): Record<string, NormalizedPoint> => ({i
+): Record<string, NormalizedPoint> => ({
   ...base,
   ...overrides,
 });
