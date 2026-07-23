@@ -11,30 +11,38 @@ type CursorAwarenessState = {
   };
 };
 
-const readCursorMessages = (): Map<string, string> => {
+type AwarenessChange = {
+  added: number[];
+  updated: number[];
+  removed: number[];
+};
+
+type CursorAwareness = {
+  getStates: () => Map<number, Record<string, unknown>>;
+  on: (event: "change", handler: (change: AwarenessChange) => void) => void;
+  off: (event: "change", handler: (change: AwarenessChange) => void) => void;
+};
+
+const readMessageFromState = (
+  state: Record<string, unknown> | undefined
+): { publicKey: string; message: string } | null => {
+  const cursorPresence = state?.[PLAYHTML_CURSOR_AWARENESS_KEY] as CursorAwarenessState | undefined;
+  const message = cursorPresence?.message?.trim();
+  const publicKey = cursorPresence?.playerIdentity?.publicKey;
+  if (!publicKey || !message) {
+    return null;
+  }
+  return { publicKey, message };
+};
+
+const readCursorMessages = (awareness: CursorAwareness): Map<string, string> => {
   const messages = new Map<string, string>();
-  const client = playhtml.cursorClient;
-  if (!client) {
-    return messages;
-  }
-
-  let provider: { awareness: { getStates: () => Map<number, Record<string, unknown>> } };
-  try {
-    provider = client.getProvider();
-  } catch {
-    return messages;
-  }
-
-  provider.awareness.getStates().forEach((state) => {
-    const cursorPresence = state[PLAYHTML_CURSOR_AWARENESS_KEY] as CursorAwarenessState | undefined;
-    const message = cursorPresence?.message?.trim();
-    const publicKey = cursorPresence?.playerIdentity?.publicKey;
-    if (!publicKey || !message) {
-      return;
+  awareness.getStates().forEach((state) => {
+    const entry = readMessageFromState(state);
+    if (entry) {
+      messages.set(entry.publicKey, entry.message);
     }
-    messages.set(publicKey, message);
   });
-
   return messages;
 };
 
@@ -48,6 +56,18 @@ const mapsEqual = (left: Map<string, string>, right: Map<string, string>): boole
     }
   }
   return true;
+};
+
+const getCursorAwareness = (): CursorAwareness | null => {
+  const client = playhtml.cursorClient;
+  if (!client) {
+    return null;
+  }
+  try {
+    return client.getProvider().awareness as CursorAwareness;
+  } catch {
+    return null;
+  }
 };
 
 export const usePlayhtmlCursorMessages = (): Map<string, string> => {
@@ -64,8 +84,13 @@ export const usePlayhtmlCursorMessages = (): Map<string, string> => {
       return;
     }
 
-    const commitMessages = () => {
-      const next = readCursorMessages();
+    const awareness = getCursorAwareness();
+    if (!awareness) {
+      return;
+    }
+
+    const commitAllMessages = () => {
+      const next = readCursorMessages(awareness);
       if (mapsEqual(next, latestRef.current)) {
         return;
       }
@@ -73,10 +98,50 @@ export const usePlayhtmlCursorMessages = (): Map<string, string> => {
       setMessagesByPublicKey(next);
     };
 
-    commitMessages();
-    const intervalId = window.setInterval(commitMessages, 400);
+    const applyAwarenessChange = (change: AwarenessChange) => {
+      if (change.removed.length > 0) {
+        commitAllMessages();
+        return;
+      }
+
+      const states = awareness.getStates();
+      const next = new Map(latestRef.current);
+      let changed = false;
+
+      for (const clientId of [...change.added, ...change.updated]) {
+        const state = states.get(clientId);
+        const presence = state?.[PLAYHTML_CURSOR_AWARENESS_KEY] as CursorAwarenessState | undefined;
+        const publicKey = presence?.playerIdentity?.publicKey;
+        if (!publicKey) {
+          continue;
+        }
+
+        const message = presence?.message?.trim();
+        if (!message) {
+          if (next.delete(publicKey)) {
+            changed = true;
+          }
+          continue;
+        }
+
+        if (next.get(publicKey) !== message) {
+          next.set(publicKey, message);
+          changed = true;
+        }
+      }
+
+      if (!changed) {
+        return;
+      }
+
+      latestRef.current = next;
+      setMessagesByPublicKey(next);
+    };
+
+    commitAllMessages();
+    awareness.on("change", applyAwarenessChange);
     return () => {
-      window.clearInterval(intervalId);
+      awareness.off("change", applyAwarenessChange);
     };
   }, [isLoading, isProviderMissing]);
 
