@@ -7,6 +7,8 @@ export type SpotifyTokens = {
   scope: string;
   userId?: string;
   displayName?: string;
+  /** Reused for cue playback instead of creating a new playlist each time. */
+  nowPlayingPlaylistId?: string;
 };
 
 export const SPOTIFY_SESSION_COOKIE = "music_cue_spotify_session";

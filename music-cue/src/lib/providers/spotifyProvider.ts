@@ -50,7 +50,14 @@ let spotifyImportInFlight = false;
 type SpotifyFetchOptions = {
   /** Only successful library-import calls should clear a Spotify rate-limit cooldown. */
   clearsRateLimit?: boolean;
+  /** Only library-import API calls should extend the import resume cooldown. */
+  marksImportRateLimit?: boolean;
 };
+
+const isSpotifyImportApiRequest = (url: string): boolean =>
+  /\/api\/spotify\/(saved-tracks-page|playlists-page|playlist-tracks-page|artist-genres|library)(\/|$|\?)/.test(
+    url
+  );
 
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -117,12 +124,19 @@ const fetchJson = async <T>(
         typeof payload.retryAfterSeconds === "number" && payload.retryAfterSeconds > 0
           ? payload.retryAfterSeconds
           : undefined;
-      markSpotifyImportRateLimited(retryAfterSeconds);
-      const cooldownMs = getSpotifyImportRateLimitCooldownMs();
-      throw new SpotifyImportRateLimitError(
-        errorMessage ||
-          `Spotify is rate-limiting this app. Wait ${formatSpotifyRateLimitCooldown(cooldownMs)} before resuming — progress is saved.`
-      );
+      if (options.marksImportRateLimit ?? isSpotifyImportApiRequest(url)) {
+        markSpotifyImportRateLimited(retryAfterSeconds);
+        const cooldownMs = getSpotifyImportRateLimitCooldownMs();
+        throw new SpotifyImportRateLimitError(
+          errorMessage ||
+            `Spotify is rate-limiting this app. Wait ${formatSpotifyRateLimitCooldown(cooldownMs)} before resuming — progress is saved.`
+        );
+      }
+      const waitLabel =
+        retryAfterSeconds !== undefined
+          ? formatSpotifyRateLimitCooldown(retryAfterSeconds * 1000)
+          : "a bit";
+      throw new Error(errorMessage || `Spotify is rate-limiting requests. Wait ${waitLabel} and try again.`);
     }
 
     if (response.status === 504) {
@@ -970,35 +984,55 @@ export const spotifyProvider: MusicProvider = {
   },
 
   async validateTracks(songs) {
-    const payload = await fetchJson<{ availability: Record<string, boolean> }>("/api/spotify/validate-tracks", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ trackIds: songs.map((song) => song.id) }),
-    });
+    const payload = await fetchJson<{ availability: Record<string, boolean> }>(
+      "/api/spotify/validate-tracks",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ trackIds: songs.map((song) => song.id) }),
+      },
+      0,
+      { clearsRateLimit: false, marksImportRateLimit: false }
+    );
     return payload.availability ?? {};
   },
 
   async playCue(songs) {
-    return fetchJson<CuePlaylistResult>("/api/spotify/play-cue", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ trackIds: songs.map((song) => song.id) }),
-    });
+    return fetchJson<CuePlaylistResult>(
+      "/api/spotify/play-cue",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ trackIds: songs.map((song) => song.id) }),
+      },
+      0,
+      { clearsRateLimit: false, marksImportRateLimit: false }
+    );
   },
 
   async savePlaylist(songs, playlistName) {
-    return fetchJson<CuePlaylistResult>("/api/spotify/save-playlist", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        trackIds: songs.map((song) => song.id),
-        playlistName: playlistName.trim(),
-      }),
-    });
+    return fetchJson<CuePlaylistResult>(
+      "/api/spotify/save-playlist",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          trackIds: songs.map((song) => song.id),
+          playlistName: playlistName.trim(),
+        }),
+      },
+      0,
+      { clearsRateLimit: false, marksImportRateLimit: false }
+    );
   },
 
   async getPlaybackState(): Promise<PlaybackState | null> {
-    const payload = await fetchJson<PlaybackState | { title?: string }>("/api/spotify/playback-state");
+    const payload = await fetchJson<PlaybackState | { title?: string }>(
+      "/api/spotify/playback-state",
+      undefined,
+      0,
+      { clearsRateLimit: false, marksImportRateLimit: false }
+    );
     if (!payload || !("title" in payload) || !payload.title) {
       return null;
     }

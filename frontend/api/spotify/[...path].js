@@ -35,13 +35,17 @@ __export(spotify_handler_exports, {
 module.exports = __toCommonJS(spotify_handler_exports);
 
 // server-lib/spotify/playlistNames.ts
+var NOW_PLAYING_PLAYLIST_NAMES = [
+  "MusicCue \u2014 Now Playing",
+  "MusicCue-Now Playing",
+  "Music Cue \u2014 Now Playing"
+];
 var EXCLUDED_PLAYLIST_NAMES = /* @__PURE__ */ new Set([
   "Library",
   "Music",
   "Downloaded",
   "every song in my library atm",
-  "MusicCue \u2014 Now Playing",
-  "MusicCue-Now Playing"
+  ...NOW_PLAYING_PLAYLIST_NAMES
 ]);
 var isExcludedPlaylistName = (name) => {
   if (!name) {
@@ -52,6 +56,7 @@ var isExcludedPlaylistName = (name) => {
   }
   return name.startsWith("MusicCue-") || name.startsWith("MusicCue \u2014");
 };
+var isNowPlayingPlaylistName = (name) => NOW_PLAYING_PLAYLIST_NAMES.includes(name);
 
 // server-lib/spotify/spotifyLibraryAssembly.ts
 var getPlaylistItemTrack = (entry) => {
@@ -967,24 +972,110 @@ var createSpotifyClient = (store) => {
       body: JSON.stringify(body)
     });
   };
-  const createPlaylist = async (name, trackIds) => {
-    const created = await spotifyFetch("/me/playlists", {
-      method: "POST",
-      body: JSON.stringify({ name, public: false, description: "Created by Music Cue" })
+  const cacheNowPlayingPlaylistId = (playlistId) => {
+    const tokens = store.getTokens();
+    if (!tokens) {
+      return;
+    }
+    store.setTokens({
+      ...tokens,
+      nowPlayingPlaylistId: playlistId
     });
+  };
+  const getCachedNowPlayingPlaylistId = () => store.getTokens()?.nowPlayingPlaylistId;
+  const verifyPlaylistExists = async (playlistId) => {
+    try {
+      await spotifyFetch(`/playlists/${playlistId}?fields=id`);
+      return true;
+    } catch {
+      return false;
+    }
+  };
+  const findOwnedPlaylistByName = async (name, ownerId) => {
+    const playlists = await fetchPlaylistSummaries();
+    return playlists.find((playlist) => playlist.name === name && playlist.owner.id === ownerId) ?? null;
+  };
+  const addTracksToPlaylist = async (playlistId, trackIds) => {
     const uris = trackIds.map((id) => `spotify:track:${id}`);
     for (let index = 0; index < uris.length; index += 100) {
-      await spotifyFetch(`/playlists/${created.id}/items`, {
+      await spotifyFetch(`/playlists/${playlistId}/items`, {
         method: "POST",
         body: JSON.stringify({ uris: uris.slice(index, index + 100) })
       });
     }
-    return {
-      playlistId: created.id,
-      playlistName: created.name,
-      matchedCount: trackIds.length,
-      matchedTrackIds: trackIds
-    };
+  };
+  const clearPlaylistItems = async (playlistId) => {
+    const tracksToRemove = [];
+    let path2 = `/playlists/${playlistId}/items?limit=100&fields=items(track(uri)),next`;
+    while (path2) {
+      const page = await spotifyFetch(path2);
+      for (const item of page.items ?? []) {
+        if (item.track?.uri) {
+          tracksToRemove.push({ uri: item.track.uri });
+        }
+      }
+      path2 = page.next ? toSpotifyRelativePath(page.next) : null;
+    }
+    for (let index = 0; index < tracksToRemove.length; index += 100) {
+      await spotifyFetch(`/playlists/${playlistId}/items`, {
+        method: "DELETE",
+        body: JSON.stringify({ tracks: tracksToRemove.slice(index, index + 100) })
+      });
+    }
+  };
+  const replacePlaylistTracks = async (playlistId, trackIds) => {
+    await clearPlaylistItems(playlistId);
+    await addTracksToPlaylist(playlistId, trackIds);
+  };
+  const buildPlaylistResult = (playlistId, playlistName, trackIds) => ({
+    playlistId,
+    playlistName,
+    matchedCount: trackIds.length,
+    matchedTrackIds: trackIds
+  });
+  const getOrCreateNowPlayingPlaylist = async (trackIds) => {
+    const profile = await cacheProfileInSession();
+    let playlistId = getCachedNowPlayingPlaylistId();
+    if (playlistId && !await verifyPlaylistExists(playlistId)) {
+      playlistId = void 0;
+      cacheNowPlayingPlaylistId(void 0);
+    }
+    if (!playlistId) {
+      for (const candidateName of NOW_PLAYING_PLAYLIST_NAMES) {
+        const existing = await findOwnedPlaylistByName(candidateName, profile.id);
+        if (existing) {
+          playlistId = existing.id;
+          break;
+        }
+      }
+    }
+    if (playlistId) {
+      await replacePlaylistTracks(playlistId, trackIds);
+      cacheNowPlayingPlaylistId(playlistId);
+      return buildPlaylistResult(playlistId, SPOTIFY_NOW_PLAYING_PLAYLIST_NAME, trackIds);
+    }
+    const created = await spotifyFetch("/me/playlists", {
+      method: "POST",
+      body: JSON.stringify({
+        name: SPOTIFY_NOW_PLAYING_PLAYLIST_NAME,
+        public: false,
+        description: "Created by Music Cue"
+      })
+    });
+    await addTracksToPlaylist(created.id, trackIds);
+    cacheNowPlayingPlaylistId(created.id);
+    return buildPlaylistResult(created.id, created.name, trackIds);
+  };
+  const createPlaylist = async (name, trackIds) => {
+    if (isNowPlayingPlaylistName(name)) {
+      return getOrCreateNowPlayingPlaylist(trackIds);
+    }
+    const created = await spotifyFetch("/me/playlists", {
+      method: "POST",
+      body: JSON.stringify({ name, public: false, description: "Created by Music Cue" })
+    });
+    await addTracksToPlaylist(created.id, trackIds);
+    return buildPlaylistResult(created.id, created.name, trackIds);
   };
   const playCue = async (trackIds) => {
     if (trackIds.length === 0) {
@@ -1007,7 +1098,7 @@ var createSpotifyClient = (store) => {
         }
       }
     }
-    const playlist = await createPlaylist(SPOTIFY_NOW_PLAYING_PLAYLIST_NAME, trackIds);
+    const playlist = await getOrCreateNowPlayingPlaylist(trackIds);
     await startPlayback({
       context_uri: `spotify:playlist:${playlist.playlistId}`,
       offset: { position: 0 }
