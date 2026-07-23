@@ -46,6 +46,11 @@ type CursorClientReader = {
   chat?: CursorChatReader;
 };
 
+export const isPlayhtmlChatAvailable = (): boolean => {
+  const client = getCursorClient();
+  return Boolean(client?.chat);
+};
+
 const getCursorClient = (): CursorClientReader | null => {
   if (!playhtml.cursorClient) {
     return null;

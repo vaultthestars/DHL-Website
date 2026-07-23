@@ -20,7 +20,11 @@ import type { SongSpaceMode } from "./sharedLibraryApi";
 import { layoutConfigKey } from "./layoutMetrics";
 import { isWebDeployment } from "./runtime";
 import type { LayoutConfig, NormalizedPoint } from "./types";
-import { usePlayhtmlCursorMessages, usePlayhtmlLocalCursorChat } from "./usePlayhtmlCursorChat";
+import {
+  isPlayhtmlChatAvailable,
+  usePlayhtmlCursorMessages,
+  usePlayhtmlLocalCursorChat,
+} from "./usePlayhtmlCursorChat";
 
 export const SESSION_PRESENCE_CHANNEL = "session";
 
@@ -133,13 +137,18 @@ const CollaborativeSessionBridge = ({
   const presenceLayoutRef = useRef(presenceLayout);
   const displayNameRef = useRef(displayName);
   const graphCursorRef = useRef<NormalizedPoint | null>(null);
+  const isLoadingRef = useRef(isLoading);
 
   presenceLayoutRef.current = presenceLayout;
   displayNameRef.current = displayName;
+  isLoadingRef.current = isLoading;
 
   const publishFrameRef = useRef(0);
 
   const publishPresence = useCallback(() => {
+    if (isLoadingRef.current) {
+      return;
+    }
     setMyPresence({
       displayName: displayNameRef.current,
       graphCursor: graphCursorRef.current,
@@ -168,8 +177,11 @@ const CollaborativeSessionBridge = ({
   const presenceLayoutKeyValue = presenceLayoutKey(presenceLayout);
 
   useEffect(() => {
+    if (isLoading) {
+      return;
+    }
     publishPresence();
-  }, [displayName, presenceLayoutKeyValue, publishPresence]);
+  }, [displayName, isLoading, presenceLayoutKeyValue, publishPresence]);
 
   const viewPresenceDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -289,6 +301,38 @@ export const GraphCursorPublisherBridge = ({
   }, [scheduleViewPresencePublish, viewPresencePublishRef]);
 
   return null;
+};
+
+const CollaborativeChatReadyHint = () => {
+  const { isLiveSyncReady } = useCollaborativeSession();
+  const { isProviderMissing } = usePlayContext();
+  const [visible, setVisible] = useState(false);
+  const hasShownRef = useRef(false);
+
+  useEffect(() => {
+    if (!isLiveSyncReady || isProviderMissing || hasShownRef.current) {
+      return;
+    }
+    if (!isPlayhtmlChatAvailable()) {
+      return;
+    }
+
+    hasShownRef.current = true;
+    setVisible(true);
+    const hideTimer = window.setTimeout(() => setVisible(false), 4200);
+    return () => window.clearTimeout(hideTimer);
+  }, [isLiveSyncReady, isProviderMissing]);
+
+  if (!visible) {
+    return null;
+  }
+
+  return createPortal(
+    <div className="music-cue-chat-ready-hint" role="status" aria-live="polite">
+      Press / to chat
+    </div>,
+    document.body
+  );
 };
 
 export const CollaborativeParticipantsPanel = () => {
@@ -616,6 +660,7 @@ export const CollaborativeSessionUi = ({
 }) => (
   <>
     <GraphCursorPublisherBridge publishRef={publishRef} viewPresencePublishRef={viewPresencePublishRef} />
+    <CollaborativeChatReadyHint />
     <CollaborativeParticipantsPortal hostRef={participantsHostRef} />
     <CollaborativeGraphCursorsPortal contentGroupRef={contentGroupRef} dimensions={dimensions} />
   </>
