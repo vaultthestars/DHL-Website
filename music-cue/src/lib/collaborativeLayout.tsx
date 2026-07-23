@@ -99,6 +99,14 @@ const CollaborativeLayoutSync = ({
   return null;
 };
 
+const WebDeploymentBodyClass = () => {
+  useEffect(() => {
+    document.body.classList.add("music-cue-web-deployment");
+    return () => document.body.classList.remove("music-cue-web-deployment");
+  }, []);
+  return null;
+};
+
 export const CollaborativePlayProvider = ({ children }: { children: ReactNode }) => {
   if (!isWebDeployment) {
     return <>{children}</>;
@@ -116,6 +124,7 @@ export const CollaborativePlayProvider = ({ children }: { children: ReactNode })
         },
       }}
     >
+      <WebDeploymentBodyClass />
       {children}
     </PlayProvider>
   );

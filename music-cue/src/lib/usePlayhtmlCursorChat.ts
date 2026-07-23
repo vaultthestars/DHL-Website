@@ -46,11 +46,6 @@ type CursorClientReader = {
   chat?: CursorChatReader;
 };
 
-export const isPlayhtmlChatAvailable = (): boolean => {
-  const client = getCursorClient();
-  return Boolean(client?.chat);
-};
-
 const getCursorClient = (): CursorClientReader | null => {
   if (!playhtml.cursorClient) {
     return null;
@@ -61,6 +56,11 @@ const getCursorClient = (): CursorClientReader | null => {
   } catch {
     return null;
   }
+};
+
+export const isPlayhtmlChatAvailable = (): boolean => {
+  const client = getCursorClient();
+  return Boolean(client?.chat);
 };
 
 const readCursorMessagesFromAwareness = (awareness: CursorAwareness): Map<string, string> => {
@@ -127,14 +127,11 @@ export const usePlayhtmlCursorMessages = (): Map<string, string> => {
       return;
     }
 
-    const client = getCursorClient();
-    if (!client) {
-      return;
-    }
-
-    const usesTransport = Boolean(client.presenceTransport);
-
     const commitAllMessages = () => {
+      const client = getCursorClient();
+      if (!client) {
+        return;
+      }
       const next = readCursorMessages(client);
       if (mapsEqual(next, latestRef.current)) {
         return;
@@ -151,7 +148,8 @@ export const usePlayhtmlCursorMessages = (): Map<string, string> => {
     let awareness: CursorAwareness | null = null;
     let handleAwarenessChange: ((change: AwarenessChange) => void) | null = null;
 
-    if (!usesTransport) {
+    const client = getCursorClient();
+    if (client && !client.presenceTransport) {
       awareness = client.getProvider().awareness;
 
       const isMessageRelevant = (state: Record<string, unknown> | undefined): boolean => {
@@ -237,12 +235,11 @@ export const usePlayhtmlLocalCursorChat = (): LocalCursorChatState => {
       return;
     }
 
-    const client = getCursorClient();
-    if (!client?.chat) {
-      return;
-    }
-
     const commit = () => {
+      const client = getCursorClient();
+      if (!client?.chat) {
+        return;
+      }
       const next = readLocalCursorChat(client);
       if (localChatEqual(next, latestRef.current)) {
         return;

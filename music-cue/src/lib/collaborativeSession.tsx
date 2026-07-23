@@ -93,6 +93,7 @@ type CollaborativeSessionContextValue = {
     isSynced: boolean;
   }>;
   myPresenceLayout: CollaborativePresenceLayout;
+  myGraphCursor: NormalizedPoint | null;
   syncWithParticipant: (participantId: string) => void;
   setGraphCursor: (cursor: NormalizedPoint | null) => void;
   scheduleViewPresencePublish: () => void;
@@ -108,6 +109,7 @@ const noopSessionContext: CollaborativeSessionContextValue = {
     includeMockUsers: false,
     viewContributorId: null,
   },
+  myGraphCursor: null,
   syncWithParticipant: () => {},
   setGraphCursor: () => {},
   scheduleViewPresencePublish: () => {},
@@ -138,6 +140,8 @@ const CollaborativeSessionBridge = ({
   const displayNameRef = useRef(displayName);
   const graphCursorRef = useRef<NormalizedPoint | null>(null);
   const isLoadingRef = useRef(isLoading);
+  const [myGraphCursor, setMyGraphCursor] = useState<NormalizedPoint | null>(null);
+  const graphCursorStateFrameRef = useRef(0);
 
   presenceLayoutRef.current = presenceLayout;
   displayNameRef.current = displayName;
@@ -163,6 +167,12 @@ const CollaborativeSessionBridge = ({
         return;
       }
       graphCursorRef.current = cursor;
+      if (!graphCursorStateFrameRef.current) {
+        graphCursorStateFrameRef.current = requestAnimationFrame(() => {
+          graphCursorStateFrameRef.current = 0;
+          setMyGraphCursor(graphCursorRef.current);
+        });
+      }
       if (publishFrameRef.current) {
         return;
       }
@@ -228,6 +238,7 @@ const CollaborativeSessionBridge = ({
     return {
       participants,
       myPresenceLayout,
+      myGraphCursor,
       setGraphCursor,
       scheduleViewPresencePublish,
       syncWithParticipant: (participantId: string) => {
@@ -240,7 +251,7 @@ const CollaborativeSessionBridge = ({
       },
       isLiveSyncReady: !isLoading,
     };
-  }, [isLoading, onSyncPresenceLayout, presences, presenceLayout, scheduleViewPresencePublish, setGraphCursor]);
+  }, [isLoading, myGraphCursor, onSyncPresenceLayout, presences, presenceLayout, scheduleViewPresencePublish, setGraphCursor]);
 
   return <CollaborativeSessionContext.Provider value={value}>{children}</CollaborativeSessionContext.Provider>;
 };
@@ -313,14 +324,39 @@ const CollaborativeChatReadyHint = () => {
     if (!isLiveSyncReady || isProviderMissing || hasShownRef.current) {
       return;
     }
-    if (!isPlayhtmlChatAvailable()) {
-      return;
+
+    let hideTimer: ReturnType<typeof window.setTimeout> | undefined;
+
+    const tryShow = () => {
+      if (hasShownRef.current || !isPlayhtmlChatAvailable()) {
+        return false;
+      }
+      hasShownRef.current = true;
+      setVisible(true);
+      hideTimer = window.setTimeout(() => setVisible(false), 4200);
+      return true;
+    };
+
+    if (tryShow()) {
+      return () => {
+        if (hideTimer) {
+          window.clearTimeout(hideTimer);
+        }
+      };
     }
 
-    hasShownRef.current = true;
-    setVisible(true);
-    const hideTimer = window.setTimeout(() => setVisible(false), 4200);
-    return () => window.clearTimeout(hideTimer);
+    const pollId = window.setInterval(() => {
+      if (tryShow()) {
+        window.clearInterval(pollId);
+      }
+    }, 150);
+
+    return () => {
+      window.clearInterval(pollId);
+      if (hideTimer) {
+        window.clearTimeout(hideTimer);
+      }
+    };
   }, [isLiveSyncReady, isProviderMissing]);
 
   if (!visible) {
@@ -442,9 +478,11 @@ const CursorChatBubble = ({
   );
 };
 
+const DEFAULT_CHAT_CURSOR: NormalizedPoint = { x: 0.5, y: 0.5 };
+
 const CollaborativeGraphCursorsInner = memo(({ dimensions }: { dimensions: GraphDimensions }) => {
   const { presences } = usePresence<SessionPresenceData>(SESSION_PRESENCE_CHANNEL);
-  const { myPresenceLayout, syncWithParticipant } = useCollaborativeSession();
+  const { myPresenceLayout, myGraphCursor, syncWithParticipant } = useCollaborativeSession();
   const { color: myColor } = usePlayerIdentity();
   const cursorMessagesByPublicKey = usePlayhtmlCursorMessages();
   const localCursorChat = usePlayhtmlLocalCursorChat();
@@ -548,18 +586,19 @@ const CollaborativeGraphCursorsInner = memo(({ dimensions }: { dimensions: Graph
 
   const localCursor = useMemo(() => {
     const displayMessage = localCursorChat.displayMessage;
-    if (!displayMessage || !mySession?.graphCursor) {
+    if (!displayMessage) {
       return null;
     }
-    const graphPoint = fromNormalizedPosition(mySession.graphCursor, dimensions);
+    const cursorPosition = myGraphCursor ?? DEFAULT_CHAT_CURSOR;
+    const graphPoint = fromNormalizedPosition(cursorPosition, dimensions);
     return {
-      displayName: mySession.displayName,
+      displayName: mySession?.displayName ?? "You",
       color: myColor,
       x: graphPoint.x,
       y: graphPoint.y,
       message: displayMessage,
     };
-  }, [dimensions, localCursorChat.displayMessage, myColor, mySession]);
+  }, [dimensions, localCursorChat.displayMessage, myColor, myGraphCursor, mySession?.displayName]);
 
   if (cursors.length === 0 && !localCursor) {
     return null;
@@ -657,11 +696,17 @@ export const CollaborativeSessionUi = ({
   contentGroupRef: RefObject<SVGGElement | null>;
   dimensions: GraphDimensions;
   participantsHostRef: RefObject<HTMLSpanElement | null>;
-}) => (
-  <>
-    <GraphCursorPublisherBridge publishRef={publishRef} viewPresencePublishRef={viewPresencePublishRef} />
-    <CollaborativeChatReadyHint />
-    <CollaborativeParticipantsPortal hostRef={participantsHostRef} />
-    <CollaborativeGraphCursorsPortal contentGroupRef={contentGroupRef} dimensions={dimensions} />
-  </>
-);
+}) => {
+  if (!isWebDeployment) {
+    return null;
+  }
+
+  return (
+    <>
+      <GraphCursorPublisherBridge publishRef={publishRef} viewPresencePublishRef={viewPresencePublishRef} />
+      <CollaborativeChatReadyHint />
+      <CollaborativeParticipantsPortal hostRef={participantsHostRef} />
+      <CollaborativeGraphCursorsPortal contentGroupRef={contentGroupRef} dimensions={dimensions} />
+    </>
+  );
+};

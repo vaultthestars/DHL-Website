@@ -882,7 +882,7 @@ body {
 }
 
 /* Compose UI is rendered on the graph at the local cursor; keep PlayHTML's handler only. */
-.playhtml-chat-container {
+body.music-cue-web-deployment .playhtml-chat-container {
   display: none !important;
 }
 
