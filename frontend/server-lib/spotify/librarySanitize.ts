@@ -1,4 +1,4 @@
-import type { LibraryStats, Song } from "../src/lib/types";
+import type { LibraryStats, Song } from "./types";
 import { getSongPlaylists } from "./arrayUtils";
 import { isExcludedPlaylistName } from "./playlistNames";
 import { buildLibraryStatsFromSongs } from "./sharedLibrary";

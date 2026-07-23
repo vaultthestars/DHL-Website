@@ -34,6 +34,25 @@ __export(spotify_handler_exports, {
 });
 module.exports = __toCommonJS(spotify_handler_exports);
 
+// server-lib/spotify/playlistNames.ts
+var EXCLUDED_PLAYLIST_NAMES = /* @__PURE__ */ new Set([
+  "Library",
+  "Music",
+  "Downloaded",
+  "every song in my library atm",
+  "MusicCue \u2014 Now Playing",
+  "MusicCue-Now Playing"
+]);
+var isExcludedPlaylistName = (name) => {
+  if (!name) {
+    return false;
+  }
+  if (EXCLUDED_PLAYLIST_NAMES.has(name)) {
+    return true;
+  }
+  return name.startsWith("MusicCue-") || name.startsWith("MusicCue \u2014");
+};
+
 // server-lib/spotify/spotifyLibraryAssembly.ts
 var getPlaylistItemTrack = (entry) => {
   const candidate = entry.item ?? entry.track;
@@ -45,7 +64,9 @@ var getPlaylistItemTrack = (entry) => {
   }
   return candidate;
 };
-var filterReadablePlaylists = (playlists, profileId) => playlists.filter((playlist) => playlist.owner.id === profileId || playlist.collaborative);
+var filterReadablePlaylists = (playlists, profileId) => playlists.filter(
+  (playlist) => (playlist.owner.id === profileId || playlist.collaborative) && !isExcludedPlaylistName(playlist.name)
+);
 var assembleSpotifyLibrary = (input) => {
   const playlistNames = {};
   const playlistCounts = {};
@@ -211,16 +232,6 @@ var SPOTIFY_SCOPES = [
   "user-modify-playback-state"
 ].join(" ");
 var NO_DEVICES_MESSAGE = "No Spotify devices found. Open the Spotify app, play any song once, then try Play again.";
-var sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-var parseRetryAfterMs = (retryAfterHeader, attempt) => {
-  if (retryAfterHeader) {
-    const seconds = Number.parseInt(retryAfterHeader, 10);
-    if (Number.isFinite(seconds) && seconds > 0) {
-      return seconds * 1e3;
-    }
-  }
-  return Math.min(1e3 * 2 ** attempt, 1e4);
-};
 var SPOTIFY_API_ORIGIN = "https://api.spotify.com";
 var SPOTIFY_REQUEST_TIMEOUT_MS = 6e3;
 var SPOTIFY_TOKEN_TIMEOUT_MS = 4e3;
@@ -252,32 +263,14 @@ var toSpotifyNextCursor = (next) => {
     return null;
   }
   try {
-    const relative = sanitizeSpotifyPagePath(toSpotifyRelativePath(next));
+    const relative = toSpotifyRelativePath(next);
     return relative || null;
   } catch {
     return null;
   }
 };
-var sanitizeSpotifyPagePath = (path2) => {
-  const queryIndex = path2.indexOf("?");
-  if (queryIndex === -1) {
-    return path2;
-  }
-  const pathname = path2.slice(0, queryIndex);
-  const params = new URLSearchParams(path2.slice(queryIndex + 1));
-  params.delete("locale");
-  const query = params.toString();
-  return query ? `${pathname}?${query}` : pathname;
-};
-var isTransientSpotifyError = (status, message) => {
-  if (status === 500 || status === 502 || status === 503) {
-    return true;
-  }
-  const normalized = message?.toLowerCase() ?? "";
-  return normalized.includes("unexpected error") || normalized.includes("try again later");
-};
 var resolveSpotifyPagePath = (nextPath, defaultPath, allowedPrefixes) => {
-  const normalized = sanitizeSpotifyPagePath(toSpotifyRelativePath(nextPath));
+  const normalized = toSpotifyRelativePath(nextPath);
   if (!normalized) {
     return defaultPath;
   }
@@ -420,7 +413,7 @@ var createSpotifyClient = (store) => {
     const refreshed = await refreshAccessToken(tokens.refreshToken);
     return refreshed.accessToken;
   };
-  const spotifyFetch = async (path2, init, attempt = 0) => {
+  const spotifyFetch = async (path2, init) => {
     const accessToken = await getAccessToken();
     let response;
     try {
@@ -435,10 +428,6 @@ var createSpotifyClient = (store) => {
       });
     } catch (error) {
       const timedOut = error instanceof Error && (error.name === "TimeoutError" || error.name === "AbortError" || error.message.includes("timeout"));
-      if (timedOut && attempt < 2) {
-        await sleep(2e3 * (attempt + 1));
-        return spotifyFetch(path2, init, attempt + 1);
-      }
       if (timedOut) {
         throw new Error("Spotify API timed out. Progress saved \u2014 wait a moment, then click Resume load & share.");
       }
@@ -459,12 +448,7 @@ var createSpotifyClient = (store) => {
     }
     if (!response.ok) {
       const payload = await response.json().catch(() => ({}));
-      const spotifyMessage = payload.error?.message;
-      if (isTransientSpotifyError(response.status, spotifyMessage) && attempt < 3) {
-        await sleep(parseRetryAfterMs(response.headers.get("Retry-After"), attempt));
-        return spotifyFetch(path2, init, attempt + 1);
-      }
-      throw new Error(formatSpotifyApiError(response.status, path2, spotifyMessage));
+      throw new Error(formatSpotifyApiError(response.status, path2, payload.error?.message));
     }
     return await response.json();
   };
@@ -808,6 +792,81 @@ var createSpotifyClient = (store) => {
 var import_node_fs = require("node:fs");
 var import_node_path = __toESM(require("node:path"));
 
+// server-lib/spotify/arrayUtils.ts
+var asStringArray = (value) => Array.isArray(value) ? value.filter((entry) => typeof entry === "string") : [];
+var getSongPlaylists = (song) => asStringArray(song.playlists);
+
+// server-lib/spotify/sharedLibrary.ts
+var defaultStats = () => ({
+  minYear: 1970,
+  maxYear: (/* @__PURE__ */ new Date()).getFullYear(),
+  genres: [],
+  genreCounts: {},
+  maxPlayCount: 1,
+  playlistIds: [],
+  playlistNames: {},
+  playlistCounts: {}
+});
+var buildLibraryStatsFromSongs = (songs, playlistNames = {}) => {
+  if (songs.length === 0) {
+    return defaultStats();
+  }
+  const genreCounts = {};
+  const playlistCounts = {};
+  const playlistIdSet = /* @__PURE__ */ new Set();
+  let minYear = songs[0].year;
+  let maxYear = songs[0].year;
+  let maxPlayCount = 1;
+  songs.forEach((song) => {
+    genreCounts[song.genre] = (genreCounts[song.genre] ?? 0) + 1;
+    minYear = Math.min(minYear, song.year);
+    maxYear = Math.max(maxYear, song.year);
+    maxPlayCount = Math.max(maxPlayCount, song.playCount);
+    getSongPlaylists(song).forEach((playlistId) => {
+      playlistIdSet.add(playlistId);
+      playlistCounts[playlistId] = (playlistCounts[playlistId] ?? 0) + 1;
+    });
+  });
+  const mergedPlaylistNames = { ...playlistNames };
+  playlistIdSet.forEach((playlistId) => {
+    if (!mergedPlaylistNames[playlistId]) {
+      mergedPlaylistNames[playlistId] = playlistId;
+    }
+  });
+  return {
+    minYear,
+    maxYear,
+    genres: Object.keys(genreCounts).sort((left, right) => left.localeCompare(right)),
+    genreCounts,
+    maxPlayCount,
+    playlistIds: [...playlistIdSet].sort(
+      (left, right) => (mergedPlaylistNames[left] ?? left).localeCompare(mergedPlaylistNames[right] ?? right)
+    ),
+    playlistNames: mergedPlaylistNames,
+    playlistCounts
+  };
+};
+
+// server-lib/spotify/librarySanitize.ts
+var sanitizeLibraryPayload = (payload) => {
+  const playlistNames = payload.stats.playlistNames ?? {};
+  const keptNames = {};
+  Object.entries(playlistNames).forEach(([playlistId, name]) => {
+    if (!isExcludedPlaylistName(name)) {
+      keptNames[playlistId] = name;
+    }
+  });
+  const songs = payload.songs.map((song) => ({
+    ...song,
+    playlists: getSongPlaylists(song).filter((playlistId) => Boolean(keptNames[playlistId]))
+  }));
+  return {
+    ...payload,
+    songs,
+    stats: buildLibraryStatsFromSongs(songs, keptNames)
+  };
+};
+
 // server-lib/spotify/sharedLibraryRemoteStore.ts
 var import_client_s3 = require("@aws-sdk/client-s3");
 var isVercelProduction = () => process.env.VERCEL === "1";
@@ -1077,16 +1136,25 @@ var upsertContributor = (index, snapshot) => {
 };
 var saveSharedLibrarySnapshot = async (snapshot) => {
   assertSharedLibraryStorageConfigured();
+  const sanitized = sanitizeLibraryPayload({
+    songs: snapshot.songs,
+    stats: snapshot.stats
+  });
+  const cleanedSnapshot = {
+    ...snapshot,
+    songs: sanitized.songs,
+    stats: sanitized.stats
+  };
   const remote = getRemoteJsonStore();
   if (!remote) {
-    writeLocalSnapshot(snapshot);
+    writeLocalSnapshot(cleanedSnapshot);
     const index = readLocalIndex();
-    writeLocalIndex(upsertContributor(index, snapshot));
+    writeLocalIndex(upsertContributor(index, cleanedSnapshot));
     return;
   }
-  await remote.writeJson(snapshotKey(snapshot.contributor.id), snapshot);
+  await remote.writeJson(snapshotKey(cleanedSnapshot.contributor.id), cleanedSnapshot);
   const currentIndex = await remote.readJson(INDEX_KEY) ?? { contributors: [] };
-  await remote.writeJson(INDEX_KEY, upsertContributor(currentIndex, snapshot));
+  await remote.writeJson(INDEX_KEY, upsertContributor(currentIndex, cleanedSnapshot));
 };
 
 // server-lib/spotify/spotifyHandlers.ts
@@ -1220,9 +1288,9 @@ var handleSpotifyRoute = async (route, req, res) => {
       let library;
       if (isPublishedLibraryPayload(body)) {
         await client.verifyContributorId(body.contributor.id);
-        library = body;
+        library = sanitizeLibraryPayload(body);
       } else {
-        library = await client.fetchLibrary();
+        library = sanitizeLibraryPayload(await client.fetchLibrary());
       }
       const updatedAt = (/* @__PURE__ */ new Date()).toISOString();
       await saveSharedLibrarySnapshot({

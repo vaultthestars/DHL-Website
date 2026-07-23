@@ -1,4 +1,6 @@
-import type { LibraryStats, Song } from "../src/lib/types";
+import type { LibraryStats, Song } from "./types";
+import { asStringArray, getSongPlaylists } from "./arrayUtils";
+import { sanitizeLibraryPayload } from "./librarySanitize";
 
 export type LibraryContributor = {
   id: string;
@@ -34,7 +36,7 @@ export const buildPlaylistOwnersFromSnapshots = (
   const playlistOwners: Record<string, string> = {};
   snapshots.forEach((snapshot) => {
     snapshot.songs.forEach((song) => {
-      (song.playlists ?? []).forEach((playlistId) => {
+      getSongPlaylists(song).forEach((playlistId) => {
         if (!playlistOwners[playlistId]) {
           playlistOwners[playlistId] = snapshot.contributor.id;
         }
@@ -75,7 +77,7 @@ export const buildLibraryStatsFromSongs = (
     minYear = Math.min(minYear, song.year);
     maxYear = Math.max(maxYear, song.year);
     maxPlayCount = Math.max(maxPlayCount, song.playCount);
-    (song.playlists ?? []).forEach((playlistId) => {
+    getSongPlaylists(song).forEach((playlistId) => {
       playlistIdSet.add(playlistId);
       playlistCounts[playlistId] = (playlistCounts[playlistId] ?? 0) + 1;
     });
@@ -115,7 +117,7 @@ const mergeSongOwners = (
   );
 
   const ownerIds = new Set(owners.map((owner) => owner.id));
-  const playlistSet = new Set([...(left.playlists ?? []), ...(right.playlists ?? [])]);
+  const playlistSet = new Set([...getSongPlaylists(left), ...getSongPlaylists(right)]);
   const playlists = [...playlistSet].filter((playlistId) => {
     const creatorId = playlistOwners[playlistId];
     return creatorId !== undefined && ownerIds.has(creatorId);
@@ -143,9 +145,20 @@ const tagSongsForContributor = (
 export const mergeSharedLibrarySnapshots = (snapshots: SharedLibrarySnapshot[]): MergedLibrary => {
   const songMap = new Map<string, Song>();
   const playlistNames: Record<string, string> = {};
-  const playlistOwners = buildPlaylistOwnersFromSnapshots(snapshots);
+  const sanitizedSnapshots = snapshots.map((snapshot) => {
+    const sanitized = sanitizeLibraryPayload({
+      songs: snapshot.songs,
+      stats: snapshot.stats,
+    });
+    return {
+      ...snapshot,
+      songs: sanitized.songs,
+      stats: sanitized.stats,
+    };
+  });
+  const playlistOwners = buildPlaylistOwnersFromSnapshots(sanitizedSnapshots);
 
-  snapshots.forEach((snapshot) => {
+  sanitizedSnapshots.forEach((snapshot) => {
     Object.assign(playlistNames, snapshot.stats.playlistNames ?? {});
     const taggedSongs = tagSongsForContributor(snapshot.songs, snapshot.contributor);
     taggedSongs.forEach((song) => {

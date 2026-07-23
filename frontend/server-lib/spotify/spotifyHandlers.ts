@@ -6,6 +6,7 @@ import {
   type SpotifyLibraryPayload,
 } from "./spotifyClient";
 import { saveSharedLibrarySnapshot } from "./sharedLibraryStore";
+import { sanitizeLibraryPayload } from "./librarySanitize";
 
 type HandlerRequest = {
   method?: string;
@@ -182,9 +183,9 @@ export const handleSpotifyRoute = async (
       let library: SpotifyLibraryPayload;
       if (isPublishedLibraryPayload(body)) {
         await client.verifyContributorId(body.contributor.id);
-        library = body;
+        library = sanitizeLibraryPayload(body);
       } else {
-        library = await client.fetchLibrary();
+        library = sanitizeLibraryPayload(await client.fetchLibrary());
       }
       const updatedAt = new Date().toISOString();
       await saveSharedLibrarySnapshot({

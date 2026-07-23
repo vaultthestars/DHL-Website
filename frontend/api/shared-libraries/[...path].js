@@ -34,12 +34,55 @@ __export(shared_libraries_handler_exports, {
 });
 module.exports = __toCommonJS(shared_libraries_handler_exports);
 
+// server-lib/sharedLibrary/arrayUtils.ts
+var asStringArray = (value) => Array.isArray(value) ? value.filter((entry) => typeof entry === "string") : [];
+var getSongPlaylists = (song) => asStringArray(song.playlists);
+
+// server-lib/sharedLibrary/playlistNames.ts
+var EXCLUDED_PLAYLIST_NAMES = /* @__PURE__ */ new Set([
+  "Library",
+  "Music",
+  "Downloaded",
+  "every song in my library atm",
+  "MusicCue \u2014 Now Playing",
+  "MusicCue-Now Playing"
+]);
+var isExcludedPlaylistName = (name) => {
+  if (!name) {
+    return false;
+  }
+  if (EXCLUDED_PLAYLIST_NAMES.has(name)) {
+    return true;
+  }
+  return name.startsWith("MusicCue-") || name.startsWith("MusicCue \u2014");
+};
+
+// server-lib/sharedLibrary/librarySanitize.ts
+var sanitizeLibraryPayload = (payload) => {
+  const playlistNames = payload.stats.playlistNames ?? {};
+  const keptNames = {};
+  Object.entries(playlistNames).forEach(([playlistId, name]) => {
+    if (!isExcludedPlaylistName(name)) {
+      keptNames[playlistId] = name;
+    }
+  });
+  const songs = payload.songs.map((song) => ({
+    ...song,
+    playlists: getSongPlaylists(song).filter((playlistId) => Boolean(keptNames[playlistId]))
+  }));
+  return {
+    ...payload,
+    songs,
+    stats: buildLibraryStatsFromSongs(songs, keptNames)
+  };
+};
+
 // server-lib/sharedLibrary/sharedLibrary.ts
 var buildPlaylistOwnersFromSnapshots = (snapshots) => {
   const playlistOwners = {};
   snapshots.forEach((snapshot) => {
     snapshot.songs.forEach((song) => {
-      (song.playlists ?? []).forEach((playlistId) => {
+      getSongPlaylists(song).forEach((playlistId) => {
         if (!playlistOwners[playlistId]) {
           playlistOwners[playlistId] = snapshot.contributor.id;
         }
@@ -73,7 +116,7 @@ var buildLibraryStatsFromSongs = (songs, playlistNames = {}) => {
     minYear = Math.min(minYear, song.year);
     maxYear = Math.max(maxYear, song.year);
     maxPlayCount = Math.max(maxPlayCount, song.playCount);
-    (song.playlists ?? []).forEach((playlistId) => {
+    getSongPlaylists(song).forEach((playlistId) => {
       playlistIdSet.add(playlistId);
       playlistCounts[playlistId] = (playlistCounts[playlistId] ?? 0) + 1;
     });
@@ -105,7 +148,7 @@ var mergeSongOwners = (left, right, playlistOwners) => {
     (leftOwner, rightOwner) => leftOwner.name.localeCompare(rightOwner.name)
   );
   const ownerIds = new Set(owners.map((owner) => owner.id));
-  const playlistSet = /* @__PURE__ */ new Set([...left.playlists ?? [], ...right.playlists ?? []]);
+  const playlistSet = /* @__PURE__ */ new Set([...getSongPlaylists(left), ...getSongPlaylists(right)]);
   const playlists = [...playlistSet].filter((playlistId) => {
     const creatorId = playlistOwners[playlistId];
     return creatorId !== void 0 && ownerIds.has(creatorId);
@@ -127,8 +170,19 @@ var tagSongsForContributor = (songs, contributor) => songs.map((song) => ({
 var mergeSharedLibrarySnapshots = (snapshots) => {
   const songMap = /* @__PURE__ */ new Map();
   const playlistNames = {};
-  const playlistOwners = buildPlaylistOwnersFromSnapshots(snapshots);
-  snapshots.forEach((snapshot) => {
+  const sanitizedSnapshots = snapshots.map((snapshot) => {
+    const sanitized = sanitizeLibraryPayload({
+      songs: snapshot.songs,
+      stats: snapshot.stats
+    });
+    return {
+      ...snapshot,
+      songs: sanitized.songs,
+      stats: sanitized.stats
+    };
+  });
+  const playlistOwners = buildPlaylistOwnersFromSnapshots(sanitizedSnapshots);
+  sanitizedSnapshots.forEach((snapshot) => {
     Object.assign(playlistNames, snapshot.stats.playlistNames ?? {});
     const taggedSongs = tagSongsForContributor(snapshot.songs, snapshot.contributor);
     taggedSongs.forEach((song) => {
@@ -466,13 +520,14 @@ var listSharedLibraryContributors = async () => {
   if (!remote) {
     return filterMockContributors(readLocalIndex());
   }
-  let index = await remote.readJson(INDEX_KEY);
-  if (!index?.contributors?.length) {
-    const rebuilt = await rebuildIndexFromRemoteSnapshots();
-    if (rebuilt.contributors.length > 0) {
-      await remote.writeJson(INDEX_KEY, rebuilt);
-      index = rebuilt;
-    }
+  const index = await remote.readJson(INDEX_KEY);
+  if (index?.contributors?.length) {
+    return filterMockContributors(index);
+  }
+  const rebuilt = await rebuildIndexFromRemoteSnapshots();
+  if (rebuilt.contributors.length > 0) {
+    await remote.writeJson(INDEX_KEY, rebuilt);
+    return filterMockContributors(rebuilt);
   }
   return filterMockContributors(index ?? { contributors: [] });
 };
@@ -525,8 +580,7 @@ var handleSharedLibraryRoute = async (route, req, res) => {
     }
     if (route === "merge" && req.method === "GET") {
       const contributorsParam = getQueryValue(req.query, "contributors");
-      const index = await listSharedLibraryContributors();
-      const contributorIds = contributorsParam ? contributorsParam.split(",").map((entry) => entry.trim()).filter(Boolean) : index.contributors.map((contributor) => contributor.id);
+      const contributorIds = contributorsParam ? contributorsParam.split(",").map((entry) => entry.trim()).filter(Boolean) : (await listSharedLibraryContributors()).contributors.map((contributor) => contributor.id);
       if (contributorIds.length === 0) {
         res.status(200).json({
           songs: [],
@@ -547,6 +601,14 @@ var handleSharedLibraryRoute = async (route, req, res) => {
       }
       const snapshots = await getSharedLibrarySnapshots(contributorIds);
       const merged = mergeSharedLibrarySnapshots(snapshots);
+      const index = contributorsParam.length > 0 ? {
+        contributors: snapshots.map((snapshot) => ({
+          id: snapshot.contributor.id,
+          name: snapshot.contributor.name,
+          updatedAt: snapshot.updatedAt,
+          trackCount: snapshot.songs.length
+        }))
+      } : await listSharedLibraryContributors();
       res.status(200).json({
         ...merged,
         contributors: index.contributors.filter((contributor) => contributorIds.includes(contributor.id))

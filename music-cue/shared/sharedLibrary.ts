@@ -1,5 +1,5 @@
 import type { LibraryStats, Song } from "../src/lib/types";
-import { asStringArray, getSongPlaylists } from "../src/lib/arrayUtils";
+import { asStringArray, getSongPlaylists } from "./arrayUtils";
 import { sanitizeLibraryPayload } from "./librarySanitize";
 
 export type LibraryContributor = {
