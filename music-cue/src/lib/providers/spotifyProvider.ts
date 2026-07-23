@@ -339,7 +339,36 @@ const collectArtistIds = (
       }
     });
   });
-  return [...new Set(artistIds)];
+  return [...new Set(artistIds.filter((artistId) => typeof artistId === "string" && artistId.trim()))];
+};
+
+type ArtistGenreLookupStats = {
+  requested: number;
+  resolved: number;
+  withGenres: number;
+  emptyGenres: number;
+  error?: string;
+};
+
+const summarizeGenreLookup = (
+  artistCount: number,
+  totalWithGenres: number,
+  totalResolved: number,
+  lastError?: string
+): string => {
+  if (artistCount === 0) {
+    return "No artists to look up.";
+  }
+  if (totalWithGenres > 0) {
+    return `Genres found for ${totalWithGenres.toLocaleString()} of ${artistCount.toLocaleString()} artists.`;
+  }
+  if (lastError) {
+    return `Genre lookup failed: ${lastError}`;
+  }
+  if (totalResolved > 0) {
+    return `Spotify returned no genres for ${totalResolved.toLocaleString()} artists.`;
+  }
+  return "Genre lookup returned no artist data.";
 };
 
 const loadSavedTracksPhase = async (
@@ -671,6 +700,9 @@ const loadGenresPhase = async (
   }
 
   const genreBatchCount = Math.ceil(artistIds.length / 50);
+  let totalWithGenres = 0;
+  let totalResolved = 0;
+  let lastGenreError: string | undefined;
 
   while (nextIndex < artistIds.length) {
     const batchIndex = Math.floor(nextIndex / 50) + 1;
@@ -681,7 +713,10 @@ const loadGenresPhase = async (
     });
 
     try {
-      const genresPayload = await fetchJson<{ genresByArtistId: Record<string, string[]> }>(
+      const genresPayload = await fetchJson<{
+        genresByArtistId: Record<string, string[]>;
+        genreLookupStats?: ArtistGenreLookupStats;
+      }>(
         "/api/spotify/artist-genres",
         {
           method: "POST",
@@ -690,10 +725,20 @@ const loadGenresPhase = async (
         }
       );
       Object.assign(genresByArtistId, genresPayload.genresByArtistId ?? {});
+      if (genresPayload.genreLookupStats) {
+        totalWithGenres += genresPayload.genreLookupStats.withGenres;
+        totalResolved += genresPayload.genreLookupStats.resolved;
+        if (genresPayload.genreLookupStats.error) {
+          lastGenreError = genresPayload.genreLookupStats.error;
+          console.warn("[spotify-import] Genre batch failed:", genresPayload.genreLookupStats.error);
+        }
+      }
     } catch (error) {
       if (error instanceof SpotifyImportRateLimitError) {
         throw error;
       }
+      lastGenreError = error instanceof Error ? error.message : String(error);
+      console.warn("[spotify-import] Genre lookup request failed:", lastGenreError);
     }
 
     nextIndex = Math.min(nextIndex + 50, artistIds.length);
@@ -715,6 +760,12 @@ const loadGenresPhase = async (
 
     await waitBetweenPages();
   }
+
+  reportProgress(onProgress, {
+    phase: "genres",
+    message: summarizeGenreLookup(artistIds.length, totalWithGenres, totalResolved, lastGenreError),
+    percent: 98,
+  });
 
   return genresByArtistId;
 };

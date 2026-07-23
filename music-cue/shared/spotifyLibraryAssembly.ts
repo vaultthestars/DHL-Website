@@ -128,6 +128,7 @@ export const assembleSpotifyLibrary = (input: {
       title: track.name,
       artist: track.artists.map((artist) => artist.name).join(", "),
       album: track.album.name,
+      // Store only the primary artist's first Spotify genre to keep snapshots small.
       genre: genres[0] ?? "Unknown",
       year: Number.parseInt(track.album.release_date.slice(0, 4), 10) || new Date().getFullYear(),
       playCount: track.popularity,

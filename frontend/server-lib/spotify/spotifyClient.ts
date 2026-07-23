@@ -25,6 +25,19 @@ export class SpotifyRateLimitError extends Error {
   }
 }
 
+export type ArtistGenreLookupStats = {
+  requested: number;
+  resolved: number;
+  withGenres: number;
+  emptyGenres: number;
+  error?: string;
+};
+
+export type ArtistGenreBatchResult = {
+  genresByArtistId: Record<string, string[]>;
+  stats: ArtistGenreLookupStats;
+};
+
 const SPOTIFY_ACCOUNTS_URL = "https://accounts.spotify.com";
 const SPOTIFY_API_URL = "https://api.spotify.com/v1";
 export const SPOTIFY_NOW_PLAYING_PLAYLIST_NAME = "MusicCue — Now Playing";
@@ -468,33 +481,69 @@ export const createSpotifyClient = (store: SpotifySessionStore) => {
     };
   };
 
-  const fetchArtistGenreBatch = async (artistIds: string[]): Promise<Record<string, string[]>> => {
+  const normalizeArtistIds = (artistIds: string[]): string[] =>
+    [...new Set(artistIds.filter((artistId) => typeof artistId === "string" && artistId.trim()))];
+
+  const fetchArtistGenreBatch = async (artistIds: string[]): Promise<ArtistGenreBatchResult> => {
     const genresByArtistId: Record<string, string[]> = {};
-    const chunk = [...new Set(artistIds)].slice(0, 50);
+    const chunk = normalizeArtistIds(artistIds).slice(0, 50);
+    const stats: ArtistGenreLookupStats = {
+      requested: chunk.length,
+      resolved: 0,
+      withGenres: 0,
+      emptyGenres: 0,
+    };
     if (chunk.length === 0) {
-      return genresByArtistId;
+      return { genresByArtistId, stats };
     }
     try {
-      const payload = await spotifyFetch<{ artists: { id: string; genres: string[] }[] }>(
-        `/artists?ids=${chunk.join(",")}`
+      const payload = await spotifyFetch<{ artists: ({ id: string; genres: string[] } | null)[] }>(
+        `/artists?ids=${encodeURIComponent(chunk.join(","))}`
       );
-      payload.artists.forEach((artist) => {
-        genresByArtistId[artist.id] = artist.genres ?? [];
-      });
-    } catch {
-      // Genre lookup is optional; some Spotify app modes block /artists.
+      for (const artist of payload.artists ?? []) {
+        if (!artist?.id) {
+          continue;
+        }
+        stats.resolved += 1;
+        const genres = artist.genres ?? [];
+        genresByArtistId[artist.id] = genres;
+        if (genres.length > 0) {
+          stats.withGenres += 1;
+        } else {
+          stats.emptyGenres += 1;
+        }
+      }
+    } catch (error) {
+      stats.error = error instanceof Error ? error.message : String(error);
+      console.warn("[spotify] Artist genre batch failed:", stats.error);
     }
-    return genresByArtistId;
+    return { genresByArtistId, stats };
   };
 
-  const fetchArtistGenres = async (artistIds: string[]): Promise<Record<string, string[]>> => {
+  const fetchArtistGenres = async (artistIds: string[]): Promise<ArtistGenreBatchResult> => {
     const genresByArtistId: Record<string, string[]> = {};
-    const uniqueArtistIds = [...new Set(artistIds)];
+    const uniqueArtistIds = normalizeArtistIds(artistIds);
+    const stats: ArtistGenreLookupStats = {
+      requested: uniqueArtistIds.length,
+      resolved: 0,
+      withGenres: 0,
+      emptyGenres: 0,
+    };
+    const errors: string[] = [];
     for (let index = 0; index < uniqueArtistIds.length; index += 50) {
       const batch = await fetchArtistGenreBatch(uniqueArtistIds.slice(index, index + 50));
-      Object.assign(genresByArtistId, batch);
+      Object.assign(genresByArtistId, batch.genresByArtistId);
+      stats.resolved += batch.stats.resolved;
+      stats.withGenres += batch.stats.withGenres;
+      stats.emptyGenres += batch.stats.emptyGenres;
+      if (batch.stats.error) {
+        errors.push(batch.stats.error);
+      }
     }
-    return genresByArtistId;
+    if (errors.length > 0) {
+      stats.error = errors[0];
+    }
+    return { genresByArtistId, stats };
   };
 
   const buildLibraryPayload = async (input: {
@@ -512,7 +561,7 @@ export const createSpotifyClient = (store: SpotifySessionStore) => {
         })
       ),
     ];
-    const genresByArtistId = await fetchArtistGenres(artistIds);
+    const { genresByArtistId } = await fetchArtistGenres(artistIds);
     return assembleSpotifyLibrary({
       contributor: input.contributor,
       savedItems: input.savedItems,

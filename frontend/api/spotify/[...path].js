@@ -103,6 +103,7 @@ var assembleSpotifyLibrary = (input) => {
       title: track.name,
       artist: track.artists.map((artist) => artist.name).join(", "),
       album: track.album.name,
+      // Store only the primary artist's first Spotify genre to keep snapshots small.
       genre: genres[0] ?? "Unknown",
       year: Number.parseInt(track.album.release_date.slice(0, 4), 10) || (/* @__PURE__ */ new Date()).getFullYear(),
       playCount: track.popularity,
@@ -559,31 +560,66 @@ var createSpotifyClient = (store) => {
       next: toSpotifyNextCursor(payload.next)
     };
   };
+  const normalizeArtistIds = (artistIds) => [...new Set(artistIds.filter((artistId) => typeof artistId === "string" && artistId.trim()))];
   const fetchArtistGenreBatch = async (artistIds) => {
     const genresByArtistId = {};
-    const chunk = [...new Set(artistIds)].slice(0, 50);
+    const chunk = normalizeArtistIds(artistIds).slice(0, 50);
+    const stats = {
+      requested: chunk.length,
+      resolved: 0,
+      withGenres: 0,
+      emptyGenres: 0
+    };
     if (chunk.length === 0) {
-      return genresByArtistId;
+      return { genresByArtistId, stats };
     }
     try {
       const payload = await spotifyFetch(
-        `/artists?ids=${chunk.join(",")}`
+        `/artists?ids=${encodeURIComponent(chunk.join(","))}`
       );
-      payload.artists.forEach((artist) => {
-        genresByArtistId[artist.id] = artist.genres ?? [];
-      });
-    } catch {
+      for (const artist of payload.artists ?? []) {
+        if (!artist?.id) {
+          continue;
+        }
+        stats.resolved += 1;
+        const genres = artist.genres ?? [];
+        genresByArtistId[artist.id] = genres;
+        if (genres.length > 0) {
+          stats.withGenres += 1;
+        } else {
+          stats.emptyGenres += 1;
+        }
+      }
+    } catch (error) {
+      stats.error = error instanceof Error ? error.message : String(error);
+      console.warn("[spotify] Artist genre batch failed:", stats.error);
     }
-    return genresByArtistId;
+    return { genresByArtistId, stats };
   };
   const fetchArtistGenres = async (artistIds) => {
     const genresByArtistId = {};
-    const uniqueArtistIds = [...new Set(artistIds)];
+    const uniqueArtistIds = normalizeArtistIds(artistIds);
+    const stats = {
+      requested: uniqueArtistIds.length,
+      resolved: 0,
+      withGenres: 0,
+      emptyGenres: 0
+    };
+    const errors = [];
     for (let index = 0; index < uniqueArtistIds.length; index += 50) {
       const batch = await fetchArtistGenreBatch(uniqueArtistIds.slice(index, index + 50));
-      Object.assign(genresByArtistId, batch);
+      Object.assign(genresByArtistId, batch.genresByArtistId);
+      stats.resolved += batch.stats.resolved;
+      stats.withGenres += batch.stats.withGenres;
+      stats.emptyGenres += batch.stats.emptyGenres;
+      if (batch.stats.error) {
+        errors.push(batch.stats.error);
+      }
     }
-    return genresByArtistId;
+    if (errors.length > 0) {
+      stats.error = errors[0];
+    }
+    return { genresByArtistId, stats };
   };
   const buildLibraryPayload = async (input) => {
     const artistIds = [
@@ -595,7 +631,7 @@ var createSpotifyClient = (store) => {
         })
       )
     ];
-    const genresByArtistId = await fetchArtistGenres(artistIds);
+    const { genresByArtistId } = await fetchArtistGenres(artistIds);
     return assembleSpotifyLibrary({
       contributor: input.contributor,
       savedItems: input.savedItems,
@@ -1280,7 +1316,11 @@ var handleSpotifyRoute = async (route, req, res) => {
     if (route === "artist-genres" && req.method === "POST") {
       const body = req.body;
       const artistIds = Array.isArray(body?.artistIds) ? body.artistIds : [];
-      finish(200, { genresByArtistId: await client.fetchArtistGenreBatch(artistIds) });
+      const result = await client.fetchArtistGenreBatch(artistIds);
+      finish(200, {
+        genresByArtistId: result.genresByArtistId,
+        genreLookupStats: result.stats
+      });
       return;
     }
     if (route === "publish-shared-library" && req.method === "POST") {

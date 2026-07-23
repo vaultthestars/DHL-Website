@@ -174,7 +174,11 @@ export const handleSpotifyRoute = async (
     if (route === "artist-genres" && req.method === "POST") {
       const body = req.body as { artistIds?: string[] };
       const artistIds = Array.isArray(body?.artistIds) ? body.artistIds : [];
-      finish(200, { genresByArtistId: await client.fetchArtistGenreBatch(artistIds) });
+      const result = await client.fetchArtistGenreBatch(artistIds);
+      finish(200, {
+        genresByArtistId: result.genresByArtistId,
+        genreLookupStats: result.stats,
+      });
       return;
     }
 
