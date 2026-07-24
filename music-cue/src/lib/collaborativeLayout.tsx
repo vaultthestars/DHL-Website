@@ -25,6 +25,7 @@ const CollaborativeLayoutSync = ({
   clusterOverrides,
   setClusterOverrides,
   draggingClusterIdRef,
+  metaGraphForceSimActiveRef,
   layoutSyncPausedRef,
   roomLayoutSeed,
   clusterLayoutSyncMode,
@@ -34,6 +35,7 @@ const CollaborativeLayoutSync = ({
   clusterOverrides: ClusterCenterOverrides;
   setClusterOverrides: (overrides: ClusterCenterOverrides) => void;
   draggingClusterIdRef: RefObject<string | null>;
+  metaGraphForceSimActiveRef?: RefObject<boolean>;
   layoutSyncPausedRef?: RefObject<boolean>;
   roomLayoutSeed: ClusterCenterOverrides;
   clusterLayoutSyncMode: ClusterLayoutSyncMode;
@@ -58,6 +60,7 @@ const CollaborativeLayoutSync = ({
       clusterLayoutSyncMode !== "snapshot" ||
       isLoading ||
       draggingClusterIdRef.current ||
+      metaGraphForceSimActiveRef?.current ||
       layoutSyncPausedRef?.current
     ) {
       return;
@@ -75,6 +78,7 @@ const CollaborativeLayoutSync = ({
     draggingClusterIdRef,
     isLoading,
     layoutSyncPausedRef,
+    metaGraphForceSimActiveRef,
     remoteOverrides,
     setClusterOverrides,
   ]);
@@ -134,6 +138,7 @@ export const CollaborativeLayoutProvider = ({
   clusterOverrides,
   setClusterOverrides,
   draggingClusterIdRef,
+  metaGraphForceSimActiveRef,
   layoutSyncPausedRef,
   layoutScope,
   roomLayoutSeed,
@@ -145,6 +150,7 @@ export const CollaborativeLayoutProvider = ({
   clusterOverrides: ClusterCenterOverrides;
   setClusterOverrides: (overrides: ClusterCenterOverrides) => void;
   draggingClusterIdRef: RefObject<string | null>;
+  metaGraphForceSimActiveRef?: RefObject<boolean>;
   layoutSyncPausedRef?: RefObject<boolean>;
   layoutScope: ClusterLayoutScope;
   roomLayoutSeed?: ClusterCenterOverrides;
@@ -168,6 +174,7 @@ export const CollaborativeLayoutProvider = ({
         clusterOverrides={clusterOverrides}
         setClusterOverrides={setClusterOverrides}
         draggingClusterIdRef={draggingClusterIdRef}
+        metaGraphForceSimActiveRef={metaGraphForceSimActiveRef}
         layoutSyncPausedRef={layoutSyncPausedRef}
         roomLayoutSeed={resolvedRoomLayoutSeed}
         clusterLayoutSyncMode={clusterLayoutSyncMode}

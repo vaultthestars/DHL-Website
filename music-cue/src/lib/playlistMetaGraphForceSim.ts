@@ -3,8 +3,39 @@ import {
   ownerScopedOverrideKey,
   parseOwnerScopedRegionId,
 } from "./isolateClusterLayout";
-import type { GraphPoint, NormalizedPoint } from "./types";
+import type { ClusterLayoutScope } from "./storage";
+import type { ClusterCenterOverrides, GraphPoint, NormalizedPoint } from "./types";
 import type { PlaylistMetaGraphEdge } from "./playlistMetaGraph";
+
+export type MetaGraphForceSimLayoutScope = ClusterLayoutScope;
+
+export type MetaGraphForceSimPersistContext = {
+  layoutScope: MetaGraphForceSimLayoutScope;
+  /** When set (my song space), positions are stored under owner-scoped isolate keys. */
+  mineContributorId?: string | null;
+};
+
+const isOwnerScopedPlaylistOverrideKey = (key: string): boolean => key.includes("::");
+
+/** Keep merged and isolate playlist layouts in separate localStorage buckets. */
+export const filterPlaylistOverridesForLayoutScope = (
+  playlist: Record<string, NormalizedPoint>,
+  layoutScope: MetaGraphForceSimLayoutScope
+): Record<string, NormalizedPoint> => {
+  const filtered: Record<string, NormalizedPoint> = {};
+  Object.entries(playlist).forEach(([key, value]) => {
+    if (layoutScope === "conglomerate") {
+      if (!isOwnerScopedPlaylistOverrideKey(key)) {
+        filtered[key] = value;
+      }
+      return;
+    }
+    if (isOwnerScopedPlaylistOverrideKey(key)) {
+      filtered[key] = value;
+    }
+  });
+  return filtered;
+};
 
 export type MetaGraphForceNode = {
   regionId: string;
@@ -178,7 +209,8 @@ type OwnerForceSimContext = {
 export const buildMetaGraphForceSimPlaylistOverrides = (
   nodes: MetaGraphForceNode[],
   dimensions: { width: number; height: number },
-  getOwnerContext: (ownerId: string) => OwnerForceSimContext | null
+  getOwnerContext: (ownerId: string) => OwnerForceSimContext | null,
+  persistContext: MetaGraphForceSimPersistContext
 ): Record<string, NormalizedPoint> => {
   const updates: Record<string, NormalizedPoint> = {};
 
@@ -198,8 +230,16 @@ export const buildMetaGraphForceSimPlaylistOverrides = (
         );
         return;
       }
+      updates[ownerScopedOverrideKey(node.ownerId, node.playlistId)] = displayNorm;
+      return;
     }
-    updates[node.playlistId] = displayNorm;
+    if (persistContext.layoutScope === "isolate" && persistContext.mineContributorId) {
+      updates[ownerScopedOverrideKey(persistContext.mineContributorId, node.playlistId)] = displayNorm;
+      return;
+    }
+    if (persistContext.layoutScope === "conglomerate") {
+      updates[node.playlistId] = displayNorm;
+    }
   });
 
   return updates;
@@ -209,9 +249,15 @@ export const applyMetaGraphForceSimToClusterOverrides = (
   current: ClusterCenterOverrides,
   nodes: MetaGraphForceNode[],
   dimensions: { width: number; height: number },
-  getOwnerContext: (ownerId: string) => OwnerForceSimContext | null
+  getOwnerContext: (ownerId: string) => OwnerForceSimContext | null,
+  persistContext: MetaGraphForceSimPersistContext
 ): ClusterCenterOverrides => {
-  const playlistUpdates = buildMetaGraphForceSimPlaylistOverrides(nodes, dimensions, getOwnerContext);
+  const playlistUpdates = buildMetaGraphForceSimPlaylistOverrides(
+    nodes,
+    dimensions,
+    getOwnerContext,
+    persistContext
+  );
   return {
     ...current,
     playlist: { ...current.playlist, ...playlistUpdates },
