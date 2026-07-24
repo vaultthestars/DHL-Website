@@ -194,6 +194,11 @@ import {
 } from "../lib/isolateDisplayTransform";
 import { loadCachedSpotifyLibrary } from "../lib/spotifyLibraryCache";
 import { reclaimSpotifyWebStorageQuota } from "../lib/webStorageCleanup";
+import {
+  getEnabledOwnerMetaClusters,
+  hasMultipleLibraryOwners,
+  resolveIsolateDisplayOwnerId,
+} from "../lib/libraryScope";
 
 const getGraphDimensions = (panel: HTMLDivElement | null): GraphDimensions => ({
   width: Math.max(320, panel?.clientWidth ?? 800),
