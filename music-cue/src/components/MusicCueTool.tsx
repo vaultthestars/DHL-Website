@@ -2,7 +2,6 @@ import { startTransition, useCallback, useDeferredValue, useEffect, useLayoutEff
 import { flushSync } from "react-dom";
 import { buildClusterRegions, buildClusterViewportHints, buildIsolateScopedClusterRegions, ClusterRegion, getClusterRegionDisplayCenter } from "../lib/clusterRegions";
 import { syncClusterLayoutToServer } from "../lib/clusterLayoutSync";
-import { sanitizeLibraryPayload } from "../../shared/librarySanitize";
 import { buildLibraryStatsFromSongs } from "../../shared/sharedLibrary";
 import {
   fromNormalizedPosition,
@@ -3563,12 +3562,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     }
     setIsImporting(true);
     try {
-      const sanitized = sanitizeLibraryPayload({ songs, stats });
-      const published = await publishSharedLibrary({
-        contributor,
-        songs: sanitized.songs,
-        stats: sanitized.stats,
-      });
+      const published = await publishSharedLibrary();
       saveLocalContributorId(published.contributor.id);
       await refreshSharedContributors({ loadLibrary: songSpaceMode === "shared" });
       setStatusMessage(
@@ -3690,15 +3684,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
       );
       if (isWebDeployment) {
         try {
-          const published = await publishSharedLibrary(
-            loaded.contributor
-              ? {
-                  contributor: loaded.contributor,
-                  songs: loaded.songs,
-                  stats: loaded.stats,
-                }
-              : undefined
-          );
+          const published = await publishSharedLibrary();
           saveLocalContributorId(published.contributor.id);
           await refreshSharedContributors({ loadLibrary: songSpaceMode === "shared" });
           setStatusMessage(
@@ -3850,15 +3836,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
       );
       if (isWebDeployment) {
         try {
-          const published = await publishSharedLibrary(
-            loaded.contributor
-              ? {
-                  contributor: loaded.contributor,
-                  songs: loaded.songs,
-                  stats: loaded.stats,
-                }
-              : undefined
-          );
+          const published = await publishSharedLibrary();
           saveLocalContributorId(published.contributor.id);
           await refreshSharedContributors({ loadLibrary: songSpaceMode === "shared" });
           setStatusMessage(

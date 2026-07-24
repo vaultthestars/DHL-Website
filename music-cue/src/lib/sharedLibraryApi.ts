@@ -55,7 +55,10 @@ const fetchJson = async <T>(url: string, init?: RequestInit): Promise<T> => {
   });
   if (!response.ok) {
     const payload = (await response.json().catch(() => ({}))) as { error?: string };
-    const detail = payload.error ?? `Request failed (${response.status}).`;
+    const detail =
+      response.status === 413
+        ? "Library upload is too large for this server. Try again after the site updates — publish should refresh from Spotify instead of uploading your library."
+        : payload.error ?? `Request failed (${response.status}).`;
     if (response.status === 404 && url.startsWith("/api/shared-libraries")) {
       throw new Error(`Shared library API not found (${response.status}).`);
     }
@@ -200,15 +203,15 @@ export const loadMergedSharedLibrary = async (
   };
 };
 
-export const publishSharedLibrary = async (library?: {
+/** Publish the connected Spotify session's library to shared storage (server-side fetch). */
+export const publishSharedLibrary = async (): Promise<{
   contributor: { id: string; name: string };
-  songs: LoadedLibrary["songs"];
-  stats: LoadedLibrary["stats"];
-}): Promise<{ contributor: { id: string; name: string }; trackCount: number }> => {
+  trackCount: number;
+}> => {
   return fetchJson("/api/spotify/publish-shared-library", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(library ?? {}),
+    body: "{}",
   });
 };
 
