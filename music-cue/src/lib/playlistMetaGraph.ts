@@ -99,3 +99,17 @@ export const buildPlaylistMetaGraphSegments = (
 
   return segments;
 };
+
+export const playlistMetaGraphEdgeStyle = (
+  sharedSongCount: number,
+  maxSharedSongCount: number
+): { strokeWidth: number; stroke: string } => {
+  const weight =
+    maxSharedSongCount > 0 ? Math.min(1, sharedSongCount / maxSharedSongCount) : 0;
+  const strokeWidth = 0.55 + weight * 4.75;
+  const opacity = 0.1 + weight * 0.86;
+  return {
+    strokeWidth,
+    stroke: `rgba(28, 14, 62, ${opacity.toFixed(3)})`,
+  };
+};

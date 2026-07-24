@@ -18,7 +18,16 @@ import {
   buildPlaylistMetaGraphEdges,
   buildPlaylistMetaGraphSegments,
   isPlaylistMetaGraphClusterRegion,
+  playlistMetaGraphEdgeStyle,
 } from "../lib/playlistMetaGraph";
+import {
+  applyMetaGraphForceSimToClusterOverrides,
+  buildMetaGraphForceEdges,
+  createMetaGraphForceNodes,
+  stepMetaGraphForceSim,
+  type MetaGraphForceEdge,
+  type MetaGraphForceNode,
+} from "../lib/playlistMetaGraphForceSim";
 import { isExcludedPlaylistName } from "../lib/playlistConstants";
 import { asStringArray } from "../lib/arrayUtils";
 import { applyPlaybackAdvance } from "../lib/cuePlaybackTracking";
@@ -756,10 +765,15 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
   const [importResumeRevision, setImportResumeRevision] = useState(0);
   const [rateLimitCooldownMs, setRateLimitCooldownMs] = useState(0);
   const [playlistGraphView, setPlaylistGraphView] = useState(() => loadPlaylistGraphView());
+  const [playlistGraphForceSim, setPlaylistGraphForceSim] = useState(false);
+  const [metaGraphForceSimTick, setMetaGraphForceSimTick] = useState(0);
   const [shiftHeld, setShiftHeld] = useState(false);
   const [boxSelectRect, setBoxSelectRect] = useState<BoxSelectRect | null>(null);
   const [selectedClusterIds, setSelectedClusterIds] = useState<Set<string>>(() => new Set());
   const clusterOverridesRef = useRef(clusterOverrides);
+  const metaGraphForceSimActiveRef = useRef(false);
+  const metaGraphForceNodesRef = useRef<MetaGraphForceNode[]>([]);
+  const metaGraphForceEdgesRef = useRef<MetaGraphForceEdge[]>([]);
   const clusterDragRafRef = useRef(0);
   const hoverProbeRafRef = useRef(0);
   const pendingHoverPointRef = useRef<GraphPoint | null>(null);
@@ -1285,6 +1299,68 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
   const { getMetaClusterCenter, startMetaClusterCenterTransition, cancelMetaClusterCenterTransition } =
     useMetaClusterCenterTransition(graphSongs, dimensions, activeContributorIds, isolateOwnerBounds);
 
+  const getOwnerForceSimContext = useCallback(
+    (ownerId: string) => {
+      const bounds = isolateOwnerBounds?.get(ownerId);
+      if (!bounds) {
+        return null;
+      }
+      const metaCenter = getEnabledOwnerMetaClusters(graphSongs, dimensions, activeContributorIds, {
+        isAxisView: false,
+        ownerBounds: isolateOwnerBounds,
+      }).find((meta) => meta.id === ownerId)?.center;
+      if (!metaCenter) {
+        return null;
+      }
+      return {
+        bounds,
+        metaCenter: getMetaClusterCenter(ownerId, metaCenter),
+      };
+    },
+    [activeContributorIds, dimensions, getMetaClusterCenter, graphSongs, isolateOwnerBounds]
+  );
+
+  const persistClusterLayoutOverrides = useCallback(() => {
+    const nextOverrides = clusterOverridesRef.current;
+    setClusterOverrides(nextOverrides);
+    if (layoutConfig.viewMode === "cluster" && layoutConfig.clusterMode === "genre") {
+      saveGenreClusterCenterOverrides(nextOverrides.genre, activeLayoutScope);
+    } else if (layoutConfig.viewMode === "cluster" && layoutConfig.clusterMode === "playlist") {
+      savePlaylistClusterCenterOverrides(nextOverrides.playlist, activeLayoutScope);
+      invalidatePlaylistOverlapLayoutCache();
+    }
+    invalidateLayoutPositionCaches();
+    saveClusterCenterOverridesForScope(activeLayoutScope, nextOverrides);
+    if (isWebDeployment) {
+      publishClusterLayoutRef.current(nextOverrides);
+    } else {
+      void syncClusterLayoutToServer(nextOverrides);
+    }
+  }, [activeLayoutScope, layoutConfig.clusterMode, layoutConfig.viewMode]);
+
+  const stopMetaGraphForceSim = useCallback(
+    (options?: { persist?: boolean }) => {
+      const nodes = metaGraphForceNodesRef.current;
+      metaGraphForceSimActiveRef.current = false;
+      if (nodes.length > 0) {
+        clusterOverridesRef.current = applyMetaGraphForceSimToClusterOverrides(
+          clusterOverridesRef.current,
+          nodes,
+          dimensions,
+          getOwnerForceSimContext
+        );
+      }
+      if (options?.persist !== false) {
+        persistClusterLayoutOverrides();
+      }
+      setPlaylistGraphForceSim(false);
+      metaGraphForceNodesRef.current = [];
+      metaGraphForceEdgesRef.current = [];
+      setClusterDragPreviewTick((value) => value + 1);
+    },
+    [dimensions, getOwnerForceSimContext, persistClusterLayoutOverrides]
+  );
+
   useEffect(() => {
     cancelMetaClusterTransitionRef.current = cancelMetaClusterCenterTransition;
   }, [cancelMetaClusterCenterTransition]);
@@ -1436,9 +1512,10 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
       if (useWebPerformanceOptimizations) {
         return getConglomeratePositionForSong(song, config);
       }
-      const clusterOverridesForLayout = draggingClusterIdRef.current
-        ? resolveLayoutClusterOverrides()
-        : layoutClusterOverrides;
+      const clusterOverridesForLayout =
+        draggingClusterIdRef.current || metaGraphForceSimActiveRef.current
+          ? resolveLayoutClusterOverrides()
+          : layoutClusterOverrides;
       return layoutSongPosition(song, dimensions, config, stats, {}, clusterOverridesForLayout, layoutSongs, {
         libraryScopeMode: scopeMode,
         enabledOwnerIds: activeContributorIds,
@@ -1885,9 +1962,10 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
   ]);
 
   const clusterRegions = useMemo(() => {
-    const clusterOverridesForLayout = draggingClusterIdRef.current
-      ? resolveLayoutClusterOverrides()
-      : layoutClusterOverrides;
+    const clusterOverridesForLayout =
+      draggingClusterIdRef.current || metaGraphForceSimActiveRef.current
+        ? resolveLayoutClusterOverrides()
+        : layoutClusterOverrides;
     const showIsolateRegions = useWebPerformanceOptimizations
       ? showIsolateContributorView
       : layoutLibraryScopeMode === "isolate";
@@ -1969,18 +2047,41 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     useWebPerformanceOptimizations,
     webPerOwnerClusterRegions,
     getConglomeratePositionForSong,
+    metaGraphForceSimTick,
   ]);
 
   const showPlaylistMetaGraph = playlistGraphViewActive;
+
+  const playlistMetaGraphEdges = useMemo(() => {
+    if (!showPlaylistMetaGraph) {
+      return [];
+    }
+    return buildPlaylistMetaGraphEdges(asStringArray(stats.playlistIds), graphSongs);
+  }, [graphSongs, showPlaylistMetaGraph, stats.playlistIds]);
 
   const playlistMetaGraphSegments = useMemo(() => {
     if (!showPlaylistMetaGraph) {
       return [];
     }
+    if (playlistGraphForceSim && metaGraphForceNodesRef.current.length > 0) {
+      const nodes = metaGraphForceNodesRef.current;
+      return metaGraphForceEdgesRef.current.map((edge) => ({
+        leftId: nodes[edge.sourceIndex].playlistId,
+        rightId: nodes[edge.targetIndex].playlistId,
+        sharedSongCount: edge.weight,
+        start: { x: nodes[edge.sourceIndex].x, y: nodes[edge.sourceIndex].y },
+        end: { x: nodes[edge.targetIndex].x, y: nodes[edge.targetIndex].y },
+      }));
+    }
     const centerByPlaylistId = buildPlaylistMetaGraphCenterMap(clusterRegions);
-    const edges = buildPlaylistMetaGraphEdges(asStringArray(stats.playlistIds), graphSongs);
-    return buildPlaylistMetaGraphSegments(edges, centerByPlaylistId);
-  }, [clusterRegions, graphSongs, showPlaylistMetaGraph, stats.playlistIds]);
+    return buildPlaylistMetaGraphSegments(playlistMetaGraphEdges, centerByPlaylistId);
+  }, [
+    clusterRegions,
+    metaGraphForceSimTick,
+    playlistGraphForceSim,
+    playlistMetaGraphEdges,
+    showPlaylistMetaGraph,
+  ]);
 
   const graphViewClusterRegions = useMemo(
     () =>
@@ -1989,6 +2090,26 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
         : clusterRegions,
     [clusterRegions, showPlaylistMetaGraph]
   );
+
+  const graphViewLabelRegions = useMemo(() => {
+    if (!playlistGraphForceSim || metaGraphForceNodesRef.current.length === 0) {
+      return graphViewClusterRegions;
+    }
+    const positionsByRegionId = new Map(
+      metaGraphForceNodesRef.current.map((node) => [node.regionId, node])
+    );
+    return graphViewClusterRegions.map((region) => {
+      const node = positionsByRegionId.get(region.id);
+      if (!node) {
+        return region;
+      }
+      return {
+        ...region,
+        center: { x: node.x, y: node.y },
+        displayOffset: undefined,
+      };
+    });
+  }, [graphViewClusterRegions, metaGraphForceSimTick, playlistGraphForceSim]);
 
   const maxPlaylistMetaGraphSharedCount = useMemo(
     () =>
@@ -2089,6 +2210,69 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     isClusterLayout || Boolean(fadingClusterSnapshot && fadingClusterSnapshot.opacity > 0);
   const showPlaylistClusterHulls = showClusterDecorations && !showPlaylistMetaGraph;
   const showSongNodesInGraph = !showPlaylistMetaGraph;
+
+  useEffect(() => {
+    if (!showPlaylistMetaGraph) {
+      metaGraphForceSimActiveRef.current = false;
+      setPlaylistGraphForceSim(false);
+      metaGraphForceNodesRef.current = [];
+      metaGraphForceEdgesRef.current = [];
+    }
+  }, [showPlaylistMetaGraph]);
+
+  useEffect(() => {
+    if (showPlaylistMetaGraph) {
+      setHoveredSongId(null);
+    }
+  }, [showPlaylistMetaGraph]);
+
+  useEffect(() => {
+    if (!playlistGraphForceSim || !showPlaylistMetaGraph) {
+      metaGraphForceSimActiveRef.current = false;
+      return undefined;
+    }
+
+    metaGraphForceSimActiveRef.current = true;
+    let frame = 0;
+    let animationId = 0;
+
+    const tick = () => {
+      if (!metaGraphForceSimActiveRef.current) {
+        return;
+      }
+      const nodes = metaGraphForceNodesRef.current;
+      const edges = metaGraphForceEdgesRef.current;
+      if (nodes.length === 0) {
+        animationId = requestAnimationFrame(tick);
+        return;
+      }
+
+      stepMetaGraphForceSim(nodes, edges);
+      frame += 1;
+      if (frame % 2 === 0) {
+        clusterOverridesRef.current = applyMetaGraphForceSimToClusterOverrides(
+          clusterOverridesRef.current,
+          nodes,
+          dimensions,
+          getOwnerForceSimContext
+        );
+      }
+      setMetaGraphForceSimTick((value) => value + 1);
+      animationId = requestAnimationFrame(tick);
+    };
+
+    animationId = requestAnimationFrame(tick);
+    return () => {
+      cancelAnimationFrame(animationId);
+      metaGraphForceSimActiveRef.current = false;
+    };
+  }, [
+    dimensions,
+    getOwnerForceSimContext,
+    playlistGraphForceSim,
+    resolveLayoutClusterOverrides,
+    showPlaylistMetaGraph,
+  ]);
   const activePathLayoutConfig =
     (cue ? resolveCueLayoutConfig(cue, musicService) : null) ?? strokeLayoutConfig;
   const showPathOverlays =
@@ -2537,6 +2721,9 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     if (isGuestViewOnly || !isClusterLayout || isSharedIsolateClusterDragDisabled) {
       return;
     }
+    if (playlistGraphForceSim) {
+      stopMetaGraphForceSim();
+    }
     event.stopPropagation();
     beginIsolateClusterDrag();
     const activeOverrides =
@@ -2728,7 +2915,8 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     if (
       (enableGraphNodeCulling || isLocalDesktopApp) &&
       !draggingClusterIdRef.current &&
-      graphTool === "navigate"
+      graphTool === "navigate" &&
+      !showPlaylistMetaGraph
     ) {
       const point = getLocalPoint(event, svgRef.current, contentGroupRef.current);
       scheduleHoverProbe(point);
@@ -4575,6 +4763,30 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
                   Playlist nodes and overlap lines only. Drag labels to rearrange.
                 </span>
               ) : null}
+              {showPlaylistMetaGraph ? (
+                <button
+                  type="button"
+                  className={playlistGraphForceSim ? "music-cue-layout-active" : ""}
+                  onClick={() => {
+                    if (playlistGraphForceSim) {
+                      stopMetaGraphForceSim();
+                      setStatusMessage("Force simulation stopped — cluster positions saved.");
+                      return;
+                    }
+                    metaGraphForceNodesRef.current = createMetaGraphForceNodes(graphViewClusterRegions);
+                    metaGraphForceEdgesRef.current = buildMetaGraphForceEdges(
+                      metaGraphForceNodesRef.current,
+                      playlistMetaGraphEdges
+                    );
+                    setPlaylistGraphForceSim(true);
+                    setStatusMessage(
+                      "Force simulation running — shared playlists attract, all nodes repel. Drag labels to nudge."
+                    );
+                  }}
+                >
+                  Force sim
+                </button>
+              ) : null}
             </>
           ) : musicService === "spotify" ? (
             <p className="music-cue-axis-note">Year timeline — songs spread left to right by release year.</p>
@@ -4797,7 +5009,10 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
 
               {showPlaylistMetaGraph
                 ? playlistMetaGraphSegments.map((segment) => {
-                    const weight = 0.35 + (segment.sharedSongCount / maxPlaylistMetaGraphSharedCount) * 1.1;
+                    const edgeStyle = playlistMetaGraphEdgeStyle(
+                      segment.sharedSongCount,
+                      maxPlaylistMetaGraphSharedCount
+                    );
                     return (
                       <line
                         key={`metagraph-${segment.leftId}-${segment.rightId}`}
@@ -4806,7 +5021,8 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
                         x2={segment.end.x}
                         y2={segment.end.y}
                         className="music-cue-playlist-metagraph-edge"
-                        strokeWidth={weight}
+                        stroke={edgeStyle.stroke}
+                        strokeWidth={edgeStyle.strokeWidth}
                         pointerEvents="none"
                         opacity={effectiveClusterRevealOpacity}
                       />
@@ -4890,7 +5106,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
                 ))}
 
               {isClusterLayout &&
-                graphViewClusterRegions.map((region) => {
+                graphViewLabelRegions.map((region) => {
                   const offset = region.displayOffset;
                   const transform = offset ? `translate(${offset.x} ${offset.y})` : undefined;
                   return (
@@ -4932,7 +5148,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
                   );
                 })}
 
-              {!showLabels && hoveredSong && hoveredSongRenderPosition && (
+              {!showLabels && !showPlaylistMetaGraph && hoveredSong && hoveredSongRenderPosition && (
                 <text
                   x={hoveredSongRenderPosition.x}
                   y={hoveredSongRenderPosition.y - 12}
