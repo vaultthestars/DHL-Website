@@ -13,8 +13,13 @@ import {
   toNormalizedPosition,
 } from "../lib/graphLayout";
 import { invalidatePlaylistOverlapLayoutCache } from "../lib/playlistOverlapLayout";
-import { buildPlaylistMetaGraphEdges, buildPlaylistMetaGraphSegments } from "../lib/playlistMetaGraph";
-import { UNASSIGNED_PLAYLIST_CLUSTER_ID, isExcludedPlaylistName } from "../lib/playlistConstants";
+import {
+  buildPlaylistMetaGraphCenterMap,
+  buildPlaylistMetaGraphEdges,
+  buildPlaylistMetaGraphSegments,
+  isPlaylistMetaGraphClusterRegion,
+} from "../lib/playlistMetaGraph";
+import { isExcludedPlaylistName } from "../lib/playlistConstants";
 import { asStringArray } from "../lib/arrayUtils";
 import { applyPlaybackAdvance } from "../lib/cuePlaybackTracking";
 import { formatDuration, sumDuration } from "../lib/formatDuration";
@@ -1050,8 +1055,10 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
 
   const showIsolateContributorView =
     libraryScopeMode === "isolate" && hasMultipleLibraryOwners(visibleSongs);
+  const playlistGraphViewActive =
+    playlistGraphView && isClusterView(layoutConfig) && layoutConfig.clusterMode === "playlist";
   const isSharedIsolateClusterDragDisabled =
-    songSpaceMode === "shared" && libraryScopeMode === "isolate";
+    songSpaceMode === "shared" && libraryScopeMode === "isolate" && !playlistGraphViewActive;
 
   const resolveConglomerateOverridesForLayout = useCallback((): ClusterCenterOverrides => {
     if (draggingClusterIdRef.current) {
@@ -1964,23 +1971,24 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     getConglomeratePositionForSong,
   ]);
 
-  const showPlaylistMetaGraph =
-    playlistGraphView &&
-    songSpaceMode === "mine" &&
-    isClusterView(layoutConfig) &&
-    layoutConfig.clusterMode === "playlist";
+  const showPlaylistMetaGraph = playlistGraphViewActive;
 
   const playlistMetaGraphSegments = useMemo(() => {
     if (!showPlaylistMetaGraph) {
       return [];
     }
-    const playlistRegions = clusterRegions.filter(
-      (region) => region.id !== UNASSIGNED_PLAYLIST_CLUSTER_ID && !region.id.startsWith("owner:")
-    );
-    const centerByPlaylistId = new Map(playlistRegions.map((region) => [region.id, region.center]));
+    const centerByPlaylistId = buildPlaylistMetaGraphCenterMap(clusterRegions);
     const edges = buildPlaylistMetaGraphEdges(asStringArray(stats.playlistIds), graphSongs);
     return buildPlaylistMetaGraphSegments(edges, centerByPlaylistId);
   }, [clusterRegions, graphSongs, showPlaylistMetaGraph, stats.playlistIds]);
+
+  const graphViewClusterRegions = useMemo(
+    () =>
+      showPlaylistMetaGraph
+        ? clusterRegions.filter((region) => isPlaylistMetaGraphClusterRegion(region.id))
+        : clusterRegions,
+    [clusterRegions, showPlaylistMetaGraph]
+  );
 
   const maxPlaylistMetaGraphSharedCount = useMemo(
     () =>
@@ -2079,6 +2087,8 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
   const isClusterLayout = isClusterLayoutConfig(layoutConfig);
   const showClusterDecorations =
     isClusterLayout || Boolean(fadingClusterSnapshot && fadingClusterSnapshot.opacity > 0);
+  const showPlaylistClusterHulls = showClusterDecorations && !showPlaylistMetaGraph;
+  const showSongNodesInGraph = !showPlaylistMetaGraph;
   const activePathLayoutConfig =
     (cue ? resolveCueLayoutConfig(cue, musicService) : null) ?? strokeLayoutConfig;
   const showPathOverlays =
@@ -4542,7 +4552,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
                   </button>
                 ))}
               </div>
-              {layoutConfig.clusterMode === "playlist" && songSpaceMode === "mine" ? (
+              {layoutConfig.clusterMode === "playlist" ? (
                 <button
                   type="button"
                   className={playlistGraphView ? "music-cue-layout-active" : ""}
@@ -4552,7 +4562,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
                     savePlaylistGraphView(enabled);
                     setStatusMessage(
                       enabled
-                        ? "Graph view on — lines show shared songs between playlists. Drag playlist labels to untangle."
+                        ? "Graph view on — playlist nodes and overlap lines only. Drag labels to untangle."
                         : "Graph view off."
                     );
                   }}
@@ -4562,7 +4572,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
               ) : null}
               {showPlaylistMetaGraph ? (
                 <span className="music-cue-axis-note">
-                  Lines connect playlists that share songs. Drag playlist labels to rearrange.
+                  Playlist nodes and overlap lines only. Drag labels to rearrange.
                 </span>
               ) : null}
             </>
@@ -4754,7 +4764,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
                 />
               )}
 
-              {showClusterDecorations && fadingClusterSnapshot?.regions.map((region) => (
+              {showPlaylistClusterHulls && fadingClusterSnapshot?.regions.map((region) => (
                 <path
                   key={`fading-region-${region.id}`}
                   d={region.hullPath}
@@ -4766,7 +4776,8 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
                 />
               ))}
 
-              {isClusterLayout &&
+              {showPlaylistClusterHulls &&
+                isClusterLayout &&
                 clusterRegions.map((region) => {
                   const offset = region.displayOffset;
                   const transform = offset ? `translate(${offset.x} ${offset.y})` : undefined;
@@ -4812,12 +4823,13 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
                   }`}
                 />
               ))}
-              {showPathOverlays && cueEdgePath && !isDrawingNewPath && (
+              {showPathOverlays && showSongNodesInGraph && cueEdgePath && !isDrawingNewPath && (
                 <path d={cueEdgePath} className="music-cue-edge-path" />
               )}
 
 
-              {visiblePositionedSongs.map(({ song, position }) => {
+              {showSongNodesInGraph &&
+                visiblePositionedSongs.map(({ song, position }) => {
                 const canonicalId = getCanonicalSongId(song.id);
                 const inCue = cue?.songs.some((entry) => entry.id === canonicalId);
                 const isUnavailable = unavailableSongIds.has(canonicalId);
@@ -4863,7 +4875,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
                 );
               })}
 
-              {showClusterDecorations &&
+              {showPlaylistClusterHulls &&
                 fadingClusterSnapshot?.regions.map((region) => (
                   <text
                     key={`fading-label-${region.id}`}
@@ -4878,7 +4890,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
                 ))}
 
               {isClusterLayout &&
-clusterRegions.map((region) => {
+                graphViewClusterRegions.map((region) => {
                   const offset = region.displayOffset;
                   const transform = offset ? `translate(${offset.x} ${offset.y})` : undefined;
                   return (

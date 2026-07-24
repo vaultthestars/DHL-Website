@@ -1,5 +1,33 @@
 import { asStringArray, getSongPlaylists } from "./arrayUtils";
+import { parseOwnerScopedRegionId } from "./isolateClusterLayout";
+import { UNASSIGNED_PLAYLIST_CLUSTER_ID } from "./playlistConstants";
 import type { GraphPoint, Song } from "./types";
+
+/** Playlist cluster labels in the meta-graph (excludes unassigned and per-owner contributor shells). */
+export const isPlaylistMetaGraphClusterRegion = (regionId: string): boolean => {
+  if (!regionId || regionId === UNASSIGNED_PLAYLIST_CLUSTER_ID) {
+    return false;
+  }
+  if (!regionId.startsWith("owner:")) {
+    return true;
+  }
+  const { ownerId, clusterId } = parseOwnerScopedRegionId(regionId);
+  return Boolean(ownerId) && clusterId !== ownerId;
+};
+
+export const buildPlaylistMetaGraphCenterMap = (
+  regions: Array<{ id: string; center: GraphPoint }>
+): Map<string, GraphPoint> => {
+  const centerByPlaylistId = new Map<string, GraphPoint>();
+  regions.forEach((region) => {
+    if (!isPlaylistMetaGraphClusterRegion(region.id)) {
+      return;
+    }
+    const { clusterId } = parseOwnerScopedRegionId(region.id);
+    centerByPlaylistId.set(clusterId, region.center);
+  });
+  return centerByPlaylistId;
+};
 
 export type PlaylistMetaGraphEdge = {
   leftId: string;
