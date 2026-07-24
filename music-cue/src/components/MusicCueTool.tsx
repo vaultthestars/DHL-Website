@@ -192,7 +192,8 @@ import {
   compressSharedAxisConglomerateBandGap,
   computeIsolateDisplayContext,
 } from "../lib/isolateDisplayTransform";
-import { getEnabledOwnerMetaClusters, hasMultipleLibraryOwners, resolveIsolateDisplayOwnerId } from "../lib/libraryScope";
+import { loadCachedSpotifyLibrary } from "../lib/spotifyLibraryCache";
+import { reclaimSpotifyWebStorageQuota } from "../lib/webStorageCleanup";
 
 const getGraphDimensions = (panel: HTMLDivElement | null): GraphDimensions => ({
   width: Math.max(320, panel?.clientWidth ?? 800),
@@ -3199,6 +3200,32 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
   [musicService]
 );
 
+  useEffect(() => {
+    if (!isWebDeployment || musicService !== "spotify") {
+      return;
+    }
+    reclaimSpotifyWebStorageQuota();
+    let cancelled = false;
+    void loadCachedSpotifyLibrary().then((cached) => {
+      if (cancelled || !cached || cached.songs.length === 0 || songsRef.current.length > 0) {
+        return;
+      }
+      if (songSpaceMode !== "mine") {
+        return;
+      }
+      applyLoadedLibrary(
+        cached.songs,
+        cached.stats ?? normalizeStats(null, cached.songs),
+        `My song space — ${cached.songs.length} tracks (cached).`,
+        {},
+        { persist: false }
+      );
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [applyLoadedLibrary, musicService, songSpaceMode]);
+
   const applyMergedSharedLibrary = useCallback(
     async (contributorIds: string[], contributors: LibraryContributor[]) => {
       if (contributorIds.length === 0) {
@@ -3362,23 +3389,25 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
                 ? "No shared libraries published yet. Click Load & share library to publish yours."
                 : "No shared libraries published yet. Connect Spotify and use Load & share library."
           );
-        } else if (
+        } else         if (
           isWebDeployment &&
           musicService === "spotify" &&
           spotifyStatus?.connected &&
           songSpaceMode === "mine" &&
           songsRef.current.length === 0
         ) {
-          const stored = loadPersonalSpotifyLibrary();
-          if (stored.songs.length > 0) {
+          void loadCachedSpotifyLibrary().then((stored) => {
+            if (!stored || stored.songs.length === 0) {
+              return;
+            }
             applyLoadedLibrary(
               stored.songs,
               stored.stats ?? normalizeStats(null, stored.songs),
               `Restored your library (${stored.songs.length} tracks).`,
               {},
-              { persist: true }
+              { persist: false }
             );
-          }
+          });
         }
         return contributors;
       } catch (error) {
@@ -3412,7 +3441,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     if (spotifyStatus?.connected === true) {
       return;
     }
-    const hasPersonalLibrary = loadPersonalSpotifyLibrary().songs.length > 0;
+    const hasPersonalLibrary = songs.length > 0;
     if (hasPersonalLibrary && songSpaceMode === "mine") {
       return;
     }
@@ -3500,20 +3529,21 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
       if (mode === "shared") {
         void refreshSharedContributors({ loadLibrary: true, forceRefresh: true });
       } else if (isWebDeployment && musicService === "spotify") {
-        const stored = loadPersonalSpotifyLibrary();
-        if (stored.songs.length > 0) {
-          applyLoadedLibrary(
-            stored.songs,
-            stored.stats ?? normalizeStats(null, stored.songs),
-            `My song space — ${stored.songs.length} tracks.`,
-            {},
-            { persist: true }
-          );
-        } else {
+        void loadCachedSpotifyLibrary().then((stored) => {
+          if (stored && stored.songs.length > 0) {
+            applyLoadedLibrary(
+              stored.songs,
+              stored.stats ?? normalizeStats(null, stored.songs),
+              `My song space — ${stored.songs.length} tracks.`,
+              {},
+              { persist: false }
+            );
+            return;
+          }
           setSongs([]);
           setStats(normalizeStats(null, []));
           setStatusMessage("My song space — load your library from Spotify to begin.");
-        }
+        });
       }
       setStatusMessage(
         mode === "mine"
@@ -3549,21 +3579,16 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
   };
 
   const handlePublishSharedLibrary = async () => {
-    if (songs.length === 0) {
-      setStatusMessage("Load your library before sharing.");
-      return;
-    }
-    const contributor = spotifyStatus?.userId
-      ? { id: spotifyStatus.userId, name: spotifyStatus.displayName || "Spotify user" }
-      : null;
-    if (!contributor) {
+    if (!spotifyStatus?.connected || !spotifyStatus.userId) {
       setStatusMessage("Connect Spotify before sharing your library.");
       return;
     }
+    reclaimSpotifyWebStorageQuota();
     setIsImporting(true);
     try {
       const published = await publishSharedLibrary();
       saveLocalContributorId(published.contributor.id);
+      await clearSpotifyImportSession();
       await refreshSharedContributors({ loadLibrary: songSpaceMode === "shared" });
       setStatusMessage(
         `Published ${published.trackCount} tracks as ${published.contributor.name} to the shared library.`
@@ -3628,6 +3653,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
       setStatusMessage("Connect Spotify before loading your library.");
       return;
     }
+    reclaimSpotifyWebStorageQuota();
     const cooldownMs = getSpotifyImportRateLimitCooldownMs();
     if (cooldownMs > 0) {
       setStatusMessage(
@@ -3735,10 +3761,6 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
   } | null => {
     if (songs.length > 0 && stats) {
       return { songs, stats };
-    }
-    const cached = loadPersonalSpotifyLibrary();
-    if (cached.songs.length > 0 && cached.stats) {
-      return { songs: cached.songs, stats: cached.stats };
     }
     return null;
   }, [songs, stats]);

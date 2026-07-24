@@ -135,7 +135,11 @@ const saveSpotifyImportHint = (session: SpotifyImportSession, lastRateLimitedAt?
     label: buildResumeLabel(session),
     lastRateLimitedAt: lastRateLimitedAt ?? existing?.lastRateLimitedAt,
   };
-  localStorage.setItem(HINT_KEY, JSON.stringify(hint));
+  try {
+    localStorage.setItem(HINT_KEY, JSON.stringify(hint));
+  } catch {
+    // Hint is optional when storage is full.
+  }
 };
 
 const loadSpotifyImportHint = (): SpotifyImportHint | null => {
@@ -296,13 +300,9 @@ export const saveSpotifyImportSession = async (session: SpotifyImportSession): P
   saveSpotifyImportHint(payload);
   try {
     await saveImportSessionToIndexedDb(payload);
+    localStorage.removeItem(SESSION_KEY);
   } catch {
-    // IndexedDB failed; try legacy localStorage as a last resort.
-  }
-  try {
-    localStorage.setItem(SESSION_KEY, JSON.stringify(payload));
-  } catch {
-    // Full session can exceed localStorage quota on very large libraries.
+    // Import resume requires IndexedDB on the web.
   }
 };
 

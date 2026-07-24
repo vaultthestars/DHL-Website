@@ -14,6 +14,8 @@ import {
 import { defaultLayoutConfig, migrateLegacyLayoutMode } from "./layoutMetrics";
 import { isWebDeployment, isLocalDesktopApp } from "./runtime";
 import { asStringArray, getSongPlaylists, normalizeLibraryStatsFields } from "./arrayUtils";
+import { clearCachedSpotifyLibrary, saveCachedSpotifyLibrary } from "./spotifyLibraryCache";
+import { reclaimSpotifyWebStorageQuota } from "./webStorageCleanup";
 
 export type ClusterLayoutScope = LibraryScopeMode;
 
@@ -257,12 +259,47 @@ export const savePlaylistClusterCenterOverrides = (
 
 export { emptyClusterOverrides };
 
+const isQuotaExceededError = (error: unknown): boolean => {
+  if (!(error instanceof DOMException)) {
+    return false;
+  }
+  return error.name === "QuotaExceededError" || error.code === 22 || error.code === 1014;
+};
+
+const safeLocalStorageSetItem = (key: string, value: string): void => {
+  try {
+    localStorage.setItem(key, value);
+  } catch (error) {
+    if (isQuotaExceededError(error)) {
+      reclaimSpotifyWebStorageQuota();
+      try {
+        localStorage.setItem(key, value);
+      } catch {
+        // Settings/layout prefs are best-effort when the origin is full.
+      }
+      return;
+    }
+    throw error;
+  }
+};
+
 export const saveLibrary = (serviceId: MusicServiceId, songs: Song[], stats: LibraryStats): void => {
-  localStorage.setItem(libraryKey(serviceId), JSON.stringify(songs));
-  localStorage.setItem(statsKey(serviceId), JSON.stringify(stats));
+  if (isWebDeployment && serviceId === "spotify") {
+    reclaimSpotifyWebStorageQuota();
+    void saveCachedSpotifyLibrary(songs, stats).catch(() => {
+      // IndexedDB is the web cache of record; ignore transient write failures.
+    });
+    return;
+  }
+  safeLocalStorageSetItem(libraryKey(serviceId), JSON.stringify(songs));
+  safeLocalStorageSetItem(statsKey(serviceId), JSON.stringify(stats));
 };
 
 export const clearStoredLibrary = (serviceId: MusicServiceId): void => {
+  if (isWebDeployment && serviceId === "spotify") {
+    reclaimSpotifyWebStorageQuota();
+    void clearCachedSpotifyLibrary();
+  }
   localStorage.removeItem(libraryKey(serviceId));
   localStorage.removeItem(statsKey(serviceId));
 };
@@ -295,6 +332,10 @@ export const loadLibrary = (
 
 /** Load a cached personal Spotify library, discarding any legacy mock/shared snapshot data. */
 export const loadPersonalSpotifyLibrary = (): { songs: Song[]; stats: LibraryStats | null } => {
+  if (isWebDeployment) {
+    reclaimSpotifyWebStorageQuota();
+    return { songs: [], stats: null };
+  }
   const library = loadLibrary("spotify");
   const hasMockOwners = library.songs.some((song) =>
     (song.owners ?? []).some((owner) => isMockContributorId(owner.id))
