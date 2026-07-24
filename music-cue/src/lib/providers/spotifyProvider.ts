@@ -89,6 +89,17 @@ const isNetworkError = (error: unknown): boolean => {
   );
 };
 
+const isTransientSpotifyApiError = (message: string): boolean => {
+  const normalized = message.toLowerCase();
+  return (
+    normalized.includes("temporarily unavailable") ||
+    normalized.includes("spotify api error (503)") ||
+    normalized.includes("spotify api error (502)") ||
+    normalized.includes("spotify api error (504)") ||
+    /\b503\b/.test(message)
+  );
+};
+
 const fetchJson = async <T>(
   url: string,
   init?: RequestInit,
@@ -146,6 +157,11 @@ const fetchJson = async <T>(
     }
 
     if ((response.status === 502 || response.status === 503) && attempt < 2) {
+      await sleep(2_000 * (attempt + 1));
+      return fetchJson<T>(url, init, attempt + 1, options);
+    }
+
+    if (isTransientSpotifyApiError(errorMessage) && attempt < 2) {
       await sleep(2_000 * (attempt + 1));
       return fetchJson<T>(url, init, attempt + 1, options);
     }
@@ -646,7 +662,22 @@ const loadPlaylistTracksPhase = async (
       continue;
     }
 
-    await loadOnePlaylist(session, playlist, index, totalPlaylists, onProgress);
+    try {
+      await loadOnePlaylist(session, playlist, index, totalPlaylists, onProgress);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Could not load playlist tracks.";
+      session.playlistItemsByPlaylistId[playlist.id] = session.activePlaylistItems;
+      session.completedPlaylistIds.push(playlist.id);
+      session.activePlaylistId = null;
+      session.activePlaylistItems = [];
+      session.activePlaylistNext = null;
+      persistSession(session);
+      reportProgress(onProgress, {
+        phase: "playlist-tracks",
+        message: `Skipped ${playlist.name} after Spotify error — continuing (${message})`,
+        percent: 30 + ((index + 1) / Math.max(1, totalPlaylists)) * 58,
+      });
+    }
   }
 };
 
