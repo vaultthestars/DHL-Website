@@ -21,10 +21,10 @@ import {
   playlistMetaGraphEdgeStyle,
 } from "../lib/playlistMetaGraph";
 import {
-  applyMetaGraphForceSimToClusterOverrides,
   buildMetaGraphForceEdges,
   createMetaGraphForceNodes,
   filterPlaylistOverridesForLayoutScope,
+  mergeMetaGraphForceSimIntoClusterOverrides,
   stepMetaGraphForceSim,
   type MetaGraphForceEdge,
   type MetaGraphForceSimPersistContext,
@@ -96,7 +96,6 @@ import {
 } from "../lib/graphViewportCulling";
 import {
   loadBuildMode,
-  loadBundledClusterCenterOverrides,
   loadClusterCenterOverrides,
   loadGraphTool,
   loadLayoutConfig,
@@ -682,6 +681,27 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
         songSpaceMode === "mine" && localContributorId ? localContributorId : null,
     }),
     [activeLayoutScope, localContributorId, songSpaceMode]
+  );
+
+  const resolveForceSimOverrideBase = useCallback((): ClusterCenterOverrides => {
+    if (usesSplitClusterLayoutScopes) {
+      return activeLayoutScope === "conglomerate"
+        ? conglomerateClusterOverridesRef.current
+        : isolateClusterOverridesRef.current;
+    }
+    return clusterOverridesRef.current;
+  }, [activeLayoutScope, usesSplitClusterLayoutScopes]);
+
+  const commitForceSimOverrideBase = useCallback(
+    (overrides: ClusterCenterOverrides) => {
+      clusterOverridesRef.current = overrides;
+      if (activeLayoutScope === "conglomerate") {
+        conglomerateClusterOverridesRef.current = overrides;
+      } else {
+        isolateClusterOverridesRef.current = overrides;
+      }
+    },
+    [activeLayoutScope]
   );
 
   const resolveLayoutClusterOverrides = useCallback(
@@ -1369,21 +1389,13 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
       ...nextOverrides,
       playlist: filterPlaylistOverridesForLayoutScope(nextOverrides.playlist, activeLayoutScope),
     };
-    clusterOverridesRef.current = scopedOverrides;
-    if (activeLayoutScope === "conglomerate") {
-      conglomerateClusterOverridesRef.current = scopedOverrides;
-    } else {
-      isolateClusterOverridesRef.current = scopedOverrides;
-    }
+    commitForceSimOverrideBase(scopedOverrides);
     if (!overrides) {
       setClusterOverrides(scopedOverrides);
     }
-    if (layoutConfig.viewMode === "cluster" && layoutConfig.clusterMode === "genre") {
-      saveGenreClusterCenterOverrides(scopedOverrides.genre, activeLayoutScope);
-    } else if (layoutConfig.viewMode === "cluster" && layoutConfig.clusterMode === "playlist") {
-      savePlaylistClusterCenterOverrides(scopedOverrides.playlist, activeLayoutScope);
-      invalidatePlaylistOverlapLayoutCache();
-    }
+    saveGenreClusterCenterOverrides(scopedOverrides.genre, activeLayoutScope);
+    savePlaylistClusterCenterOverrides(scopedOverrides.playlist, activeLayoutScope);
+    invalidatePlaylistOverlapLayoutCache();
     invalidateLayoutPositionCaches();
     saveClusterCenterOverridesForScope(activeLayoutScope, scopedOverrides);
     if (isWebDeployment) {
@@ -1391,54 +1403,50 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     } else {
       void syncClusterLayoutToServer(scopedOverrides);
     }
-  }, [activeLayoutScope, layoutConfig.clusterMode, layoutConfig.viewMode]);
+  }, [activeLayoutScope, commitForceSimOverrideBase]);
 
   const stopMetaGraphForceSim = useCallback(
     (options?: { persist?: boolean }) => {
-      const nodes = metaGraphForceNodesRef.current;
-      let nextOverrides = clusterOverridesRef.current;
+      const nodes = [...metaGraphForceNodesRef.current];
+      let nextOverrides = resolveForceSimOverrideBase();
       if (nodes.length > 0) {
-        nextOverrides = applyMetaGraphForceSimToClusterOverrides(
-          clusterOverridesRef.current,
+        nextOverrides = mergeMetaGraphForceSimIntoClusterOverrides(
+          nextOverrides,
           nodes,
           dimensions,
           getOwnerForceSimContext,
           forceSimPersistContext
         );
-        nextOverrides = {
-          ...nextOverrides,
-          playlist: filterPlaylistOverridesForLayoutScope(
-            nextOverrides.playlist,
-            activeLayoutScope
-          ),
-        };
-        clusterOverridesRef.current = nextOverrides;
+        commitForceSimOverrideBase(nextOverrides);
       }
 
-      if (options?.persist !== false) {
+      if (options?.persist !== false && nodes.length > 0) {
         invalidatePlaylistOverlapLayoutCache();
         invalidateLayoutPositionCaches();
         flushSync(() => {
+          metaGraphForceSimActiveRef.current = false;
           applyClusterOverrides(nextOverrides);
         });
         persistClusterLayoutOverrides(nextOverrides);
-        pauseLayoutSync(1_500);
+        pauseLayoutSync(3_000);
+      } else {
+        metaGraphForceSimActiveRef.current = false;
       }
 
-      metaGraphForceSimActiveRef.current = false;
       setPlaylistGraphForceSim(false);
       metaGraphForceNodesRef.current = [];
       metaGraphForceEdgesRef.current = [];
       setClusterDragPreviewTick((value) => value + 1);
     },
     [
-      activeLayoutScope,
       applyClusterOverrides,
+      commitForceSimOverrideBase,
       dimensions,
       forceSimPersistContext,
       getOwnerForceSimContext,
       pauseLayoutSync,
       persistClusterLayoutOverrides,
+      resolveForceSimOverrideBase,
     ]
   );
 
@@ -2331,20 +2339,14 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
       }
 
       stepMetaGraphForceSim(nodes, edges);
-      const nextOverrides = applyMetaGraphForceSimToClusterOverrides(
-        clusterOverridesRef.current,
+      const nextOverrides = mergeMetaGraphForceSimIntoClusterOverrides(
+        resolveForceSimOverrideBase(),
         nodes,
         dimensions,
         getOwnerForceSimContext,
         forceSimPersistContext
       );
-      clusterOverridesRef.current = {
-        ...nextOverrides,
-        playlist: filterPlaylistOverridesForLayoutScope(
-          nextOverrides.playlist,
-          activeLayoutScope
-        ),
-      };
+      commitForceSimOverrideBase(nextOverrides);
       setMetaGraphForceSimTick((value) => value + 1);
       animationId = requestAnimationFrame(tick);
     };
@@ -2354,11 +2356,12 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
       cancelAnimationFrame(animationId);
     };
   }, [
-    activeLayoutScope,
+    commitForceSimOverrideBase,
     dimensions,
     forceSimPersistContext,
     getOwnerForceSimContext,
     playlistGraphForceSim,
+    resolveForceSimOverrideBase,
     showPlaylistMetaGraph,
   ]);
   const activePathLayoutConfig =
@@ -4324,11 +4327,8 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
   }, [isSharedSongSpace, sharedContributorCount]);
 
   const roomClusterLayoutSeed = useMemo(
-    () =>
-      isSharedSongSpace
-        ? loadBundledClusterCenterOverrides()
-        : loadClusterCenterOverrides(activeLayoutScope),
-    [activeLayoutScope, isSharedSongSpace]
+    () => loadClusterCenterOverrides(activeLayoutScope),
+    [activeLayoutScope]
   );
 
   const presenceLayout = useMemo<CollaborativePresenceLayout>(

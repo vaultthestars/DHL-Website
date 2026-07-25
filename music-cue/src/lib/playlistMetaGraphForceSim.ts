@@ -237,12 +237,31 @@ export const buildMetaGraphForceSimPlaylistOverrides = (
       updates[ownerScopedOverrideKey(persistContext.mineContributorId, node.playlistId)] = displayNorm;
       return;
     }
-    if (persistContext.layoutScope === "conglomerate") {
-      updates[node.playlistId] = displayNorm;
-    }
+    updates[node.playlistId] = displayNorm;
   });
 
   return updates;
+};
+
+/** Merge live force-sim node positions into the cluster override store for the active layout scope. */
+export const mergeMetaGraphForceSimIntoClusterOverrides = (
+  current: ClusterCenterOverrides,
+  nodes: MetaGraphForceNode[],
+  dimensions: { width: number; height: number },
+  getOwnerContext: (ownerId: string) => OwnerForceSimContext | null,
+  persistContext: MetaGraphForceSimPersistContext
+): ClusterCenterOverrides => {
+  const playlistUpdates = buildMetaGraphForceSimPlaylistOverrides(
+    nodes,
+    dimensions,
+    getOwnerContext,
+    persistContext
+  );
+  const mergedPlaylist = { ...current.playlist, ...playlistUpdates };
+  return {
+    ...current,
+    playlist: filterPlaylistOverridesForLayoutScope(mergedPlaylist, persistContext.layoutScope),
+  };
 };
 
 export const applyMetaGraphForceSimToClusterOverrides = (

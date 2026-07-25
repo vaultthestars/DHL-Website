@@ -27,6 +27,7 @@ const CollaborativeLayoutSync = ({
   draggingClusterIdRef,
   metaGraphForceSimActiveRef,
   layoutSyncPausedRef,
+  layoutScope,
   roomLayoutSeed,
   clusterLayoutSyncMode,
   enableRemoteClusterPublish,
@@ -37,12 +38,13 @@ const CollaborativeLayoutSync = ({
   draggingClusterIdRef: RefObject<string | null>;
   metaGraphForceSimActiveRef?: RefObject<boolean>;
   layoutSyncPausedRef?: RefObject<boolean>;
+  layoutScope: ClusterLayoutScope;
   roomLayoutSeed: ClusterCenterOverrides;
   clusterLayoutSyncMode: ClusterLayoutSyncMode;
   enableRemoteClusterPublish: boolean;
   publishRef: MutableRefObject<(overrides: ClusterCenterOverrides) => void>;
 }) => {
-  const pageDataKey = PLAYHTML_CLUSTER_LAYOUT_KEY;
+  const pageDataKey = clusterLayoutPageDataKey(layoutScope);
   const [remoteOverrides, setRemoteOverrides] = usePageData<ClusterCenterOverrides>(
     pageDataKey,
     roomLayoutSeed
@@ -170,12 +172,13 @@ export const CollaborativeLayoutProvider = ({
     <>
       {children}
       <CollaborativeLayoutSync
-        key={PLAYHTML_CLUSTER_LAYOUT_KEY}
+        key={clusterLayoutPageDataKey(layoutScope)}
         clusterOverrides={clusterOverrides}
         setClusterOverrides={setClusterOverrides}
         draggingClusterIdRef={draggingClusterIdRef}
         metaGraphForceSimActiveRef={metaGraphForceSimActiveRef}
         layoutSyncPausedRef={layoutSyncPausedRef}
+        layoutScope={layoutScope}
         roomLayoutSeed={resolvedRoomLayoutSeed}
         clusterLayoutSyncMode={clusterLayoutSyncMode}
         enableRemoteClusterPublish={enableRemoteClusterPublish}
