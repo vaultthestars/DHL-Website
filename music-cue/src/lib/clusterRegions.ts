@@ -451,36 +451,41 @@ export const buildClusterRegions = (
       }
       const padding = Math.max(20, Math.min(42, 14 + Math.sqrt(members.length) * 3));
       let hullPath: string;
-      let labelCenter: GraphPoint;
+      const overrideLabelCenter =
+        clusterMode === "playlist"
+          ? toDisplayPoint
+            ? toDisplayPoint(cluster.center)
+            : cluster.center
+          : null;
+      let labelCenter: GraphPoint = overrideLabelCenter ?? cluster.center;
       if (useLiteHulls) {
         const memberPositions = sampleMemberPositions(members, getPosition).map((point) =>
           toDisplayPoint ? toDisplayPoint(point) : point
         );
         if (memberPositions.length >= 2) {
           hullPath = ellipseHullPathFromPoints(memberPositions, padding);
-          labelCenter = memberPositions.reduce(
-            (sum, point) => ({ x: sum.x + point.x, y: sum.y + point.y }),
-            { x: 0, y: 0 }
-          );
-          labelCenter.x /= memberPositions.length;
-          labelCenter.y /= memberPositions.length;
+          if (!overrideLabelCenter) {
+            labelCenter = memberPositions.reduce(
+              (sum, point) => ({ x: sum.x + point.x, y: sum.y + point.y }),
+              { x: 0, y: 0 }
+            );
+            labelCenter.x /= memberPositions.length;
+            labelCenter.y /= memberPositions.length;
+          }
         } else {
           const displayCenter = toDisplayPoint ? toDisplayPoint(cluster.center) : cluster.center;
           const radius = estimateClusterHullRadius(members.length, padding);
           hullPath = circleHullPath(displayCenter, radius);
-          labelCenter = displayCenter;
+          labelCenter = overrideLabelCenter ?? displayCenter;
         }
       } else {
         const memberPositions = members.map((song) => getPosition(song));
         hullPath = pointsToHullPath(memberPositions, padding);
-        labelCenter =
-          memberPositions.length > 0
-            ? memberPositions.reduce(
-                (sum, point) => ({ x: sum.x + point.x, y: sum.y + point.y }),
-                { x: 0, y: 0 }
-              )
-            : cluster.center;
-        if (memberPositions.length > 0) {
+        if (!overrideLabelCenter && memberPositions.length > 0) {
+          labelCenter = memberPositions.reduce(
+            (sum, point) => ({ x: sum.x + point.x, y: sum.y + point.y }),
+            { x: 0, y: 0 }
+          );
           labelCenter.x /= memberPositions.length;
           labelCenter.y /= memberPositions.length;
         }

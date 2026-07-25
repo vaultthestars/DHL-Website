@@ -26,7 +26,6 @@ import {
   createMetaGraphForceNodes,
   filterPlaylistOverridesForLayoutScope,
   mergeMetaGraphForceSimIntoClusterOverrides,
-  stepMetaGraphForceSim,
   type MetaGraphForceEdge,
   type MetaGraphForceSimPersistContext,
   type MetaGraphForceNode,
@@ -121,6 +120,7 @@ import {
 } from "../lib/storage";
 import { getActiveClusterLayoutScope, getEffectiveLibraryScopeMode, isSingleContributorSharedLibrary } from "../lib/clusterLayoutScope";
 import { SpotifySyncDialog } from "./SpotifySyncDialog";
+import { PlaylistGraphForceSimLayer } from "./PlaylistGraphForceSimLayer";
 import {
   getAxisMetricLabel,
   getAxisMetricsForService,
@@ -830,7 +830,6 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
   const [rateLimitCooldownMs, setRateLimitCooldownMs] = useState(0);
   const [playlistGraphView, setPlaylistGraphView] = useState(() => loadPlaylistGraphView());
   const [playlistGraphForceSim, setPlaylistGraphForceSim] = useState(false);
-  const [metaGraphForceSimTick, setMetaGraphForceSimTick] = useState(0);
   const [shiftHeld, setShiftHeld] = useState(false);
   const [boxSelectRect, setBoxSelectRect] = useState<BoxSelectRect | null>(null);
   const [selectedClusterIds, setSelectedClusterIds] = useState<Set<string>>(() => new Set());
@@ -838,8 +837,11 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
   const metaGraphForceSimActiveRef = useRef(false);
   const metaGraphForceNodesRef = useRef<MetaGraphForceNode[]>([]);
   const metaGraphForceEdgesRef = useRef<MetaGraphForceEdge[]>([]);
-  const forceSimRafRef = useRef(0);
-  const forceSimLoopRef = useRef<() => void>(() => {});
+  const personalLibrarySnapshotRef = useRef<{
+    songs: Song[];
+    stats: LibraryStats;
+    playlistOwners: Record<string, string>;
+  } | null>(null);
   const clusterDragRafRef = useRef(0);
   const hoverProbeRafRef = useRef(0);
   const pendingHoverPointRef = useRef<GraphPoint | null>(null);
@@ -1439,10 +1441,6 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
       setPlaylistGraphForceSim(false);
       metaGraphForceNodesRef.current = [];
       metaGraphForceEdgesRef.current = [];
-      if (forceSimRafRef.current) {
-        cancelAnimationFrame(forceSimRafRef.current);
-        forceSimRafRef.current = 0;
-      }
       setClusterDragPreviewTick((value) => value + 1);
     },
     [
@@ -2198,58 +2196,22 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     return buildPlaylistMetaGraphEdges(asStringArray(stats.playlistIds), graphSongs);
   }, [graphSongs, showPlaylistMetaGraph, stats.playlistIds]);
 
-  const playlistMetaGraphSegments = useMemo(() => {
+  const maxPlaylistMetaGraphSharedCount = useMemo(
+    () =>
+      playlistMetaGraphEdges.reduce(
+        (max, edge) => Math.max(max, edge.sharedSongCount),
+        1
+      ),
+    [playlistMetaGraphEdges]
+  );
+
+  const staticPlaylistMetaGraphSegments = useMemo(() => {
     if (!showPlaylistMetaGraph) {
       return [];
     }
-    if (playlistGraphForceSim && metaGraphForceNodesRef.current.length > 0) {
-      const nodes = metaGraphForceNodesRef.current;
-      return metaGraphForceEdgesRef.current.map((edge) => ({
-        leftId: nodes[edge.sourceIndex].playlistId,
-        rightId: nodes[edge.targetIndex].playlistId,
-        sharedSongCount: edge.weight,
-        start: { x: nodes[edge.sourceIndex].x, y: nodes[edge.sourceIndex].y },
-        end: { x: nodes[edge.targetIndex].x, y: nodes[edge.targetIndex].y },
-      }));
-    }
     const centerByPlaylistId = buildPlaylistMetaGraphCenterMap(graphViewClusterRegions);
     return buildPlaylistMetaGraphSegments(playlistMetaGraphEdges, centerByPlaylistId);
-  }, [
-    graphViewClusterRegions,
-    metaGraphForceSimTick,
-    playlistGraphForceSim,
-    playlistMetaGraphEdges,
-    showPlaylistMetaGraph,
-  ]);
-
-  const graphViewLabelRegions = useMemo(() => {
-    if (!playlistGraphForceSim || metaGraphForceNodesRef.current.length === 0) {
-      return graphViewClusterRegions;
-    }
-    const positionsByRegionId = new Map(
-      metaGraphForceNodesRef.current.map((node) => [node.regionId, node])
-    );
-    return graphViewClusterRegions.map((region) => {
-      const node = positionsByRegionId.get(region.id);
-      if (!node) {
-        return region;
-      }
-      return {
-        ...region,
-        center: { x: node.x, y: node.y },
-        displayOffset: undefined,
-      };
-    });
-  }, [graphViewClusterRegions, metaGraphForceSimTick, playlistGraphForceSim]);
-
-  const maxPlaylistMetaGraphSharedCount = useMemo(
-    () =>
-      playlistMetaGraphSegments.reduce(
-        (max, segment) => Math.max(max, segment.sharedSongCount),
-        1
-      ),
-    [playlistMetaGraphSegments]
-  );
+  }, [graphViewClusterRegions, playlistMetaGraphEdges, showPlaylistMetaGraph]);
 
   useLayoutEffect(() => {
     const previousKey = prevLayoutForClustersRef.current;
@@ -2343,13 +2305,10 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
   const showSongNodesInGraph = !showPlaylistMetaGraph;
 
   useEffect(() => {
-    if (!showPlaylistMetaGraph) {
-      metaGraphForceSimActiveRef.current = false;
-      setPlaylistGraphForceSim(false);
-      metaGraphForceNodesRef.current = [];
-      metaGraphForceEdgesRef.current = [];
+    if (!showPlaylistMetaGraph && playlistGraphForceSim) {
+      stopMetaGraphForceSim();
     }
-  }, [showPlaylistMetaGraph]);
+  }, [playlistGraphForceSim, showPlaylistMetaGraph, stopMetaGraphForceSim]);
 
   useEffect(() => {
     if (showPlaylistMetaGraph) {
@@ -2357,45 +2316,6 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     }
   }, [showPlaylistMetaGraph]);
 
-  forceSimLoopRef.current = () => {
-    if (!metaGraphForceSimActiveRef.current) {
-      return;
-    }
-    const nodes = metaGraphForceNodesRef.current;
-    const edges = metaGraphForceEdgesRef.current;
-    if (nodes.length > 0) {
-      stepMetaGraphForceSim(nodes, edges);
-      setMetaGraphForceSimTick((value) => value + 1);
-    }
-    forceSimRafRef.current = requestAnimationFrame(() => {
-      forceSimLoopRef.current();
-    });
-  };
-
-  useEffect(() => {
-    if (!playlistGraphForceSim || !showPlaylistMetaGraph) {
-      metaGraphForceSimActiveRef.current = false;
-      if (forceSimRafRef.current) {
-        cancelAnimationFrame(forceSimRafRef.current);
-        forceSimRafRef.current = 0;
-      }
-      return undefined;
-    }
-
-    layoutSyncPausedRef.current = true;
-    metaGraphForceSimActiveRef.current = true;
-    forceSimRafRef.current = requestAnimationFrame(() => {
-      forceSimLoopRef.current();
-    });
-
-    return () => {
-      metaGraphForceSimActiveRef.current = false;
-      if (forceSimRafRef.current) {
-        cancelAnimationFrame(forceSimRafRef.current);
-        forceSimRafRef.current = 0;
-      }
-    };
-  }, [playlistGraphForceSim, showPlaylistMetaGraph]);
   const activePathLayoutConfig =
     (cue ? resolveCueLayoutConfig(cue, musicService) : null) ?? strokeLayoutConfig;
   const showPathOverlays =
@@ -3558,6 +3478,16 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     if (mode === "mine" && isWebDeployment && musicService === "spotify" && !spotifyStatus?.connected) {
       return;
     }
+    if (playlistGraphForceSim) {
+      stopMetaGraphForceSim();
+    }
+    if (mode === "shared" && songSpaceMode === "mine" && songs.length > 0) {
+      personalLibrarySnapshotRef.current = {
+        songs,
+        stats,
+        playlistOwners: { ...playlistOwners },
+      };
+    }
     pauseLayoutSync();
     clearFrozenIsolateBounds();
     invalidatePlaylistOverlapLayoutCache();
@@ -3569,21 +3499,33 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
       if (mode === "shared") {
         void refreshSharedContributors({ loadLibrary: true, forceRefresh: true });
       } else if (isWebDeployment && musicService === "spotify") {
-        void loadCachedSpotifyLibrary().then((stored) => {
-          if (stored && stored.songs.length > 0) {
+        void (async () => {
+          const cached = await loadCachedSpotifyLibrary();
+          if (cached && cached.songs.length > 0) {
             applyLoadedLibrary(
-              stored.songs,
-              stored.stats ?? normalizeStats(null, stored.songs),
-              `My song space — ${stored.songs.length} tracks.`,
+              cached.songs,
+              cached.stats ?? normalizeStats(null, cached.songs),
+              `My song space — ${cached.songs.length} tracks.`,
               {},
               { persist: false }
             );
             return;
           }
-          setSongs([]);
-          setStats(normalizeStats(null, []));
-          setStatusMessage("My song space — load your library from Spotify to begin.");
-        });
+          const snapshot = personalLibrarySnapshotRef.current;
+          if (snapshot && snapshot.songs.length > 0) {
+            applyLoadedLibrary(
+              snapshot.songs,
+              snapshot.stats,
+              `My song space — ${snapshot.songs.length} tracks.`,
+              snapshot.playlistOwners,
+              { persist: false }
+            );
+            return;
+          }
+          if (songsRef.current.length === 0) {
+            setStatusMessage("My song space — load your library from Spotify to begin.");
+          }
+        })();
       }
       setStatusMessage(
         mode === "mine"
@@ -4898,6 +4840,8 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
                       metaGraphForceNodesRef.current,
                       playlistMetaGraphEdges
                     );
+                    layoutSyncPausedRef.current = true;
+                    metaGraphForceSimActiveRef.current = true;
                     setPlaylistGraphForceSim(true);
                     setStatusMessage(
                       "Force simulation running — shared playlists attract, all nodes repel. Drag labels to nudge."
@@ -5127,8 +5071,8 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
                   );
                 })}
 
-              {showPlaylistMetaGraph
-                ? playlistMetaGraphSegments.map((segment) => {
+              {showPlaylistMetaGraph && !playlistGraphForceSim
+                ? staticPlaylistMetaGraphSegments.map((segment) => {
                     const edgeStyle = playlistMetaGraphEdgeStyle(
                       segment.sharedSongCount,
                       maxPlaylistMetaGraphSharedCount
@@ -5149,6 +5093,23 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
                     );
                   })
                 : null}
+
+              {showPlaylistMetaGraph && playlistGraphForceSim ? (
+                <PlaylistGraphForceSimLayer
+                  active={playlistGraphForceSim}
+                  nodesRef={metaGraphForceNodesRef}
+                  edgesRef={metaGraphForceEdgesRef}
+                  labelRegions={graphViewClusterRegions}
+                  segments={staticPlaylistMetaGraphSegments}
+                  maxSharedSongCount={maxPlaylistMetaGraphSharedCount}
+                  labelOpacity={effectiveClusterRevealOpacity}
+                  onLabelPointerDown={
+                    isGuestViewOnly || isSharedIsolateClusterDragDisabled
+                      ? undefined
+                      : handleClusterLabelPointerDown
+                  }
+                />
+              ) : null}
 
               {strokePaths.map((path, index) => (
                 <path
@@ -5226,7 +5187,8 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
                 ))}
 
               {isClusterLayout &&
-                graphViewLabelRegions.map((region) => {
+                !playlistGraphForceSim &&
+                graphViewClusterRegions.map((region) => {
                   const offset = region.displayOffset;
                   const transform = offset ? `translate(${offset.x} ${offset.y})` : undefined;
                   return (
