@@ -19,6 +19,8 @@ import { useWebPerformanceOptimizations } from "./runtime";
 import { buildLibraryStatsFromSongs } from "../../shared/sharedLibrary";
 import { UNASSIGNED_PLAYLIST_CLUSTER_ID } from "./playlistConstants";
 import { asStringArray } from "./arrayUtils";
+import { buildPlaylistMetaGraphEdges } from "./playlistMetaGraph";
+import { buildPlaylistNeighborHullPath } from "./playlistClusterHull";
 
 export const LARGE_LIBRARY_CLUSTER_HULL_THRESHOLD = 300;
 
@@ -442,6 +444,14 @@ export const buildClusterRegions = (
     clusterOverrides,
     memberIndex
   );
+  const playlistOverlapContext =
+    clusterMode === "playlist"
+      ? getPlaylistOverlapLayoutContext(stats, visibleSongs, dimensions, clusterOverrides)
+      : null;
+  const playlistMetaGraphEdges =
+    clusterMode === "playlist"
+      ? buildPlaylistMetaGraphEdges(asStringArray(stats.playlistIds), visibleSongs)
+      : [];
 
   return clusterEntries
     .map((cluster) => {
@@ -458,7 +468,21 @@ export const buildClusterRegions = (
             : cluster.center
           : null;
       let labelCenter: GraphPoint = overrideLabelCenter ?? cluster.center;
-      if (useLiteHulls) {
+      const displayCenter = toDisplayPoint ? toDisplayPoint(cluster.center) : cluster.center;
+      if (clusterMode === "playlist" && playlistOverlapContext) {
+        const displayPlaylistCenters = new Map<string, GraphPoint>();
+        playlistOverlapContext.playlistCenters.forEach((center, playlistId) => {
+          displayPlaylistCenters.set(playlistId, toDisplayPoint ? toDisplayPoint(center) : center);
+        });
+        hullPath = buildPlaylistNeighborHullPath(
+          cluster.id,
+          displayCenter,
+          playlistMetaGraphEdges,
+          displayPlaylistCenters,
+          members.length,
+          padding
+        );
+      } else if (useLiteHulls) {
         const memberPositions = sampleMemberPositions(members, getPosition).map((point) =>
           toDisplayPoint ? toDisplayPoint(point) : point
         );
@@ -478,7 +502,7 @@ export const buildClusterRegions = (
           hullPath = circleHullPath(displayCenter, radius);
           labelCenter = overrideLabelCenter ?? displayCenter;
         }
-      } else {
+      } else if (clusterMode !== "playlist") {
         const memberPositions = members.map((song) => getPosition(song));
         hullPath = pointsToHullPath(memberPositions, padding);
         if (!overrideLabelCenter && memberPositions.length > 0) {
