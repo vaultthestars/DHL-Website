@@ -231,7 +231,7 @@ const getGenreClusterCenter = (
     dimensions
   );
 
-const getPlaylistClusterCenter = (
+export const getPlaylistClusterCenter = (
   playlistId: string,
   stats: LibraryStats,
   dimensions: GraphDimensions,

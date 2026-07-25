@@ -19,6 +19,7 @@ import {
   buildPlaylistMetaGraphSegments,
   isPlaylistMetaGraphClusterRegion,
   playlistMetaGraphEdgeStyle,
+  resolvePlaylistGraphViewRegionCenter,
 } from "../lib/playlistMetaGraph";
 import {
   buildMetaGraphForceEdges,
@@ -837,6 +838,8 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
   const metaGraphForceSimActiveRef = useRef(false);
   const metaGraphForceNodesRef = useRef<MetaGraphForceNode[]>([]);
   const metaGraphForceEdgesRef = useRef<MetaGraphForceEdge[]>([]);
+  const forceSimRafRef = useRef(0);
+  const forceSimLoopRef = useRef<() => void>(() => {});
   const clusterDragRafRef = useRef(0);
   const hoverProbeRafRef = useRef(0);
   const pendingHoverPointRef = useRef<GraphPoint | null>(null);
@@ -1436,6 +1439,10 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
       setPlaylistGraphForceSim(false);
       metaGraphForceNodesRef.current = [];
       metaGraphForceEdgesRef.current = [];
+      if (forceSimRafRef.current) {
+        cancelAnimationFrame(forceSimRafRef.current);
+        forceSimRafRef.current = 0;
+      }
       setClusterDragPreviewTick((value) => value + 1);
     },
     [
@@ -2136,10 +2143,53 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     useWebPerformanceOptimizations,
     webPerOwnerClusterRegions,
     getConglomeratePositionForSong,
-    metaGraphForceSimTick,
   ]);
 
   const showPlaylistMetaGraph = playlistGraphViewActive;
+
+  const graphViewClusterRegions = useMemo(() => {
+    const regions = showPlaylistMetaGraph
+      ? clusterRegions.filter((region) => isPlaylistMetaGraphClusterRegion(region.id))
+      : clusterRegions;
+    if (!showPlaylistMetaGraph) {
+      return regions;
+    }
+    const overridesForLayout =
+      draggingClusterIdRef.current || metaGraphForceSimActiveRef.current
+        ? resolveLayoutClusterOverrides()
+        : layoutClusterOverrides;
+    return regions.map((region) => ({
+      ...region,
+      center: resolvePlaylistGraphViewRegionCenter(region, {
+        graphSongs,
+        stats,
+        dimensions,
+        clusterOverrides: overridesForLayout,
+        layoutConfig: coldLayoutConfig,
+        activeContributorIds,
+        playlistOwners,
+        playlistNames: stats.playlistNames,
+        isolateOwnerBounds,
+        getMetaClusterCenter,
+      }),
+      displayOffset: undefined,
+    }));
+  }, [
+    activeContributorIds,
+    clusterDragPreviewTick,
+    clusterOverrides,
+    clusterRegions,
+    coldLayoutConfig,
+    dimensions,
+    getMetaClusterCenter,
+    graphSongs,
+    isolateOwnerBounds,
+    layoutClusterOverrides,
+    playlistOwners,
+    resolveLayoutClusterOverrides,
+    showPlaylistMetaGraph,
+    stats,
+  ]);
 
   const playlistMetaGraphEdges = useMemo(() => {
     if (!showPlaylistMetaGraph) {
@@ -2162,23 +2212,15 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
         end: { x: nodes[edge.targetIndex].x, y: nodes[edge.targetIndex].y },
       }));
     }
-    const centerByPlaylistId = buildPlaylistMetaGraphCenterMap(clusterRegions);
+    const centerByPlaylistId = buildPlaylistMetaGraphCenterMap(graphViewClusterRegions);
     return buildPlaylistMetaGraphSegments(playlistMetaGraphEdges, centerByPlaylistId);
   }, [
-    clusterRegions,
+    graphViewClusterRegions,
     metaGraphForceSimTick,
     playlistGraphForceSim,
     playlistMetaGraphEdges,
     showPlaylistMetaGraph,
   ]);
-
-  const graphViewClusterRegions = useMemo(
-    () =>
-      showPlaylistMetaGraph
-        ? clusterRegions.filter((region) => isPlaylistMetaGraphClusterRegion(region.id))
-        : clusterRegions,
-    [clusterRegions, showPlaylistMetaGraph]
-  );
 
   const graphViewLabelRegions = useMemo(() => {
     if (!playlistGraphForceSim || metaGraphForceNodesRef.current.length === 0) {
@@ -2315,55 +2357,45 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     }
   }, [showPlaylistMetaGraph]);
 
+  forceSimLoopRef.current = () => {
+    if (!metaGraphForceSimActiveRef.current) {
+      return;
+    }
+    const nodes = metaGraphForceNodesRef.current;
+    const edges = metaGraphForceEdgesRef.current;
+    if (nodes.length > 0) {
+      stepMetaGraphForceSim(nodes, edges);
+      setMetaGraphForceSimTick((value) => value + 1);
+    }
+    forceSimRafRef.current = requestAnimationFrame(() => {
+      forceSimLoopRef.current();
+    });
+  };
+
   useEffect(() => {
     if (!playlistGraphForceSim || !showPlaylistMetaGraph) {
-      if (!playlistGraphForceSim) {
-        metaGraphForceSimActiveRef.current = false;
+      metaGraphForceSimActiveRef.current = false;
+      if (forceSimRafRef.current) {
+        cancelAnimationFrame(forceSimRafRef.current);
+        forceSimRafRef.current = 0;
       }
       return undefined;
     }
 
     layoutSyncPausedRef.current = true;
     metaGraphForceSimActiveRef.current = true;
-    let animationId = 0;
+    forceSimRafRef.current = requestAnimationFrame(() => {
+      forceSimLoopRef.current();
+    });
 
-    const tick = () => {
-      if (!metaGraphForceSimActiveRef.current) {
-        return;
-      }
-      const nodes = metaGraphForceNodesRef.current;
-      const edges = metaGraphForceEdgesRef.current;
-      if (nodes.length === 0) {
-        animationId = requestAnimationFrame(tick);
-        return;
-      }
-
-      stepMetaGraphForceSim(nodes, edges);
-      const nextOverrides = mergeMetaGraphForceSimIntoClusterOverrides(
-        resolveForceSimOverrideBase(),
-        nodes,
-        dimensions,
-        getOwnerForceSimContext,
-        forceSimPersistContext
-      );
-      commitForceSimOverrideBase(nextOverrides);
-      setMetaGraphForceSimTick((value) => value + 1);
-      animationId = requestAnimationFrame(tick);
-    };
-
-    animationId = requestAnimationFrame(tick);
     return () => {
-      cancelAnimationFrame(animationId);
+      metaGraphForceSimActiveRef.current = false;
+      if (forceSimRafRef.current) {
+        cancelAnimationFrame(forceSimRafRef.current);
+        forceSimRafRef.current = 0;
+      }
     };
-  }, [
-    commitForceSimOverrideBase,
-    dimensions,
-    forceSimPersistContext,
-    getOwnerForceSimContext,
-    playlistGraphForceSim,
-    resolveForceSimOverrideBase,
-    showPlaylistMetaGraph,
-  ]);
+  }, [playlistGraphForceSim, showPlaylistMetaGraph]);
   const activePathLayoutConfig =
     (cue ? resolveCueLayoutConfig(cue, musicService) : null) ?? strokeLayoutConfig;
   const showPathOverlays =
