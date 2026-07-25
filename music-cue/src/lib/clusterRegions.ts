@@ -330,6 +330,13 @@ const getClusterMembers = (
   return [];
 };
 
+export const getClusterMemberSongs = (
+  clusterId: string,
+  clusterMode: ClusterMode,
+  visibleSongs: Song[],
+  memberIndex?: ClusterMemberIndex
+): Song[] => getClusterMembers(clusterId, clusterMode, visibleSongs, memberIndex);
+
 type ClusterEntry = {
   id: string;
   label: string;

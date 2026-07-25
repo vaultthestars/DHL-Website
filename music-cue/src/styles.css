@@ -529,6 +529,10 @@ body {
   cursor: grabbing;
 }
 
+.music-cue-graph-panning .music-cue-graph-content {
+  will-change: transform;
+}
+
 .music-cue-graph-panning .music-cue-node-hit,
 .music-cue-graph-panning .music-cue-cluster-label-draggable {
   pointer-events: none;

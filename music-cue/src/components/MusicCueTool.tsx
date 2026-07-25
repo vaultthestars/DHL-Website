@@ -1,6 +1,14 @@
 import { startTransition, useCallback, useDeferredValue, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { flushSync } from "react-dom";
-import { buildClusterRegions, buildClusterViewportHints, buildIsolateScopedClusterRegions, ClusterRegion, getClusterRegionDisplayCenter } from "../lib/clusterRegions";
+import {
+  buildClusterMemberIndex,
+  buildClusterRegions,
+  buildClusterViewportHints,
+  buildIsolateScopedClusterRegions,
+  ClusterRegion,
+  getClusterMemberSongs,
+  getClusterRegionDisplayCenter,
+} from "../lib/clusterRegions";
 import { syncClusterLayoutToServer } from "../lib/clusterLayoutSync";
 import { buildLibraryStatsFromSongs } from "../../shared/sharedLibrary";
 import {
@@ -120,6 +128,7 @@ import {
 } from "../lib/storage";
 import { getActiveClusterLayoutScope, getEffectiveLibraryScopeMode, isSingleContributorSharedLibrary } from "../lib/clusterLayoutScope";
 import { SpotifySyncDialog } from "./SpotifySyncDialog";
+import { ClusterDragPreviewLayer, type ClusterDragSnapshot } from "./ClusterDragPreviewLayer";
 import { PlaylistGraphForceSimLayer } from "./PlaylistGraphForceSimLayer";
 import {
   getAxisMetricLabel,
@@ -705,34 +714,6 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     [activeLayoutScope]
   );
 
-  const resolveLayoutClusterOverrides = useCallback(
-    (overrides: ClusterCenterOverrides = clusterOverridesRef.current): ClusterCenterOverrides => {
-      if (songSpaceMode === "mine" && songSpaceContributorId) {
-        return getClusterOverridesForOwner(overrides, songSpaceContributorId, layoutConfig);
-      }
-      if (
-        songSpaceMode === "shared" &&
-        isSingleContributorSharedLibrary(sharedContributorCount) &&
-        localContributorId &&
-        layoutLibraryScopeMode === "conglomerate"
-      ) {
-        return getClusterOverridesForOwner(overrides, localContributorId, layoutConfig);
-      }
-      return overrides;
-    },
-    [layoutConfig, layoutLibraryScopeMode, localContributorId, sharedContributorCount, songSpaceContributorId, songSpaceMode]
-  );
-
-  const scheduleClusterDragPreview = useCallback(() => {
-    if (clusterDragRafRef.current) {
-      return;
-    }
-    clusterDragRafRef.current = requestAnimationFrame(() => {
-      clusterDragRafRef.current = 0;
-      setClusterDragPreviewTick((value) => value + 1);
-    });
-  }, []);
-
   const buildClusterDragOverrides = useCallback(
     (
       current: ClusterCenterOverrides,
@@ -842,10 +823,12 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     stats: LibraryStats;
     playlistOwners: Record<string, string>;
   } | null>(null);
-  const clusterDragRafRef = useRef(0);
   const hoverProbeRafRef = useRef(0);
   const pendingHoverPointRef = useRef<GraphPoint | null>(null);
-  const [clusterDragPreviewTick, setClusterDragPreviewTick] = useState(0);
+  const [isClusterDragging, setIsClusterDragging] = useState(false);
+  const clusterDragSnapshotRef = useRef<ClusterDragSnapshot | null>(null);
+  const clusterDragGraphDeltaRef = useRef<GraphPoint>({ x: 0, y: 0 });
+  const clusterDragPreviewScheduleRef = useRef<(() => void) | null>(null);
 
   const showToolSidebar = graphTool === "draw";
 
@@ -1143,9 +1126,6 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     songSpaceMode === "shared" && libraryScopeMode === "isolate" && !playlistGraphViewActive;
 
   const resolveConglomerateOverridesForLayout = useCallback((): ClusterCenterOverrides => {
-    if (draggingClusterIdRef.current) {
-      return resolveLayoutClusterOverrides(clusterOverridesRef.current);
-    }
     if (songSpaceMode === "mine" || isSingleContributorSharedLibrary(sharedContributorCount)) {
       return layoutClusterOverrides;
     }
@@ -1155,10 +1135,8 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     return conglomerateClusterOverridesRef.current;
   }, [
     activeLayoutScope,
-    clusterDragPreviewTick,
     clusterOverrides,
     layoutClusterOverrides,
-    resolveLayoutClusterOverrides,
     sharedContributorCount,
     songSpaceMode,
   ]);
@@ -1190,7 +1168,6 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     return positions;
   }, [
     activeContributorIds,
-    clusterDragPreviewTick,
     dimensions,
     layoutConfig,
     resolveConglomerateOverridesForLayout,
@@ -1229,7 +1206,6 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     return positions;
   }, [
     activeContributorIds,
-    clusterDragPreviewTick,
     dimensions,
     layoutConfig,
     libraryScopeMode,
@@ -1441,7 +1417,6 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
       setPlaylistGraphForceSim(false);
       metaGraphForceNodesRef.current = [];
       metaGraphForceEdgesRef.current = [];
-      setClusterDragPreviewTick((value) => value + 1);
     },
     [
       applyClusterOverrides,
@@ -1510,7 +1485,6 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     [
       activeContributorIds,
       axisConglomeratePositionBySongId,
-      clusterDragPreviewTick,
       conglomeratePositionBySongId,
       dimensions,
       layoutConfig,
@@ -1606,11 +1580,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
       if (useWebPerformanceOptimizations) {
         return getConglomeratePositionForSong(song, config);
       }
-      const clusterOverridesForLayout =
-        draggingClusterIdRef.current || metaGraphForceSimActiveRef.current
-          ? resolveLayoutClusterOverrides()
-          : layoutClusterOverrides;
-      return layoutSongPosition(song, dimensions, config, stats, {}, clusterOverridesForLayout, layoutSongs, {
+      return layoutSongPosition(song, dimensions, config, stats, {}, layoutClusterOverrides, layoutSongs, {
         libraryScopeMode: scopeMode,
         enabledOwnerIds: activeContributorIds,
         isolateOwnerBounds: ownerBounds,
@@ -1620,15 +1590,13 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     },
     [
       activeContributorIds,
-      clusterDragPreviewTick,
       dimensions,
       getConglomeratePositionForSong,
       getMetaClusterCenter,
       layoutClusterOverrides,
       layoutLibraryScopeMode,
-      resolveLayoutClusterOverrides,
       skipIsolateCentroidTranslation,
-          stats,
+      stats,
       useWebPerformanceOptimizations,
     ]
   );
@@ -1961,6 +1929,9 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
 
   const visiblePositionedSongs = renderedPositionedSongs;
 
+  const clusterDragSongIds = isClusterDragging ? clusterDragSnapshotRef.current?.songIds : undefined;
+  const clusterDragRegionIds = isClusterDragging ? clusterDragSnapshotRef.current?.clusterIds : undefined;
+
   const culledNodeCount = enableGraphNodeCulling
     ? Math.max(0, renderGraphSongs.length - visiblePositionedSongs.length)
     : 0;
@@ -2000,10 +1971,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
       return null;
     }
 
-    const overridesForOwnerRegions =
-      draggingClusterIdRef.current || metaGraphForceSimActiveRef.current
-        ? resolveLayoutClusterOverrides()
-        : layoutClusterOverrides;
+    const overridesForOwnerRegions = layoutClusterOverrides;
 
     const ownerIds = getIsolateOwnerIds(graphSongs, activeContributorIds);
     if (ownerIds.length === 0) {
@@ -2053,23 +2021,18 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     return byOwner;
   }, [
     activeContributorIds,
-    clusterDragPreviewTick,
     coldLayoutConfig,
     dimensions,
     getConglomeratePositionForSong,
     graphSongs,
     layoutClusterOverrides,
     playlistOwners,
-    resolveLayoutClusterOverrides,
     stats.playlistNames,
     useWebPerformanceOptimizations,
   ]);
 
   const clusterRegions = useMemo(() => {
-    const clusterOverridesForLayout =
-      draggingClusterIdRef.current || metaGraphForceSimActiveRef.current
-        ? resolveLayoutClusterOverrides()
-        : layoutClusterOverrides;
+    const clusterOverridesForLayout = layoutClusterOverrides;
     const showIsolateRegions = useWebPerformanceOptimizations
       ? showIsolateContributorView
       : layoutLibraryScopeMode === "isolate";
@@ -2133,7 +2096,6 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
         );
   }, [
     activeContributorIds,
-    clusterDragPreviewTick,
     clusterOverrides,
     coldLayoutConfig,
     dimensions,
@@ -2145,7 +2107,6 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     libraryScopeMode,
     playlistOwners,
     positionForClusterRegions,
-    resolveLayoutClusterOverrides,
     showIsolateContributorView,
     stats,
     useWebPerformanceOptimizations,
@@ -2162,10 +2123,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     if (!showPlaylistMetaGraph) {
       return regions;
     }
-    const overridesForLayout =
-      draggingClusterIdRef.current || metaGraphForceSimActiveRef.current
-        ? resolveLayoutClusterOverrides()
-        : layoutClusterOverrides;
+    const overridesForLayout = layoutClusterOverrides;
     return regions.map((region) => ({
       ...region,
       center: resolvePlaylistGraphViewRegionCenter(region, {
@@ -2184,7 +2142,6 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     }));
   }, [
     activeContributorIds,
-    clusterDragPreviewTick,
     clusterOverrides,
     clusterRegions,
     coldLayoutConfig,
@@ -2194,7 +2151,6 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     isolateOwnerBounds,
     layoutClusterOverrides,
     playlistOwners,
-    resolveLayoutClusterOverrides,
     showPlaylistMetaGraph,
     stats,
   ]);
@@ -2243,16 +2199,11 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
       if (coldLayoutConfig.clusterMode !== "playlist") {
         return getClusterRegionDisplayCenter(region);
       }
-      void clusterDragPreviewTick;
-      const overridesForLayout =
-        draggingClusterIdRef.current || metaGraphForceSimActiveRef.current
-          ? resolveLayoutClusterOverrides()
-          : layoutClusterOverrides;
       return resolvePlaylistGraphViewRegionCenter(region, {
         graphSongs,
         stats,
         dimensions,
-        clusterOverrides: overridesForLayout,
+        clusterOverrides: layoutClusterOverrides,
         layoutConfig: coldLayoutConfig,
         activeContributorIds,
         playlistOwners,
@@ -2263,7 +2214,6 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     },
     [
       activeContributorIds,
-      clusterDragPreviewTick,
       coldLayoutConfig,
       dimensions,
       getMetaClusterCenter,
@@ -2271,7 +2221,6 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
       isolateOwnerBounds,
       layoutClusterOverrides,
       playlistOwners,
-      resolveLayoutClusterOverrides,
       stats,
     ]
   );
@@ -2903,7 +2852,51 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
       metaCenter,
     };
     draggingClusterIdRef.current = clusterId;
-    event.currentTarget.setPointerCapture(event.pointerId);
+    const snapshotSongIds = new Set<string>();
+    const snapshotSongs: Array<{ song: Song; position: GraphPoint }> = [];
+    const clusterMode = layoutConfig.clusterMode;
+    if (clusterMode === "genre" || clusterMode === "playlist") {
+      clustersToMove.forEach((regionId) => {
+        const { ownerId, clusterId: innerClusterId } = parseOwnerScopedRegionId(regionId);
+        let pool = graphSongs;
+        if (ownerId) {
+          pool = scopeSongsForIsolateOwner(
+            graphSongs.filter(
+              (song) => resolveIsolateDisplayOwnerId(song, activeContributorIds) === ownerId
+            ),
+            ownerId,
+            playlistOwners
+          );
+        }
+        const memberIndex = buildClusterMemberIndex(pool);
+        getClusterMemberSongs(innerClusterId, clusterMode, pool, memberIndex).forEach((song) => {
+          if (snapshotSongIds.has(song.id)) {
+            return;
+          }
+          snapshotSongIds.add(song.id);
+          snapshotSongs.push({ song, position: getPosition(song) });
+        });
+      });
+    }
+    const draggedRegionSet = new Set(clustersToMove);
+    clusterDragSnapshotRef.current = {
+      clusterIds: draggedRegionSet,
+      songIds: snapshotSongIds,
+      regions: clusterRegions
+        .filter((region) => draggedRegionSet.has(region.id))
+        .map((region) => ({
+          ...region,
+          labelCenter:
+            layoutConfig.clusterMode === "playlist"
+              ? resolveClusterLabelCenter(region)
+              : getClusterRegionDisplayCenter(region),
+        })),
+      songs: snapshotSongs,
+      showClusterHulls: showPlaylistClusterHulls,
+    };
+    clusterDragGraphDeltaRef.current = { x: 0, y: 0 };
+    setIsClusterDragging(true);
+    svgRef.current?.setPointerCapture(event.pointerId);
     setStatusMessage(
       clustersToMove.length > 1 ? `Dragging ${clustersToMove.length} clusters…` : `Dragging ${label}…`
     );
@@ -3031,13 +3024,18 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
         resolvedOwnerId
       );
       clusterOverridesRef.current = nextOverrides;
-      scheduleClusterDragPreview();
+      clusterDragGraphDeltaRef.current = {
+        x: delta.x * dimensions.width,
+        y: delta.y * dimensions.height,
+      };
+      clusterDragPreviewScheduleRef.current?.();
       return;
     }
 
     if (
       (enableGraphNodeCulling || isLocalDesktopApp) &&
       !draggingClusterIdRef.current &&
+      panSessionRef.current?.mode !== "pan" &&
       graphTool === "navigate" &&
       !showPlaylistMetaGraph
     ) {
@@ -3111,8 +3109,14 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
 
 
     if (draggingClusterIdRef.current) {
+      if (event && svgRef.current?.hasPointerCapture(event.pointerId)) {
+        svgRef.current.releasePointerCapture(event.pointerId);
+      }
       draggingClusterIdRef.current = null;
       clusterDragSessionRef.current = null;
+      clusterDragSnapshotRef.current = null;
+      clusterDragGraphDeltaRef.current = { x: 0, y: 0 };
+      setIsClusterDragging(false);
       endIsolateClusterDrag();
       const nextOverrides = clusterOverridesRef.current;
       setClusterOverrides(nextOverrides);
@@ -5092,7 +5096,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
               }
             }}
           >
-            <g ref={contentGroupRef}>
+            <g ref={contentGroupRef} className="music-cue-graph-content">
               <rect
                 ref={bgRectRef}
                 width={dimensions.width}
@@ -5134,7 +5138,9 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
 
               {showPlaylistClusterHulls &&
                 isClusterLayout &&
-                clusterRegions.map((region) => {
+                clusterRegions
+                  .filter((region) => !clusterDragRegionIds?.has(region.id))
+                  .map((region) => {
                   const offset = region.displayOffset;
                   const transform = offset ? `translate(${offset.x} ${offset.y})` : undefined;
                   return (
@@ -5206,7 +5212,9 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
 
 
               {showSongNodesInGraph &&
-                visiblePositionedSongs.map(({ song, position }) => {
+                visiblePositionedSongs
+                  .filter(({ song }) => !clusterDragSongIds?.has(song.id))
+                  .map(({ song, position }) => {
                 const canonicalId = getCanonicalSongId(song.id);
                 const inCue = cue?.songs.some((entry) => entry.id === canonicalId);
                 const isUnavailable = unavailableSongIds.has(canonicalId);
@@ -5268,7 +5276,9 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
 
               {isClusterLayout &&
                 !playlistGraphForceSim &&
-                graphViewClusterRegions.map((region) => {
+                graphViewClusterRegions
+                  .filter((region) => !clusterDragRegionIds?.has(region.id))
+                  .map((region) => {
                   const labelCenter = resolveClusterLabelCenter(region);
                   const offset = region.displayOffset;
                   const transform = offset ? `translate(${offset.x} ${offset.y})` : undefined;
@@ -5303,7 +5313,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
                         return;
                       }
                       event.stopPropagation();
-                      finishPointerInteraction();
+                      finishPointerInteraction(event);
                     }}
                   >
                     {region.label}
@@ -5321,6 +5331,16 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
                   {unavailableSongIds.has(hoveredSong.id) ? " (not in library)" : ""}
                 </text>
               )}
+
+              <ClusterDragPreviewLayer
+                active={isClusterDragging}
+                graphDeltaRef={clusterDragGraphDeltaRef}
+                snapshotRef={clusterDragSnapshotRef}
+                labelOpacity={effectiveClusterRevealOpacity}
+                getSongFill={(song) => songNodeFills.get(song.id) ?? "#000080"}
+                renderGraphSongCount={renderGraphSongs.length}
+                scheduleRef={clusterDragPreviewScheduleRef}
+              />
             </g>
           </svg>
         </div>
