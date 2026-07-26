@@ -532,11 +532,10 @@ body {
 }
 
 .music-cue-graph-panel.music-cue-view-gesturing {
-  contain: strict;
+  contain: paint;
 }
 
 .music-cue-view-gesturing .music-cue-graph {
-  will-change: transform;
   pointer-events: none;
 }
 
@@ -557,10 +556,6 @@ body {
   z-index: 2;
   transform: translate(-50%, -100%);
   white-space: nowrap;
-}
-
-.music-cue-graph-panning .music-cue-graph-content {
-  will-change: transform;
 }
 
 .music-cue-graph-panning .music-cue-node-hit,

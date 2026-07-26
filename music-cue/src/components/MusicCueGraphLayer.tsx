@@ -117,6 +117,7 @@ export type MusicCueGraphLayerRef = {
 
 export type MusicCueGraphLayerProps = {
   structureKey: string;
+  interactionRevisionKey: string;
   layerRef: MutableRefObject<MusicCueGraphLayerRef | null>;
   visibleNodeCountRef?: MutableRefObject<number>;
   culledNodeCountRef?: MutableRefObject<number>;
@@ -1327,7 +1328,7 @@ const staticPlaylistMetaGraphSegments = useMemo(() => {
     staticPlaylistMetaGraphSegments,
     maxPlaylistMetaGraphSharedCount,
     showPathOverlays,
-    graphRenderRevision: props.structureKey,
+    graphRenderRevision: `${props.structureKey}|${props.interactionRevisionKey}`,
   };
 };
 
@@ -1406,5 +1407,7 @@ const MusicCueGraphLayerComponent = (props: MusicCueGraphLayerProps) => {
 
 export const MusicCueGraphLayer = memo(
   MusicCueGraphLayerComponent,
-  (previous, next) => previous.structureKey === next.structureKey
+  (previous, next) =>
+    previous.structureKey === next.structureKey &&
+    previous.interactionRevisionKey === next.interactionRevisionKey
 );

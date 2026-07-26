@@ -97,8 +97,6 @@ import {
   DEFAULT_VIEW_TRANSFORM,
   MIN_ZOOM,
   screenToGraphPoint,
-  toLiveViewCssTransform,
-  toLiveViewTransformString,
   toSvgViewBox,
   ViewTransform,
   zoomAtPoint,
@@ -508,14 +506,11 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     if (!svg) {
       return;
     }
-    const transformString = toLiveViewCssTransform(committedViewTransformRef.current, live);
-    if (!transformString) {
-      svg.style.transform = "";
-      return;
+    svg.style.transform = "";
+    if (dimensions.width > 0 && dimensions.height > 0) {
+      svg.setAttribute("viewBox", toSvgViewBox(live, dimensions.width, dimensions.height));
     }
-    svg.style.transformOrigin = "0 0";
-    svg.style.transform = transformString;
-  }, []);
+  }, [dimensions.height, dimensions.width]);
 
   const scheduleLiveViewGesture = useCallback(
     (live: ViewTransform) => {
@@ -1000,6 +995,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
   const hoverProbeRafRef = useRef(0);
   const pendingHoverPointRef = useRef<GraphPoint | null>(null);
   const [isClusterDragging, setIsClusterDragging] = useState(false);
+  const [clusterDragSnapshotRevision, setClusterDragSnapshotRevision] = useState(0);
   const clusterDragSnapshotRef = useRef<ClusterDragSnapshot | null>(null);
   const clusterDragGraphDeltaRef = useRef<GraphPoint>({ x: 0, y: 0 });
   const clusterDragPreviewScheduleRef = useRef<(() => void) | null>(null);
@@ -1394,10 +1390,18 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     ? songSpaceMode
     : `${songSpaceMode}:${libraryScopeMode}`;
   const layoutColdKey = `${layoutConfigKey(coldLayoutConfig)}|${layoutTransitionKey}|${graphSongs.length}|${dimensions.width}x${dimensions.height}|${isolateBoundsRevision}`;
-  const interactionHighlightKey = `${hoveredSongId ?? ""}|${selectedSongId ?? ""}|${activePersistentId ?? ""}|${cue?.songs.length ?? 0}`;
-  const graphStructureKey = pauseGraphAnimationsRef.current
-    ? `gesture|${layoutColdKey}`
-    : `${layoutColdKey}|${interactionHighlightKey}`;
+  const graphStructureKey = layoutColdKey;
+  const interactionRevisionKey = [
+    hoveredSongId ?? "",
+    selectedSongId ?? "",
+    activePersistentId ?? "",
+    cue?.songs.length ?? 0,
+    isClusterDragging ? 1 : 0,
+    clusterDragSnapshotRevision,
+    boxSelectRect
+      ? `${boxSelectRect.x1},${boxSelectRect.y1},${boxSelectRect.x2},${boxSelectRect.y2}`
+      : "",
+  ].join("|");
 
   const getPosition = useCallback(
     (song: Song): GraphPoint => graphLayerRef.current?.getPosition(song) ?? { x: 0, y: 0 },
@@ -2214,142 +2218,15 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
       metaCenter,
     };
     draggingClusterIdRef.current = clusterId;
-    const snapshotSongIds = new Set<string>();
-    const snapshotSongs: Array<{ song: Song; position: GraphPoint }> = [];
+    clusterDragGraphDeltaRef.current = { x: 0, y: 0 };
     const clusterMode = layoutConfig.clusterMode;
-    if (clusterMode === "genre" || clusterMode === "playlist") {
-      clustersToMove.forEach((regionId) => {
-        const { ownerId, clusterId: innerClusterId } = parseOwnerScopedRegionId(regionId);
-        let pool = graphSongs;
-        if (ownerId) {
-          pool = scopeSongsForIsolateOwner(
-            graphSongs.filter(
-              (song) => resolveIsolateDisplayOwnerId(song, activeContributorIds) === ownerId
-            ),
-            ownerId,
-            playlistOwners
-          );
-        }
-        const memberIndex = buildClusterMemberIndex(pool);
-        getClusterMemberSongs(innerClusterId, clusterMode, pool, memberIndex).forEach((song) => {
-          if (snapshotSongIds.has(song.id)) {
-            return;
-          }
-          snapshotSongIds.add(song.id);
-          snapshotSongs.push({ song, position: getPosition(song) });
-        });
-      });
-    }
     const draggedRegionSet = new Set(clustersToMove);
-    const resolveDragMetaGraphEdges = (scopeOwnerId: string | null) => {
-      if (clusterMode !== "playlist") {
-        return [];
-      }
-      if (scopeOwnerId) {
-        const ownerSongs = scopeSongsForIsolateOwner(
-          graphSongs.filter(
-            (song) => resolveIsolateDisplayOwnerId(song, activeContributorIds) === scopeOwnerId
-          ),
-          scopeOwnerId,
-          playlistOwners
-        );
-        if (ownerSongs.length === 0) {
-          return [];
-        }
-        const ownerPlaylistNames =
-          Object.keys(playlistOwners).length === 0
-            ? stats.playlistNames
-            : Object.fromEntries(
-                Object.entries(stats.playlistNames).filter(
-                  ([playlistId]) => playlistOwners[playlistId] === scopeOwnerId
-                )
-              );
-        const ownerStats = buildLibraryStatsFromSongs(ownerSongs, ownerPlaylistNames);
-        return buildPlaylistMetaGraphEdges(asStringArray(ownerStats.playlistIds), ownerSongs);
-      }
-      return buildPlaylistMetaGraphEdges(asStringArray(stats.playlistIds), graphSongs);
-    };
-    const dragOwnerIds = new Set(
-      clustersToMove.map((regionId) => parseOwnerScopedRegionId(regionId).ownerId)
-    );
-    const edgesForDrag = [...dragOwnerIds].flatMap((scopeOwnerId) =>
-      resolveDragMetaGraphEdges(scopeOwnerId)
-    );
-    const previewRegionIds = collectMetagraphNeighborRegionIds(
-      clustersToMove,
-      edgesForDrag,
-      getClusterRegions().map((region) => region.id)
-    );
-    const neighborRegionIds = [...previewRegionIds].filter(
-      (regionId) => !draggedRegionSet.has(regionId)
-    );
-    const regionCentersByRegionId = new Map<string, GraphPoint>();
-    const playlistCenters = new Map<string, GraphPoint>();
-    const paddingByRegionId = new Map<string, number>();
-    const memberCountByRegionId = new Map<string, number>();
-    const resolveRegionHullCenter = (region: ClusterRegion): GraphPoint => {
-      if (clusterMode !== "playlist") {
-        return getClusterRegionDisplayCenter(region);
-      }
-      const { ownerId, clusterId } = parseOwnerScopedRegionId(region.id);
-      if (ownerId) {
-        const ownerSongs = scopeSongsForIsolateOwner(
-          graphSongs.filter(
-            (song) => resolveIsolateDisplayOwnerId(song, activeContributorIds) === ownerId
-          ),
-          ownerId,
-          playlistOwners
-        );
-        const ownerPlaylistNames =
-          Object.keys(playlistOwners).length === 0
-            ? stats.playlistNames
-            : Object.fromEntries(
-                Object.entries(stats.playlistNames).filter(
-                  ([playlistId]) => playlistOwners[playlistId] === ownerId
-                )
-              );
-        const ownerStats = buildLibraryStatsFromSongs(ownerSongs, ownerPlaylistNames);
-        const ownerOverrides = getClusterOverridesForOwner(
-          layoutClusterOverrides,
-          ownerId,
-          layoutConfig
-        );
-        return getPlaylistClusterCenter(
-          clusterId,
-          ownerStats,
-          dimensions,
-          ownerOverrides,
-          ownerSongs
-        );
-      }
-      return getPlaylistClusterCenter(
-        clusterId,
-        stats,
-        dimensions,
-        layoutClusterOverrides,
-        graphSongs
-      );
-    };
     const regionLookup = new Map<string, ClusterRegion>();
     getClusterRegions().forEach((region) => regionLookup.set(region.id, region));
     getGraphViewClusterRegions().forEach((region) => {
       if (!regionLookup.has(region.id)) {
         regionLookup.set(region.id, region);
       }
-    });
-    regionLookup.forEach((region) => {
-      if (!previewRegionIds.has(region.id)) {
-        return;
-      }
-      const { clusterId } = parseOwnerScopedRegionId(region.id);
-      const hullCenter = resolveRegionHullCenter(region);
-      regionCentersByRegionId.set(region.id, hullCenter);
-      playlistCenters.set(clusterId, hullCenter);
-      paddingByRegionId.set(
-        region.id,
-        Math.max(20, Math.min(42, 14 + Math.sqrt(region.memberCount) * 3))
-      );
-      memberCountByRegionId.set(region.id, region.memberCount);
     });
     const movedRegions = clustersToMove
       .map((regionId) => regionLookup.get(regionId))
@@ -2358,36 +2235,182 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
         ...region,
         labelCenter:
           layoutConfig.clusterMode === "playlist"
-            ? graphLayerRef.current?.resolveClusterLabelCenter(region) ?? getClusterRegionDisplayCenter(region)
+            ? graphLayerRef.current?.resolveClusterLabelCenter(region) ??
+              getClusterRegionDisplayCenter(region)
             : getClusterRegionDisplayCenter(region),
       }));
     clusterDragSnapshotRef.current = {
       movedRegionIds: draggedRegionSet,
-      previewRegionIds,
-      songIds: snapshotSongIds,
+      previewRegionIds: draggedRegionSet,
+      songIds: new Set<string>(),
       movedRegions,
-      neighborRegions: neighborRegionIds
-        .map((regionId) => regionLookup.get(regionId))
-        .filter((region): region is ClusterRegion => Boolean(region)),
-      songs: snapshotSongs,
+      neighborRegions: [],
+      songs: [],
       showClusterHulls: showPlaylistClusterHulls,
-      hullContext:
-        clusterMode === "playlist"
-          ? {
-              edges: edgesForDrag,
-              regionCentersByRegionId,
-              playlistCenters,
-              paddingByRegionId,
-              memberCountByRegionId,
-            }
-          : null,
+      hullContext: null,
     };
-    clusterDragGraphDeltaRef.current = { x: 0, y: 0 };
     setIsClusterDragging(true);
     svgRef.current?.setPointerCapture(event.pointerId);
     setStatusMessage(
       clustersToMove.length > 1 ? `Dragging ${clustersToMove.length} clusters…` : `Dragging ${label}…`
     );
+
+    requestAnimationFrame(() => {
+      if (!draggingClusterIdRef.current) {
+        return;
+      }
+      const snapshotSongIds = new Set<string>();
+      const snapshotSongs: Array<{ song: Song; position: GraphPoint }> = [];
+      if (clusterMode === "genre" || clusterMode === "playlist") {
+        clustersToMove.forEach((regionId) => {
+          const { ownerId, clusterId: innerClusterId } = parseOwnerScopedRegionId(regionId);
+          let pool = graphSongs;
+          if (ownerId) {
+            pool = scopeSongsForIsolateOwner(
+              graphSongs.filter(
+                (song) => resolveIsolateDisplayOwnerId(song, activeContributorIds) === ownerId
+              ),
+              ownerId,
+              playlistOwners
+            );
+          }
+          const memberIndex = buildClusterMemberIndex(pool);
+          getClusterMemberSongs(innerClusterId, clusterMode, pool, memberIndex).forEach((song) => {
+            if (snapshotSongIds.has(song.id)) {
+              return;
+            }
+            snapshotSongIds.add(song.id);
+            snapshotSongs.push({ song, position: getPosition(song) });
+          });
+        });
+      }
+      const resolveDragMetaGraphEdges = (scopeOwnerId: string | null) => {
+        if (clusterMode !== "playlist") {
+          return [];
+        }
+        if (scopeOwnerId) {
+          const ownerSongs = scopeSongsForIsolateOwner(
+            graphSongs.filter(
+              (song) => resolveIsolateDisplayOwnerId(song, activeContributorIds) === scopeOwnerId
+            ),
+            scopeOwnerId,
+            playlistOwners
+          );
+          if (ownerSongs.length === 0) {
+            return [];
+          }
+          const ownerPlaylistNames =
+            Object.keys(playlistOwners).length === 0
+              ? stats.playlistNames
+              : Object.fromEntries(
+                  Object.entries(stats.playlistNames).filter(
+                    ([playlistId]) => playlistOwners[playlistId] === scopeOwnerId
+                  )
+                );
+          const ownerStats = buildLibraryStatsFromSongs(ownerSongs, ownerPlaylistNames);
+          return buildPlaylistMetaGraphEdges(asStringArray(ownerStats.playlistIds), ownerSongs);
+        }
+        return buildPlaylistMetaGraphEdges(asStringArray(stats.playlistIds), graphSongs);
+      };
+      const dragOwnerIds = new Set(
+        clustersToMove.map((regionId) => parseOwnerScopedRegionId(regionId).ownerId)
+      );
+      const edgesForDrag = [...dragOwnerIds].flatMap((scopeOwnerId) =>
+        resolveDragMetaGraphEdges(scopeOwnerId)
+      );
+      const previewRegionIds = collectMetagraphNeighborRegionIds(
+        clustersToMove,
+        edgesForDrag,
+        getClusterRegions().map((region) => region.id)
+      );
+      const neighborRegionIds = [...previewRegionIds].filter(
+        (regionId) => !draggedRegionSet.has(regionId)
+      );
+      const regionCentersByRegionId = new Map<string, GraphPoint>();
+      const playlistCenters = new Map<string, GraphPoint>();
+      const paddingByRegionId = new Map<string, number>();
+      const memberCountByRegionId = new Map<string, number>();
+      const resolveRegionHullCenter = (region: ClusterRegion): GraphPoint => {
+        if (clusterMode !== "playlist") {
+          return getClusterRegionDisplayCenter(region);
+        }
+        const { ownerId, clusterId: innerClusterId } = parseOwnerScopedRegionId(region.id);
+        if (ownerId) {
+          const ownerSongs = scopeSongsForIsolateOwner(
+            graphSongs.filter(
+              (song) => resolveIsolateDisplayOwnerId(song, activeContributorIds) === ownerId
+            ),
+            ownerId,
+            playlistOwners
+          );
+          const ownerPlaylistNames =
+            Object.keys(playlistOwners).length === 0
+              ? stats.playlistNames
+              : Object.fromEntries(
+                  Object.entries(stats.playlistNames).filter(
+                    ([playlistId]) => playlistOwners[playlistId] === ownerId
+                  )
+                );
+          const ownerStats = buildLibraryStatsFromSongs(ownerSongs, ownerPlaylistNames);
+          const ownerOverrides = getClusterOverridesForOwner(
+            layoutClusterOverrides,
+            ownerId,
+            layoutConfig
+          );
+          return getPlaylistClusterCenter(
+            innerClusterId,
+            ownerStats,
+            dimensions,
+            ownerOverrides,
+            ownerSongs
+          );
+        }
+        return getPlaylistClusterCenter(
+          innerClusterId,
+          stats,
+          dimensions,
+          layoutClusterOverrides,
+          graphSongs
+        );
+      };
+      regionLookup.forEach((region) => {
+        if (!previewRegionIds.has(region.id)) {
+          return;
+        }
+        const { clusterId: innerClusterId } = parseOwnerScopedRegionId(region.id);
+        const hullCenter = resolveRegionHullCenter(region);
+        regionCentersByRegionId.set(region.id, hullCenter);
+        playlistCenters.set(innerClusterId, hullCenter);
+        paddingByRegionId.set(
+          region.id,
+          Math.max(20, Math.min(42, 14 + Math.sqrt(region.memberCount) * 3))
+        );
+        memberCountByRegionId.set(region.id, region.memberCount);
+      });
+      clusterDragSnapshotRef.current = {
+        movedRegionIds: draggedRegionSet,
+        previewRegionIds,
+        songIds: snapshotSongIds,
+        movedRegions,
+        neighborRegions: neighborRegionIds
+          .map((regionId) => regionLookup.get(regionId))
+          .filter((region): region is ClusterRegion => Boolean(region)),
+        songs: snapshotSongs,
+        showClusterHulls: showPlaylistClusterHulls,
+        hullContext:
+          clusterMode === "playlist"
+            ? {
+                edges: edgesForDrag,
+                regionCentersByRegionId,
+                playlistCenters,
+                paddingByRegionId,
+                memberCountByRegionId,
+              }
+            : null,
+      };
+      clusterDragPreviewScheduleRef.current?.();
+      setClusterDragSnapshotRevision((value) => value + 1);
+    });
   };
 
   const handleNodePointerDown = (event: React.PointerEvent<SVGCircleElement>, song: Song) => {
@@ -2445,7 +2468,6 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     cancelDeferredPanCommit();
     graphInteractionActiveRef.current = true;
     updatePauseGraphAnimations();
-    startTransition(() => setHoveredSongId(null));
 
     trackPointer(event);
 
@@ -2640,6 +2662,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
       clusterDragSnapshotRef.current = null;
       clusterDragGraphDeltaRef.current = { x: 0, y: 0 };
       setIsClusterDragging(false);
+      setClusterDragSnapshotRevision(0);
       endIsolateClusterDrag();
       const nextOverrides = clusterOverridesRef.current;
       setClusterOverrides(nextOverrides);
@@ -4542,6 +4565,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
           ) : null}
           <MusicCueGraphLayer
             structureKey={graphStructureKey}
+            interactionRevisionKey={interactionRevisionKey}
             layerRef={graphLayerRef}
             visibleNodeCountRef={visibleNodeCountRef}
             culledNodeCountRef={culledNodeCountRef}
