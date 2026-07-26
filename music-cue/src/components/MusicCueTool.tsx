@@ -676,7 +676,16 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
   >([]);
   const handleUndoRef = useRef<() => void>(() => {});
 
-  const initialMusicService = loadMusicService();
+  const initialMusicService = (() => {
+    if (
+      isWebDeployment &&
+      typeof window !== "undefined" &&
+      window.matchMedia("(max-width: 640px)").matches
+    ) {
+      return "spotify" as MusicServiceId;
+    }
+    return loadMusicService();
+  })();
   const initialSongSpaceMode = loadSongSpaceMode();
   const initialPersonalSpotifyLibrary =
     isWebDeployment && initialMusicService === "spotify" ? loadPersonalSpotifyLibrary() : null;
@@ -935,7 +944,6 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
   const [completedStrokes, setCompletedStrokes] = useState<NormalizedPoint[][]>([]);
   const [completedStrokesRevision, setCompletedStrokesRevision] = useState(0);
   const [strokeLayoutConfig, setStrokeLayoutConfig] = useState<LayoutConfig | null>(null);
-  const [isDrawingNewPath, setIsDrawingNewPath] = useState(false);
   const [cue, setCue] = useState<GeneratedCue | null>(null);
   const [hoveredSongId, setHoveredSongId] = useState<string | null>(null);
   const [activePlaylistName, setActivePlaylistName] = useState<string | null>(null);
@@ -992,6 +1000,11 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     stats: LibraryStats;
     playlistOwners: Record<string, string>;
   } | null>(null);
+  const sharedLibrarySnapshotRef = useRef<{
+    songs: Song[];
+    stats: LibraryStats;
+    playlistOwners: Record<string, string>;
+  } | null>(null);
   const hoverProbeRafRef = useRef(0);
   const pendingHoverPointRef = useRef<GraphPoint | null>(null);
   const [isClusterDragging, setIsClusterDragging] = useState(false);
@@ -1000,8 +1013,36 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
   const clusterDragGraphDeltaRef = useRef<GraphPoint>({ x: 0, y: 0 });
   const clusterDragPreviewScheduleRef = useRef<(() => void) | null>(null);
   const draftStrokeScheduleRef = useRef<(() => void) | null>(null);
+  const isDrawingNewPathRef = useRef(false);
+  const draftStrokeActiveRef = useRef(false);
+  const [isMobileWebLayout, setIsMobileWebLayout] = useState(
+    () =>
+      isWebDeployment &&
+      typeof window !== "undefined" &&
+      window.matchMedia("(max-width: 640px)").matches
+  );
+  const [cueSidebarCollapsed, setCueSidebarCollapsed] = useState(true);
+
+  useEffect(() => {
+    if (!isWebDeployment) {
+      return undefined;
+    }
+    const mediaQuery = window.matchMedia("(max-width: 640px)");
+    const onChange = () => setIsMobileWebLayout(mediaQuery.matches);
+    mediaQuery.addEventListener("change", onChange);
+    return () => mediaQuery.removeEventListener("change", onChange);
+  }, []);
 
   const showToolSidebar = graphTool === "draw";
+  const showCueSidebar = showToolSidebar || (isMobileWebLayout && isWebDeployment);
+
+  useEffect(() => {
+    if (!isMobileWebLayout || !isWebDeployment || musicService === "spotify") {
+      return;
+    }
+    setMusicService("spotify");
+    saveMusicService("spotify");
+  }, [isMobileWebLayout, musicService]);
 
   useEffect(() => {
     cueRef.current = cue;
@@ -1320,6 +1361,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
 
   const showIsolateContributorView =
     libraryScopeMode === "isolate" && hasMultipleLibraryOwners(visibleSongs);
+  const layoutShowIsolateContributorView = useDeferredValue(showIsolateContributorView);
   const playlistGraphViewActive =
     playlistGraphView && isClusterView(layoutConfig) && layoutConfig.clusterMode === "playlist";
   const isSharedIsolateClusterDragDisabled =
@@ -1391,14 +1433,13 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
   const layoutColdKey = `${layoutConfigKey(coldLayoutConfig)}|${layoutTransitionKey}|${graphSongs.length}|${dimensions.width}x${dimensions.height}`;
   const graphStructureKey = layoutColdKey;
   const interactionRevisionKey = [
-    graphTool,
+    songSpaceMode,
     libraryScopeMode,
     hoveredSongId ?? "",
     selectedSongId ?? "",
     activePersistentId ?? "",
     cue?.songs.length ?? 0,
     completedStrokesRevision,
-    isDrawingNewPath ? 1 : 0,
     isClusterDragging ? 1 : 0,
     clusterDragSnapshotRevision,
     playlistGraphViewActive ? 1 : 0,
@@ -1922,6 +1963,11 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
 
   const handleGraphToolChange = useCallback(
     (tool: GraphToolMode) => {
+      const svg = svgRef.current;
+      if (svg) {
+        svg.classList.remove("music-cue-graph-navigate", "music-cue-graph-draw");
+        svg.classList.add(`music-cue-graph-${tool}`);
+      }
       startTransition(() => {
         setGraphTool(tool);
         saveGraphTool(tool);
@@ -2099,7 +2145,8 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     const lastCompleted = completedStrokesRef.current[completedStrokesRef.current.length - 1];
     const lastPoint = lastCompleted?.[lastCompleted.length - 1];
     isDrawingRef.current = true;
-    setIsDrawingNewPath(true);
+    isDrawingNewPathRef.current = true;
+    draftStrokeActiveRef.current = true;
     strokeRef.current = lastPoint ? [lastPoint, normalized] : [normalized];
     draftStrokeScheduleRef.current?.();
     setStatusMessage("Drawing path… release to finish this segment.");
@@ -2118,7 +2165,8 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
   const finishStrokeDrawing = () => {
     const currentStroke = strokeRef.current;
     isDrawingRef.current = false;
-    setIsDrawingNewPath(false);
+    isDrawingNewPathRef.current = false;
+    draftStrokeActiveRef.current = false;
     draftStrokeScheduleRef.current?.();
 
     if (currentStroke.length < 2) {
@@ -3147,17 +3195,57 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
         playlistOwners: { ...playlistOwners },
       };
     }
+    if (mode === "mine" && songSpaceMode === "shared" && songs.length > 0) {
+      sharedLibrarySnapshotRef.current = {
+        songs,
+        stats,
+        playlistOwners: { ...playlistOwners },
+      };
+    }
     pauseLayoutSync();
     clearFrozenIsolateBounds();
     invalidatePlaylistOverlapLayoutCache();
     invalidateLayoutPositionCaches();
-    startTransition(() => {
-      setSongSpaceMode(mode);
-      saveSongSpaceMode(mode);
-      reloadLayoutCaches(getActiveClusterLayoutScope(mode, libraryScopeMode, sharedContributorCount));
-      if (mode === "shared") {
-        void refreshSharedContributors({ loadLibrary: true, forceRefresh: true });
-      } else if (isWebDeployment && musicService === "spotify") {
+    setSongSpaceMode(mode);
+    saveSongSpaceMode(mode);
+    reloadLayoutCaches(getActiveClusterLayoutScope(mode, libraryScopeMode, sharedContributorCount));
+
+    const restorePersonalLibrary = () => {
+      const snapshot = personalLibrarySnapshotRef.current;
+      if (!snapshot || snapshot.songs.length === 0) {
+        return false;
+      }
+      applyLoadedLibrary(
+        snapshot.songs,
+        snapshot.stats,
+        `My song space — ${snapshot.songs.length} tracks.`,
+        snapshot.playlistOwners,
+        { persist: false }
+      );
+      return true;
+    };
+
+    if (mode === "shared") {
+      const sharedSnapshot = sharedLibrarySnapshotRef.current;
+      if (sharedSnapshot && sharedSnapshot.songs.length > 0) {
+        applyLoadedLibrary(
+          sharedSnapshot.songs,
+          sharedSnapshot.stats,
+          `Shared song space — ${sharedSnapshot.songs.length} tracks.`,
+          sharedSnapshot.playlistOwners,
+          { persist: false }
+        );
+      } else {
+        startTransition(() => {
+          void refreshSharedContributors({ loadLibrary: true, forceRefresh: true });
+        });
+      }
+      setStatusMessage("Shared song space — collaborative library view.");
+      return;
+    }
+
+    if (isWebDeployment && musicService === "spotify") {
+      if (!restorePersonalLibrary()) {
         void (async () => {
           const cached = await loadCachedSpotifyLibrary();
           if (cached && cached.songs.length > 0) {
@@ -3170,28 +3258,19 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
             );
             return;
           }
-          const snapshot = personalLibrarySnapshotRef.current;
-          if (snapshot && snapshot.songs.length > 0) {
-            applyLoadedLibrary(
-              snapshot.songs,
-              snapshot.stats,
-              `My song space — ${snapshot.songs.length} tracks.`,
-              snapshot.playlistOwners,
-              { persist: false }
-            );
-            return;
-          }
           if (songsRef.current.length === 0) {
             setStatusMessage("My song space — load your library from Spotify to begin.");
+          } else {
+            setStatusMessage("My song space — your library layout and clusters.");
           }
         })();
+      } else {
+        setStatusMessage("My song space — your library layout and clusters.");
       }
-      setStatusMessage(
-        mode === "mine"
-          ? "My song space — your library layout and clusters."
-          : "Shared song space — collaborative library view."
-      );
-    });
+      return;
+    }
+
+    setStatusMessage("My song space — your library layout and clusters.");
   };
 
   const handleIsolateToggle = () => {
@@ -4020,7 +4099,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
 
   return (
     <>
-      <div className="music-cue-layout">
+      <div className={`music-cue-layout${isMobileWebLayout ? " music-cue-layout--mobile-web" : ""}`}>
       {exportDialogOpen && (
         <div className="music-cue-modal-backdrop" onClick={handleCloseExportDialog}>
           <div
@@ -4236,7 +4315,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
             </p>
           </div>
 
-          <div className="music-cue-service-toggle" role="group" aria-label="Music service">
+          <div className="music-cue-service-toggle" role="group" aria-label="Music service" hidden={isMobileWebLayout}>
             <button
               type="button"
               className={musicService === "apple-music" ? "music-cue-layout-active" : ""}
@@ -4291,7 +4370,6 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
               onConnect={() => void handleConnectSpotify()}
               onLoadLibrary={() => void handleLoadSpotifyLibrary()}
               onLoadLibraryFresh={() => void handleLoadSpotifyLibrary({ fresh: true })}
-              onOpenSync={() => void handleOpenSpotifySync()}
               onPublishSharedLibrary={() => void handlePublishSharedLibrary()}
               onRefreshSharedLibrary={handleRefreshSharedLibrary}
             />
@@ -4474,7 +4552,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
           )}
         </div>
 
-        <div className="music-cue-toolbar-row music-cue-toolbar-row-filters">
+        <div className="music-cue-toolbar-row music-cue-toolbar-row-filters" hidden={isMobileWebLayout}>
           <div className="music-cue-filters music-cue-toolbar-filters">
             <label>
               Search
@@ -4613,6 +4691,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
             isolateGraphSongs={isolateGraphSongs}
             conglomerateClusterOverridesRef={conglomerateClusterOverridesRef}
             showIsolateContributorView={showIsolateContributorView}
+            layoutShowIsolateContributorView={layoutShowIsolateContributorView}
             playlistGraphViewActive={playlistGraphViewActive}
             useWebPerformanceOptimizations={useWebPerformanceOptimizations}
             viewTransformRef={viewTransformRef}
@@ -4643,7 +4722,8 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
             isSharedIsolateClusterDragDisabled={isSharedIsolateClusterDragDisabled}
             metaGraphForceNodesRef={metaGraphForceNodesRef}
             metaGraphForceEdgesRef={metaGraphForceEdgesRef}
-            isDrawingNewPath={isDrawingNewPath}
+            isDrawingNewPathRef={isDrawingNewPathRef}
+            draftStrokeActiveRef={draftStrokeActiveRef}
             draftStrokeRef={strokeRef}
             draftStrokeScheduleRef={draftStrokeScheduleRef}
             strokeLayoutConfig={strokeLayoutConfig}
@@ -4652,10 +4732,41 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
           />
         </div>
 
-        {showToolSidebar ? (
-        <aside className="music-cue-cue-sidebar">
-          {graphTool === "draw" ? (
+        {showCueSidebar ? (
+        <aside
+          className={`music-cue-cue-sidebar${
+            isMobileWebLayout ? " music-cue-cue-sidebar--mobile" : ""
+          }${isMobileWebLayout && cueSidebarCollapsed ? " is-collapsed" : ""}`}
+        >
+          {isMobileWebLayout ? (
+            <div className="music-cue-cue-sidebar-mobile-bar">
+              <button
+                type="button"
+                className="music-cue-cue-sidebar-toggle"
+                onClick={() => setCueSidebarCollapsed((collapsed) => !collapsed)}
+                aria-expanded={!cueSidebarCollapsed}
+              >
+                {cueSidebarCollapsed ? "Cue" : "Hide"}
+                {cue?.songs.length ? ` (${cue.songs.length})` : ""}
+              </button>
+              <button
+                type="button"
+                onClick={handlePlayCue}
+                disabled={
+                  !cue ||
+                  (useSpotifyLocalExport
+                    ? toSpotifyCueTracks(cue.songs).length === 0
+                    : !isValidatingLibrary && cueSummary?.playableCount === 0)
+                }
+              >
+                {useSpotifyLocalExport ? "Play" : "Play"}
+              </button>
+            </div>
+          ) : null}
+          {(graphTool === "draw" && !isMobileWebLayout) ||
+          (isMobileWebLayout && !cueSidebarCollapsed) ? (
             <>
+          {!isMobileWebLayout && graphTool === "draw" ? (
           <label className="music-cue-slider-label music-cue-cue-path-slider music-cue-cue-path-slider-sidebar">
               Path threshold ({pathThreshold}px)
               <input
@@ -4667,7 +4778,9 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
                 onChange={(event) => handlePathThresholdChange(Number(event.target.value))}
               />
             </label>
+          ) : null}
 
+          {!isMobileWebLayout && graphTool === "draw" ? (
           <label className="music-cue-slider-label music-cue-cue-path-slider music-cue-cue-path-slider-sidebar">
               Cue length
               <input
@@ -4681,9 +4794,11 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
               />
               <span className="music-cue-cue-length-hint">0 = all songs along path</span>
             </label>
+          ) : null}
 
           <div className="music-cue-cue-header">
             <h2 className="music-cue-cue-title">Cue</h2>
+            {!isMobileWebLayout ? (
             <div className="music-cue-actions music-cue-cue-actions">
               <button
                 type="button"
@@ -4714,6 +4829,18 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
                 </button>
               )}
             </div>
+            ) : (
+            <div className="music-cue-actions music-cue-cue-actions music-cue-cue-actions--mobile">
+              <button type="button" onClick={handleOpenExportDialog} disabled={!cue}>
+                Export
+              </button>
+              {buildMode === "manual" ? (
+                <button type="button" onClick={handleUndo} disabled={!canUndo}>
+                  Undo
+                </button>
+              ) : null}
+            </div>
+            )}
           </div>
 
           {playbackTrackingEnabled && (

@@ -60,9 +60,10 @@ export type MusicCueGraphCanvasProps = {
   metaGraphForceEdgesRef: MutableRefObject<MetaGraphForceEdge[]>;
   graphViewClusterRegions: ClusterRegion[];
   strokePaths: string[];
-  isDrawingNewPath: boolean;
   draftStrokeRef: MutableRefObject<NormalizedPoint[]>;
   draftStrokeScheduleRef: MutableRefObject<(() => void) | null>;
+  isDrawingNewPathRef: MutableRefObject<boolean>;
+  draftStrokeActiveRef: MutableRefObject<boolean>;
   showPathOverlays: boolean;
   showSongNodesInGraph: boolean;
   cueEdgePath: string;
@@ -108,7 +109,6 @@ const MusicCueGraphCanvasComponent = ({
   metaGraphForceEdgesRef,
   graphViewClusterRegions,
   strokePaths,
-  isDrawingNewPath,
   showPathOverlays,
   showSongNodesInGraph,
   cueEdgePath,
@@ -131,6 +131,8 @@ const MusicCueGraphCanvasComponent = ({
   clusterDragPreviewScheduleRef,
   draftStrokeRef,
   draftStrokeScheduleRef,
+  isDrawingNewPathRef,
+  draftStrokeActiveRef,
 }: MusicCueGraphCanvasProps) => {
   const useSpatialHover =
     enableGraphNodeCulling || (isLocalDesktopApp && renderGraphSongCount > LABEL_THRESHOLD);
@@ -257,12 +259,12 @@ const MusicCueGraphCanvasComponent = ({
           />
         ))}
         <StrokeDraftLayer
-          active={isDrawingNewPath}
+          activeRef={draftStrokeActiveRef}
           strokeRef={draftStrokeRef}
           dimensions={dimensions}
           scheduleRef={draftStrokeScheduleRef}
         />
-        {showPathOverlays && showSongNodesInGraph && cueEdgePath && !isDrawingNewPath ? (
+        {showPathOverlays && showSongNodesInGraph && cueEdgePath && !isDrawingNewPathRef.current ? (
           <path d={cueEdgePath} className="music-cue-edge-path" />
         ) : null}
 

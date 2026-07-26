@@ -64,14 +64,26 @@ Never put interaction or drag state in `structureKey`. Example bug: `isolateBoun
 ### Isolate contributors toggle (shared song space)
 
 - Include **`libraryScopeMode`** in both `layoutTransitionKey` and `interactionRevisionKey` so the graph layer actually re-renders when toggling.
+- Pass **`layoutShowIsolateContributorView={useDeferredValue(showIsolateContributorView)}`** into `MusicCueGraphLayer` so turning isolate **on** does not block the main thread; interaction overlays still use the live `showIsolateContributorView`.
+- Playlist graph view in isolate mode must use **`getClusterRegionDisplayCenter`** (on-screen cluster positions), not conglomerate-only `resolvePlaylistGraphViewRegionCenter`.
 - On toggle: `clearFrozenIsolateBounds()`, `reloadLayoutCaches(...)`, `invalidateLayoutPositionCaches()` inside `startTransition` — web and desktop use the same path.
 - Do **not** bump `isolateBoundsRevision` on drag **start** (ref-only freeze); only on drag end.
+
+### Song space (mine ↔ shared)
+
+- Switch **`songSpaceMode` synchronously** (not inside `startTransition`) so filtering applies immediately.
+- Snapshot personal/shared libraries in refs when leaving each mode; restore from snapshot or Spotify cache when returning to **mine** so merged shared songs do not leak into my song space.
 
 ### Path drawing (cue build)
 
 - While the pointer is down, render the draft segment via **`StrokeDraftLayer`** (rAF + refs) — never `setState` per `pointermove`.
+- Use **`isDrawingNewPathRef` / `draftStrokeActiveRef`** for stroke start; do **not** put `isDrawingNewPath` in `interactionRevisionKey` (avoids a full graph-layer rerun on first pointer down).
 - **`nodeRenderGraphSongs`** / `getSongIdsNearStrokes` use **`completedStrokes` only**, not the in-progress stroke. Song matching and cue regeneration run in **`finishStrokeDrawing`** on pointer up.
 - Bump **`completedStrokesRevision`** (in `interactionRevisionKey`) when strokes are committed or cleared.
+
+### Draw vs navigate tool mode
+
+- Do **not** include **`graphTool`** in `interactionRevisionKey`. Update the SVG tool class imperatively in `handleGraphToolChange` so toggling modes does not rerun graph layout memos.
 
 ### Force simulation stop
 

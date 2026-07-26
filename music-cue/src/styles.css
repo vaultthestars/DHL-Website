@@ -1430,6 +1430,61 @@ body.music-cue-web-deployment .playhtml-chat-container {
     overflow: hidden;
   }
 
+  .music-cue-layout--mobile-web .music-cue-toolbar-primary,
+  .music-cue-layout--mobile-web .music-cue-toolbar-row-filters,
+  .music-cue-layout--mobile-web .music-cue-import-progress {
+    display: none;
+  }
+
+  .music-cue-layout--mobile-web .music-cue-toolbar {
+    gap: 4px;
+  }
+
+  .music-cue-layout--mobile-web .music-cue-toolbar-row {
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+
+  .music-cue-workspace {
+    flex-direction: row;
+    align-items: stretch;
+  }
+
+  .music-cue-cue-sidebar--mobile {
+    width: auto;
+    flex: 0 0 auto;
+    max-width: min(42vw, 180px);
+    padding: 4px;
+    gap: 4px;
+  }
+
+  .music-cue-cue-sidebar--mobile.is-collapsed {
+    max-width: 88px;
+  }
+
+  .music-cue-cue-sidebar--mobile.is-collapsed .music-cue-cue-header,
+  .music-cue-cue-sidebar--mobile.is-collapsed .music-cue-cue-meta,
+  .music-cue-cue-sidebar--mobile.is-collapsed .music-cue-list-panel {
+    display: none;
+  }
+
+  .music-cue-cue-sidebar-mobile-bar {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    flex-shrink: 0;
+  }
+
+  .music-cue-cue-sidebar-mobile-bar button {
+    width: 100%;
+    font-size: 10px;
+    padding: 4px 6px;
+  }
+
+  .music-cue-cue-actions--mobile {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
   .music-cue-toolbar-filters {
     grid-template-columns: 1fr;
   }

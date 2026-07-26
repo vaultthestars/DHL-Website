@@ -145,6 +145,7 @@ export type MusicCueGraphLayerProps = {
   isolateGraphSongs: (sourceSongs: Song[]) => Song[];
   conglomerateClusterOverridesRef: MutableRefObject<ClusterCenterOverrides>;
   showIsolateContributorView: boolean;
+  layoutShowIsolateContributorView: boolean;
   playlistGraphViewActive: boolean;
   useWebPerformanceOptimizations: boolean;
 
@@ -178,7 +179,8 @@ export type MusicCueGraphLayerProps = {
   isSharedIsolateClusterDragDisabled: boolean;
   metaGraphForceNodesRef: MutableRefObject<import("../lib/playlistMetaGraphForceSim").MetaGraphForceNode[]>;
   metaGraphForceEdgesRef: MutableRefObject<import("../lib/playlistMetaGraphForceSim").MetaGraphForceEdge[]>;
-  isDrawingNewPath: boolean;
+  isDrawingNewPathRef: MutableRefObject<boolean>;
+  draftStrokeActiveRef: MutableRefObject<boolean>;
   draftStrokeRef: MutableRefObject<NormalizedPoint[]>;
   draftStrokeScheduleRef: MutableRefObject<(() => void) | null>;
   strokeLayoutConfig: LayoutConfig | null;
@@ -211,6 +213,7 @@ const useMusicCueGraphModel = (props: MusicCueGraphLayerProps) => {
     isolateGraphSongs,
     conglomerateClusterOverridesRef,
     showIsolateContributorView,
+    layoutShowIsolateContributorView,
     playlistGraphViewActive,
     useWebPerformanceOptimizations,
     viewTransformRef,
@@ -461,7 +464,7 @@ const webDisplayPositionBySongId = useMemo(() => {
   isolateDisplayContext,
   layoutConfig,
   libraryScopeMode,
-  showIsolateContributorView,
+  layoutShowIsolateContributorView,
   songSpaceMode,
   stats,
   useWebPerformanceOptimizations,
@@ -705,7 +708,7 @@ const useLazyWebNodeCulling = useWebPerformanceOptimizations && enableGraphNodeC
 const layoutColdKey = `${layoutConfigKey(coldLayoutConfig)}|${layoutTransitionKey}|${renderGraphSongs.length}|${dimensions.width}x${dimensions.height}|${isolateBoundsRevision}`;
 
 const clusterViewportHints = useMemo(() => {
-  if (!useLazyWebNodeCulling || showIsolateContributorView) {
+  if (!useLazyWebNodeCulling || layoutShowIsolateContributorView) {
     return undefined;
   }
   if (!isClusterView(coldLayoutConfig)) {
@@ -723,7 +726,7 @@ const clusterViewportHints = useMemo(() => {
   dimensions,
   layoutClusterOverrides,
   nodeRenderGraphSongs,
-  showIsolateContributorView,
+  layoutShowIsolateContributorView,
   stats,
   useLazyWebNodeCulling,
 ]);
@@ -833,8 +836,8 @@ renderedPositionedSongsRef.current = renderedPositionedSongs;
 const visiblePositionedSongs = renderedPositionedSongs;
 
 const clusterDragSongIds = isClusterDragging ? clusterDragSnapshotRef.current?.songIds : undefined;
-const clusterDragPreviewRegionIds = isClusterDragging
-  ? clusterDragSnapshotRef.current?.previewRegionIds
+const clusterDragHiddenRegionIds = isClusterDragging
+  ? clusterDragSnapshotRef.current?.movedRegionIds
   : undefined;
 
 const culledNodeCount = enableGraphNodeCulling
@@ -939,7 +942,7 @@ const webPerOwnerClusterRegions = useMemo(() => {
 const clusterRegions = useMemo(() => {
   const clusterOverridesForLayout = layoutClusterOverrides;
   const showIsolateRegions = useWebPerformanceOptimizations
-    ? showIsolateContributorView
+    ? layoutShowIsolateContributorView
     : layoutLibraryScopeMode === "isolate";
 
   if (!isClusterView(coldLayoutConfig)) {
@@ -1012,7 +1015,7 @@ const clusterRegions = useMemo(() => {
   libraryScopeMode,
   playlistOwners,
   positionForClusterRegions,
-  showIsolateContributorView,
+  layoutShowIsolateContributorView,
   stats,
   useWebPerformanceOptimizations,
   webPerOwnerClusterRegions,
@@ -1027,6 +1030,13 @@ const graphViewClusterRegions = useMemo(() => {
     : clusterRegions;
   if (!showPlaylistMetaGraph) {
     return regions;
+  }
+  if (layoutShowIsolateContributorView) {
+    return regions.map((region) => ({
+      ...region,
+      center: getClusterRegionDisplayCenter(region),
+      displayOffset: undefined,
+    }));
   }
   const overridesForLayout = layoutClusterOverrides;
   return regions.map((region) => ({
@@ -1055,6 +1065,7 @@ const graphViewClusterRegions = useMemo(() => {
   graphSongs,
   isolateOwnerBounds,
   layoutClusterOverrides,
+  layoutShowIsolateContributorView,
   playlistOwners,
   showPlaylistMetaGraph,
   stats,
@@ -1064,7 +1075,7 @@ const playlistMetaGraphEdges = useMemo(() => {
   if (!showPlaylistMetaGraph) {
     return [];
   }
-  if (showIsolateContributorView && hasMultipleLibraryOwners(graphSongs)) {
+  if (layoutShowIsolateContributorView && hasMultipleLibraryOwners(graphSongs)) {
     return getIsolateOwnerIds(graphSongs, activeContributorIds).flatMap((ownerId) => {
       const ownerSongs = scopeSongsForIsolateOwner(
         graphSongs.filter(
@@ -1093,7 +1104,7 @@ const playlistMetaGraphEdges = useMemo(() => {
   activeContributorIds,
   graphSongs,
   playlistOwners,
-  showIsolateContributorView,
+  layoutShowIsolateContributorView,
   showPlaylistMetaGraph,
   stats.playlistIds,
   stats.playlistNames,
@@ -1314,7 +1325,7 @@ const staticPlaylistMetaGraphSegments = useMemo(() => {
     visiblePositionedSongs,
     songNodeFills,
     clusterDragSongIds,
-    clusterDragPreviewRegionIds,
+    clusterDragHiddenRegionIds,
     enableGraphNodeCulling,
     renderGraphSongCount: renderGraphSongs.length,
     resolveClusterLabelCenter,
@@ -1362,7 +1373,9 @@ const MusicCueGraphLayerComponent = (props: MusicCueGraphLayerProps) => {
         fadingClusterSnapshot={props.fadingClusterSnapshot}
         isClusterLayout={model.isClusterLayout}
         clusterRegions={model.clusterRegions}
-        clusterDragPreviewRegionIds={model.clusterDragPreviewRegionIds}
+        clusterDragPreviewRegionIds={model.clusterDragHiddenRegionIds}
+        isDrawingNewPathRef={props.isDrawingNewPathRef}
+        draftStrokeActiveRef={props.draftStrokeActiveRef}
         effectiveClusterRevealOpacity={model.effectiveClusterRevealOpacity}
         showPlaylistMetaGraph={model.showPlaylistMetaGraph}
         playlistGraphForceSim={props.playlistGraphForceSim}
@@ -1372,7 +1385,6 @@ const MusicCueGraphLayerComponent = (props: MusicCueGraphLayerProps) => {
         metaGraphForceEdgesRef={props.metaGraphForceEdgesRef}
         graphViewClusterRegions={model.graphViewClusterRegions}
         strokePaths={model.strokePaths}
-        isDrawingNewPath={props.isDrawingNewPath}
         draftStrokeRef={props.draftStrokeRef}
         draftStrokeScheduleRef={props.draftStrokeScheduleRef}
         showPathOverlays={model.showPathOverlays}

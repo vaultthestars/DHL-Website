@@ -4,7 +4,7 @@ import type { GraphDimensions } from "../lib/graphLayout";
 import type { NormalizedPoint } from "../lib/types";
 
 type StrokeDraftLayerProps = {
-  active: boolean;
+  activeRef: MutableRefObject<boolean>;
   strokeRef: MutableRefObject<NormalizedPoint[]>;
   dimensions: GraphDimensions;
   scheduleRef: MutableRefObject<(() => void) | null>;
@@ -12,7 +12,7 @@ type StrokeDraftLayerProps = {
 
 /** rAF-updated draft path so pointer moves do not re-render the graph layer. */
 export const StrokeDraftLayer = ({
-  active,
+  activeRef,
   strokeRef,
   dimensions,
   scheduleRef,
@@ -47,7 +47,7 @@ export const StrokeDraftLayer = ({
   );
 
   void frame;
-  if (!active) {
+  if (!activeRef.current) {
     return null;
   }
 

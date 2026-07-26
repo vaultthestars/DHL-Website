@@ -53,7 +53,6 @@ export type SpotifyLibraryActionsProps = {
   onConnect: () => void;
   onLoadLibrary: () => void;
   onLoadLibraryFresh: () => void;
-  onOpenSync: () => void;
   onPublishSharedLibrary: () => void;
   onRefreshSharedLibrary: () => void;
 };
@@ -71,7 +70,6 @@ export const SpotifyLibraryActions = ({
   onConnect,
   onLoadLibrary,
   onLoadLibraryFresh,
-  onOpenSync,
   onPublishSharedLibrary,
   onRefreshSharedLibrary,
 }: SpotifyLibraryActionsProps) => {
@@ -130,16 +128,6 @@ export const SpotifyLibraryActions = ({
           }
         >
           Start fresh
-        </button>
-      ) : null}
-      {spotifyCanLoadLibrary && !spotifyImportResumeLabel && hasLocalLibrary ? (
-        <button
-          type="button"
-          onClick={onOpenSync}
-          disabled={isImporting || spotifyStatusLoading || rateLimitCooldownMs > 0}
-          title="Import only new or changed playlists"
-        >
-          Sync updates
         </button>
       ) : null}
       {isWebDeployment && spotifyStatus?.connected ? (
