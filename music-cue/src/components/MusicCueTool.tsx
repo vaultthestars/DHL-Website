@@ -139,6 +139,7 @@ import { getActiveClusterLayoutScope, getEffectiveLibraryScopeMode, isSingleCont
 import { SpotifySyncDialog } from "./SpotifySyncDialog";
 import { ClusterDragPreviewLayer, type ClusterDragSnapshot } from "./ClusterDragPreviewLayer";
 import { MusicCueGraphCanvas, type MusicCueGraphCanvasHandlers } from "./MusicCueGraphCanvas";
+import { SpotifyLibraryActions } from "./SpotifyLibraryActions";
 import {
   getAxisMetricLabel,
   getAxisMetricsForService,
@@ -1003,7 +1004,6 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
   const [spotifySyncError, setSpotifySyncError] = useState<string | null>(null);
   const [spotifySyncPlaylists, setSpotifySyncPlaylists] = useState<SpotifyPlaylistSummary[]>([]);
   const [importResumeRevision, setImportResumeRevision] = useState(0);
-  const [rateLimitCooldownMs, setRateLimitCooldownMs] = useState(0);
   const [playlistGraphView, setPlaylistGraphView] = useState(() => loadPlaylistGraphView());
   const [playlistGraphForceSim, setPlaylistGraphForceSim] = useState(false);
   const [shiftHeld, setShiftHeld] = useState(false);
@@ -1122,17 +1122,6 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     }
     return hasResumableSpotifyImport() ? getSpotifyImportResumeLabel() : null;
   }, [importResumeRevision, musicService]);
-
-  useEffect(() => {
-    if (musicService !== "spotify") {
-      setRateLimitCooldownMs(0);
-      return undefined;
-    }
-    const updateCooldown = () => setRateLimitCooldownMs(getSpotifyImportRateLimitCooldownMs());
-    updateCooldown();
-    const intervalId = window.setInterval(updateCooldown, 1000);
-    return () => window.clearInterval(intervalId);
-  }, [importResumeRevision, isImporting, musicService]);
 
   useEffect(() => {
     songsRef.current = songs;
@@ -2046,6 +2035,9 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
   const useLazyWebNodeCulling = useWebPerformanceOptimizations && enableGraphNodeCulling;
 
   const layoutColdKey = `${layoutConfigKey(coldLayoutConfig)}|${layoutTransitionKey}|${renderGraphSongs.length}|${dimensions.width}x${dimensions.height}|${isolateBoundsRevision}`;
+  const graphRenderRevision = pauseGraphAnimationsRef.current
+    ? `gesture|${layoutColdKey}`
+    : `${nodeCullRevision}|${layoutColdKey}`;
 
   const clusterViewportHints = useMemo(() => {
     if (!useLazyWebNodeCulling || showIsolateContributorView) {
@@ -2163,7 +2155,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
   }, [layoutColdKey]);
 
   useEffect(() => {
-    if (!useWebPerformanceOptimizations) {
+    if (!useWebPerformanceOptimizations || pauseGraphAnimationsRef.current) {
       return;
     }
     setNodeCullRevision((value) => value + 1);
@@ -4289,7 +4281,6 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
       } else if (error instanceof SpotifyImportRateLimitError) {
         keepProgress = true;
         const cooldownMs = getSpotifyImportRateLimitCooldownMs();
-        setRateLimitCooldownMs(cooldownMs);
         setStatusMessage(
           cooldownMs > 0
             ? `Spotify is rate-limiting this app. Wait ${formatSpotifyRateLimitCooldown(cooldownMs)} before resuming — progress is saved.`
@@ -4437,7 +4428,6 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
       } else if (error instanceof SpotifyImportRateLimitError) {
         keepProgress = true;
         const nextCooldownMs = getSpotifyImportRateLimitCooldownMs();
-        setRateLimitCooldownMs(nextCooldownMs);
         setStatusMessage(
           nextCooldownMs > 0
             ? `Spotify is rate-limiting this app. Wait ${formatSpotifyRateLimitCooldown(nextCooldownMs)} before resuming — progress is saved.`
@@ -5258,79 +5248,25 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
               )}
             </>
           ) : (
-            <div className="music-cue-spotify-actions">
-              <button
-                type="button"
-                onClick={() => void handleConnectSpotify()}
-                disabled={spotifyStatus?.configured === false}
-              >
-                {spotifyStatus?.connected ? "Reconnect Spotify" : "Connect Spotify"}
-              </button>
-              <button
-                type="button"
-                onClick={() => void handleLoadSpotifyLibrary()}
-                disabled={
-                  isImporting || spotifyStatusLoading || !spotifyCanLoadLibrary || rateLimitCooldownMs > 0
-                }
-                title={
-                  rateLimitCooldownMs > 0
-                    ? `Spotify rate limit — wait ${formatSpotifyRateLimitCooldown(rateLimitCooldownMs)}`
-                    : spotifyStatusLoading
-                      ? "Checking Spotify connection…"
-                      : !spotifyCanLoadLibrary
-                        ? "Connect Spotify first"
-                        : spotifyImportResumeLabel ?? undefined
-                }
-              >
-                {isImporting
-                  ? "Loading…"
-                  : rateLimitCooldownMs > 0
-                    ? `Wait ${formatSpotifyRateLimitCooldown(rateLimitCooldownMs)}`
-                  : spotifyStatusLoading
-                    ? "Checking Spotify…"
-                    : spotifyImportResumeLabel
-                      ? "Resume load & share"
-                      : songs.length > 0 || (getLocalSpotifyLibraryForMerge()?.songs.length ?? 0) > 0
-                        ? "Sync library"
-                        : "Load & share library"}
-              </button>
-              {spotifyImportResumeLabel && !isImporting && spotifyCanLoadLibrary ? (
-                <button
-                  type="button"
-                  onClick={() => void handleLoadSpotifyLibrary({ fresh: true })}
-                  disabled={!spotifyCanLoadLibrary || rateLimitCooldownMs > 0}
-                  title={
-                    rateLimitCooldownMs > 0
-                      ? `Spotify rate limit — wait ${formatSpotifyRateLimitCooldown(rateLimitCooldownMs)}`
-                      : spotifyImportResumeLabel
-                  }
-                >
-                  Start fresh
-                </button>
-              ) : null}
-              {spotifyCanLoadLibrary &&
-              !spotifyImportResumeLabel &&
-              (songs.length > 0 || (getLocalSpotifyLibraryForMerge()?.songs.length ?? 0) > 0) ? (
-                <button
-                  type="button"
-                  onClick={() => void handleOpenSpotifySync()}
-                  disabled={isImporting || spotifyStatusLoading || rateLimitCooldownMs > 0}
-                  title="Import only new or changed playlists"
-                >
-                  Sync updates
-                </button>
-              ) : null}
-              {isWebDeployment && spotifyStatus?.connected ? (
-                <button type="button" onClick={() => void handlePublishSharedLibrary()} disabled={isImporting}>
-                  {isImporting ? "Publishing…" : "Re-share library"}
-                </button>
-              ) : null}
-              {isWebDeployment ? (
-                <button type="button" onClick={handleRefreshSharedLibrary} disabled={isLoadingSharedLibrary}>
-                  {isLoadingSharedLibrary ? "Refreshing…" : "Refresh shared"}
-                </button>
-              ) : null}
-            </div>
+            <SpotifyLibraryActions
+              musicService={musicService}
+              importResumeRevision={importResumeRevision}
+              isImporting={isImporting}
+              spotifyStatusLoading={spotifyStatusLoading}
+              spotifyCanLoadLibrary={spotifyCanLoadLibrary}
+              spotifyStatus={spotifyStatus}
+              spotifyImportResumeLabel={spotifyImportResumeLabel}
+              hasLocalLibrary={
+                songs.length > 0 || (getLocalSpotifyLibraryForMerge()?.songs.length ?? 0) > 0
+              }
+              isLoadingSharedLibrary={isLoadingSharedLibrary}
+              onConnect={() => void handleConnectSpotify()}
+              onLoadLibrary={() => void handleLoadSpotifyLibrary()}
+              onLoadLibraryFresh={() => void handleLoadSpotifyLibrary({ fresh: true })}
+              onOpenSync={() => void handleOpenSpotifySync()}
+              onPublishSharedLibrary={() => void handlePublishSharedLibrary()}
+              onRefreshSharedLibrary={handleRefreshSharedLibrary}
+            />
           )}
 
           {musicService === "spotify" && importProgress ? (
@@ -5634,6 +5570,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
             </div>
           ) : null}
           <MusicCueGraphCanvas
+            graphRenderRevision={graphRenderRevision}
             svgRef={svgRef}
             contentGroupRef={contentGroupRef}
             bgRectRef={bgRectRef}

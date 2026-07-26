@@ -35,6 +35,7 @@ export type MusicCueGraphCanvasHandlers = {
 };
 
 export type MusicCueGraphCanvasProps = {
+  graphRenderRevision: string;
   svgRef: RefObject<SVGSVGElement | null>;
   contentGroupRef: RefObject<SVGGElement | null>;
   bgRectRef: RefObject<SVGRectElement | null>;
@@ -371,4 +372,9 @@ const MusicCueGraphCanvasComponent = ({
   );
 };
 
-export const MusicCueGraphCanvas = memo(MusicCueGraphCanvasComponent);
+const areGraphCanvasPropsEqual = (
+  previous: MusicCueGraphCanvasProps,
+  next: MusicCueGraphCanvasProps
+): boolean => previous.graphRenderRevision === next.graphRenderRevision;
+
+export const MusicCueGraphCanvas = memo(MusicCueGraphCanvasComponent, areGraphCanvasPropsEqual);
