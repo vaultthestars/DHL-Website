@@ -1,4 +1,5 @@
 import type { LibraryScopeMode } from "./libraryScope";
+import { isWebDeployment } from "./runtime";
 import type { ClusterLayoutScope } from "./storage";
 import type { SongSpaceMode } from "./sharedLibraryApi";
 
@@ -31,7 +32,7 @@ export const getEffectiveLibraryScopeMode = (
   libraryScopeMode: LibraryScopeMode
 ): LibraryScopeMode => {
   if (songSpaceMode === "mine") {
-    return "conglomerate";
+    return isWebDeployment ? libraryScopeMode : "conglomerate";
   }
   return libraryScopeMode;
 };

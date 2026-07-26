@@ -18,6 +18,7 @@ type PlaylistGraphForceSimLayerProps = {
   segments: PlaylistMetaGraphSegment[];
   maxSharedSongCount: number;
   labelOpacity?: number;
+  pinLabelCenters?: boolean;
   onLabelPointerDown?: (
     event: React.PointerEvent<SVGTextElement>,
     clusterId: string,
@@ -34,6 +35,7 @@ export const PlaylistGraphForceSimLayer = ({
   segments,
   maxSharedSongCount,
   labelOpacity = 1,
+  pinLabelCenters = false,
   onLabelPointerDown,
 }: PlaylistGraphForceSimLayerProps) => {
   const edgeLineRefs = useRef<(SVGLineElement | null)[]>([]);
@@ -67,7 +69,7 @@ export const PlaylistGraphForceSimLayer = ({
 
       nodes.forEach((node) => {
         const label = labelTextRefs.current.get(node.regionId);
-        if (!label) {
+        if (!label || pinLabelCenters) {
           return;
         }
         label.setAttribute("x", node.x.toFixed(1));
@@ -81,7 +83,7 @@ export const PlaylistGraphForceSimLayer = ({
     return () => {
       cancelAnimationFrame(animationId);
     };
-  }, [active, edgesRef, nodesRef]);
+  }, [active, edgesRef, nodesRef, pinLabelCenters]);
 
   if (!active) {
     return null;
@@ -114,7 +116,11 @@ export const PlaylistGraphForceSimLayer = ({
       })}
       {labelRegions.map((region) => {
         const node = positionsByRegionId.get(region.id);
-        const center = node ? { x: node.x, y: node.y } : region.center;
+        const center = pinLabelCenters
+          ? region.center
+          : node
+            ? { x: node.x, y: node.y }
+            : region.center;
         return (
           <text
             key={`label-sim-${region.id}`}

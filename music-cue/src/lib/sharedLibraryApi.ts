@@ -353,9 +353,12 @@ export const disableMockUsersForWeb = (): void => {
 
 export type LibraryScopeMode = "conglomerate" | "isolate";
 
-export const loadLibraryScopeMode = (): LibraryScopeMode => {
+export const loadLibraryScopeMode = (songSpaceMode: SongSpaceMode = loadSongSpaceMode()): LibraryScopeMode => {
   if (isLocalDesktopApp) {
     return "conglomerate";
+  }
+  if (isWebDeployment && songSpaceMode === "mine") {
+    return "isolate";
   }
   const stored = localStorage.getItem(LIBRARY_SCOPE_MODE_KEY);
   return stored === "isolate" ? "isolate" : "conglomerate";

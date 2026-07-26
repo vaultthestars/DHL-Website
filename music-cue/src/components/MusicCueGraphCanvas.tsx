@@ -30,6 +30,8 @@ export type MusicCueGraphCanvasHandlers = {
     label: string
   ) => void;
   onClusterLabelPointerUp: (event: React.PointerEvent<SVGTextElement>) => void;
+  onClusterLabelPointerEnter: (regionId: string) => void;
+  onClusterLabelPointerLeave: (regionId: string) => void;
   onNodePointerDown: (event: React.PointerEvent<SVGCircleElement>, song: Song) => void;
   onNodePointerUp: (event: React.PointerEvent<SVGCircleElement>, song: Song) => void;
   onHoverSongEnter: (songId: string) => void;
@@ -53,6 +55,7 @@ export type MusicCueGraphCanvasProps = {
   clusterDragPreviewRegionIds?: Set<string>;
   effectiveClusterRevealOpacity: number;
   showPlaylistMetaGraph: boolean;
+  pinPlaylistGraphLabelCenters?: boolean;
   playlistGraphForceSim: boolean;
   staticPlaylistMetaGraphSegments: PlaylistMetaGraphSegment[];
   maxPlaylistMetaGraphSharedCount: number;
@@ -75,6 +78,7 @@ export type MusicCueGraphCanvasProps = {
   cueSongIds: Set<string>;
   unavailableSongIds: Set<string>;
   selectedSongId: string | null;
+  hoveredClusterRegionId: string | null;
   showLabels: boolean;
   selectedClusterIds: Set<string>;
   isGuestViewOnly: boolean;
@@ -102,6 +106,7 @@ const MusicCueGraphCanvasComponent = ({
   clusterDragPreviewRegionIds,
   effectiveClusterRevealOpacity,
   showPlaylistMetaGraph,
+  pinPlaylistGraphLabelCenters = false,
   playlistGraphForceSim,
   staticPlaylistMetaGraphSegments,
   maxPlaylistMetaGraphSharedCount,
@@ -120,6 +125,7 @@ const MusicCueGraphCanvasComponent = ({
   cueSongIds,
   unavailableSongIds,
   selectedSongId,
+  hoveredClusterRegionId,
   showLabels,
   selectedClusterIds,
   isGuestViewOnly,
@@ -196,12 +202,18 @@ const MusicCueGraphCanvasComponent = ({
               .map((region) => {
                 const offset = region.displayOffset;
                 const transform = offset ? `translate(${offset.x} ${offset.y})` : undefined;
+                const isHovered =
+                  !showPlaylistMetaGraph && hoveredClusterRegionId === region.id;
                 return (
                   <path
                     key={`region-${region.id}`}
                     d={region.hullPath}
-                    className="music-cue-cluster-region"
+                    className={`music-cue-cluster-region${
+                      isHovered ? " music-cue-cluster-region-hovered" : ""
+                    }`}
                     stroke={region.stroke}
+                    fill={isHovered ? region.stroke : "none"}
+                    fillOpacity={isHovered ? 0.1 : undefined}
                     opacity={effectiveClusterRevealOpacity}
                     pointerEvents="none"
                     transform={transform}
@@ -242,6 +254,7 @@ const MusicCueGraphCanvasComponent = ({
             segments={staticPlaylistMetaGraphSegments}
             maxSharedSongCount={maxPlaylistMetaGraphSharedCount}
             labelOpacity={effectiveClusterRevealOpacity}
+            pinLabelCenters={pinPlaylistGraphLabelCenters}
             onLabelPointerDown={
               isGuestViewOnly || isSharedIsolateClusterDragDisabled
                 ? undefined
@@ -365,6 +378,16 @@ const MusicCueGraphCanvasComponent = ({
                             handlersRef.current.onClusterLabelPointerDown(event, region.id, region.label)
                     }
                     onPointerUp={(event) => handlersRef.current.onClusterLabelPointerUp(event)}
+                    onPointerEnter={
+                      showPlaylistMetaGraph
+                        ? undefined
+                        : () => handlersRef.current.onClusterLabelPointerEnter(region.id)
+                    }
+                    onPointerLeave={
+                      showPlaylistMetaGraph
+                        ? undefined
+                        : () => handlersRef.current.onClusterLabelPointerLeave(region.id)
+                    }
                   >
                     {region.label}
                   </text>

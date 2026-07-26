@@ -1432,8 +1432,9 @@ body.music-cue-web-deployment .playhtml-chat-container {
 
   .music-cue-layout--mobile-web .music-cue-toolbar-primary,
   .music-cue-layout--mobile-web .music-cue-toolbar-row-filters,
-  .music-cue-layout--mobile-web .music-cue-import-progress {
-    display: none;
+  .music-cue-layout--mobile-web .music-cue-import-progress,
+  .music-cue-layout--mobile-web .music-cue-service-toggle {
+    display: none !important;
   }
 
   .music-cue-layout--mobile-web .music-cue-toolbar {
@@ -1456,6 +1457,7 @@ body.music-cue-web-deployment .playhtml-chat-container {
     max-width: min(42vw, 180px);
     padding: 4px;
     gap: 4px;
+    touch-action: manipulation;
   }
 
   .music-cue-cue-sidebar--mobile.is-collapsed {

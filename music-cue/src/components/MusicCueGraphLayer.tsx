@@ -153,6 +153,7 @@ export type MusicCueGraphLayerProps = {
   pauseGraphAnimationsRef: MutableRefObject<boolean>;
 
   hoveredSongId: string | null;
+  hoveredClusterRegionId: string | null;
   selectedSongId: string | null;
   activePersistentId: string | null;
   cue: GeneratedCue | null;
@@ -1112,6 +1113,9 @@ const playlistMetaGraphEdges = useMemo(() => {
 
 const resolveClusterLabelCenter = useCallback(
   (region: ClusterRegion): GraphPoint => {
+    if (layoutShowIsolateContributorView && showPlaylistMetaGraph) {
+      return getClusterRegionDisplayCenter(region);
+    }
     if (coldLayoutConfig.clusterMode !== "playlist") {
       return getClusterRegionDisplayCenter(region);
     }
@@ -1136,7 +1140,9 @@ const resolveClusterLabelCenter = useCallback(
     graphSongs,
     isolateOwnerBounds,
     layoutClusterOverrides,
+    layoutShowIsolateContributorView,
     playlistOwners,
+    showPlaylistMetaGraph,
     stats,
   ]
 );
@@ -1378,6 +1384,9 @@ const MusicCueGraphLayerComponent = (props: MusicCueGraphLayerProps) => {
         draftStrokeActiveRef={props.draftStrokeActiveRef}
         effectiveClusterRevealOpacity={model.effectiveClusterRevealOpacity}
         showPlaylistMetaGraph={model.showPlaylistMetaGraph}
+        pinPlaylistGraphLabelCenters={
+          model.showPlaylistMetaGraph && props.layoutShowIsolateContributorView
+        }
         playlistGraphForceSim={props.playlistGraphForceSim}
         staticPlaylistMetaGraphSegments={model.staticPlaylistMetaGraphSegments}
         maxPlaylistMetaGraphSharedCount={model.maxPlaylistMetaGraphSharedCount}
@@ -1398,6 +1407,7 @@ const MusicCueGraphLayerComponent = (props: MusicCueGraphLayerProps) => {
         cueSongIds={model.cueSongIds}
         unavailableSongIds={props.unavailableSongIds}
         selectedSongId={props.selectedSongId}
+        hoveredClusterRegionId={props.hoveredClusterRegionId}
         showLabels={model.showLabels}
         selectedClusterIds={props.selectedClusterIds}
         isGuestViewOnly={props.isGuestViewOnly}
