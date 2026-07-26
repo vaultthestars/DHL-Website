@@ -1389,7 +1389,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
   const layoutTransitionKey = useWebPerformanceOptimizations
     ? songSpaceMode
     : `${songSpaceMode}:${libraryScopeMode}`;
-  const layoutColdKey = `${layoutConfigKey(coldLayoutConfig)}|${layoutTransitionKey}|${graphSongs.length}|${dimensions.width}x${dimensions.height}|${isolateBoundsRevision}`;
+  const layoutColdKey = `${layoutConfigKey(coldLayoutConfig)}|${layoutTransitionKey}|${graphSongs.length}|${dimensions.width}x${dimensions.height}`;
   const graphStructureKey = layoutColdKey;
   const interactionRevisionKey = [
     hoveredSongId ?? "",
@@ -1398,6 +1398,9 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     cue?.songs.length ?? 0,
     isClusterDragging ? 1 : 0,
     clusterDragSnapshotRevision,
+    playlistGraphViewActive ? 1 : 0,
+    playlistGraphForceSim ? 1 : 0,
+    isolateBoundsRevision,
     boxSelectRect
       ? `${boxSelectRect.x1},${boxSelectRect.y1},${boxSelectRect.x2},${boxSelectRect.y2}`
       : "",
@@ -1464,7 +1467,6 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     }
     if (!frozenIsolateBoundsRef.current) {
       frozenIsolateBoundsRef.current = liveIsolateOwnerBounds;
-      setIsolateBoundsRevision((value) => value + 1);
     }
   }, [liveIsolateOwnerBounds, skipIsolateCentroidTranslation]);
 
@@ -1705,7 +1707,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
 
   useEffect(() => {
     if (showPlaylistMetaGraph) {
-      setHoveredSongId(null);
+      startTransition(() => setHoveredSongId(null));
     }
   }, [showPlaylistMetaGraph]);
 
@@ -2159,91 +2161,41 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     }
     graphInteractionActiveRef.current = true;
     updatePauseGraphAnimations();
-    if (playlistGraphForceSim) {
-      stopMetaGraphForceSim();
-    }
     event.stopPropagation();
-    beginIsolateClusterDrag();
-    const activeOverrides =
-      songSpaceMode === "mine" && localContributorId ? layoutClusterOverrides : clusterOverrides;
-    const overrideMap =
-      layoutConfig.clusterMode === "genre"
-        ? activeOverrides.genre
-        : activeOverrides.playlist;
+
     const clustersToMove =
       selectedClusterIds.size > 0 && selectedClusterIds.has(clusterId)
         ? [...selectedClusterIds]
         : [clusterId];
-    const startPositions: Record<string, NormalizedPoint> = {};
-    const { ownerId } = parseOwnerScopedRegionId(clusterId);
-    const ownerBounds = ownerId && isolateOwnerBounds ? isolateOwnerBounds.get(ownerId) : undefined;
-    const defaultMetaCenter =
-      ownerId && isolateOwnerBounds
-        ? getEnabledOwnerMetaClusters(graphSongs, dimensions, activeContributorIds, {
-            isAxisView: false,
-            ownerBounds: isolateOwnerBounds,
-          }).find((meta) => meta.id === ownerId)?.center
-        : undefined;
-    const metaCenter =
-      ownerId && defaultMetaCenter ? getMetaClusterCenter(ownerId, defaultMetaCenter) : defaultMetaCenter;
-    const useDisplaySpace = !skipIsolateCentroidTranslation && Boolean(ownerBounds && metaCenter);
-    const dragSpaceOptions = {
-      useDisplaySpace,
-      bounds: ownerBounds,
-      metaCenter,
-    };
-
-    clustersToMove.forEach((id) => {
-      startPositions[id] = getClusterDragDisplayNormalizedStart(
-        id,
-        getClusterRegions().find((entry) => entry.id === id),
-        overrideMap,
-        dimensions,
-        dragSpaceOptions
-      );
-    });
-
-    const anchorRegion = getClusterRegions().find((entry) => entry.id === clusterId);
     const anchorStart = svgRef.current
-      ? toNormalizedPosition(getLocalPoint(event, svgRef.current, viewTransformRef.current), dimensions)
-      : startPositions[clusterId] ??
-        getClusterDragDisplayNormalizedStart(clusterId, anchorRegion, overrideMap, dimensions, dragSpaceOptions);
+      ? toNormalizedPosition(
+          getLocalPoint(event, svgRef.current, viewTransformRef.current),
+          dimensions
+        )
+      : { x: 0.5, y: 0.5 };
+    const anchorRegion = getClusterRegions().find((entry) => entry.id === clusterId);
+    const initialMovedRegions = anchorRegion
+      ? [
+          {
+            ...anchorRegion,
+            labelCenter: getClusterRegionDisplayCenter(anchorRegion),
+          },
+        ]
+      : [];
 
-    clusterDragSessionRef.current = {
-      clusterIds: clustersToMove,
-      startPositions,
-      anchorStart,
-      useDisplaySpace,
-      bounds: ownerBounds,
-      metaCenter,
-    };
     draggingClusterIdRef.current = clusterId;
     clusterDragGraphDeltaRef.current = { x: 0, y: 0 };
-    const clusterMode = layoutConfig.clusterMode;
-    const draggedRegionSet = new Set(clustersToMove);
-    const regionLookup = new Map<string, ClusterRegion>();
-    getClusterRegions().forEach((region) => regionLookup.set(region.id, region));
-    getGraphViewClusterRegions().forEach((region) => {
-      if (!regionLookup.has(region.id)) {
-        regionLookup.set(region.id, region);
-      }
-    });
-    const movedRegions = clustersToMove
-      .map((regionId) => regionLookup.get(regionId))
-      .filter((region): region is ClusterRegion => Boolean(region))
-      .map((region) => ({
-        ...region,
-        labelCenter:
-          layoutConfig.clusterMode === "playlist"
-            ? graphLayerRef.current?.resolveClusterLabelCenter(region) ??
-              getClusterRegionDisplayCenter(region)
-            : getClusterRegionDisplayCenter(region),
-      }));
+    clusterDragSessionRef.current = {
+      clusterIds: clustersToMove,
+      startPositions: {},
+      anchorStart,
+      useDisplaySpace: false,
+    };
     clusterDragSnapshotRef.current = {
-      movedRegionIds: draggedRegionSet,
-      previewRegionIds: draggedRegionSet,
+      movedRegionIds: new Set(clustersToMove),
+      previewRegionIds: new Set(clustersToMove),
       songIds: new Set<string>(),
-      movedRegions,
+      movedRegions: initialMovedRegions,
       neighborRegions: [],
       songs: [],
       showClusterHulls: showPlaylistClusterHulls,
@@ -2259,6 +2211,71 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
       if (!draggingClusterIdRef.current) {
         return;
       }
+      if (playlistGraphForceSim) {
+        stopMetaGraphForceSim();
+      }
+      beginIsolateClusterDrag();
+      const activeOverrides =
+        songSpaceMode === "mine" && localContributorId ? layoutClusterOverrides : clusterOverrides;
+      const overrideMap =
+        layoutConfig.clusterMode === "genre" ? activeOverrides.genre : activeOverrides.playlist;
+      const clusterMode = layoutConfig.clusterMode;
+      const draggedRegionSet = new Set(clustersToMove);
+      const { ownerId } = parseOwnerScopedRegionId(clusterId);
+      const ownerBounds = ownerId && isolateOwnerBounds ? isolateOwnerBounds.get(ownerId) : undefined;
+      const defaultMetaCenter =
+        ownerId && isolateOwnerBounds
+          ? getEnabledOwnerMetaClusters(graphSongs, dimensions, activeContributorIds, {
+              isAxisView: false,
+              ownerBounds: isolateOwnerBounds,
+            }).find((meta) => meta.id === ownerId)?.center
+          : undefined;
+      const metaCenter =
+        ownerId && defaultMetaCenter ? getMetaClusterCenter(ownerId, defaultMetaCenter) : defaultMetaCenter;
+      const useDisplaySpace = !skipIsolateCentroidTranslation && Boolean(ownerBounds && metaCenter);
+      const dragSpaceOptions = {
+        useDisplaySpace,
+        bounds: ownerBounds,
+        metaCenter,
+      };
+      const startPositions: Record<string, NormalizedPoint> = {};
+      const regions = getClusterRegions();
+      clustersToMove.forEach((id) => {
+        startPositions[id] = getClusterDragDisplayNormalizedStart(
+          id,
+          regions.find((entry) => entry.id === id),
+          overrideMap,
+          dimensions,
+          dragSpaceOptions
+        );
+      });
+      clusterDragSessionRef.current = {
+        clusterIds: clustersToMove,
+        startPositions,
+        anchorStart,
+        useDisplaySpace,
+        bounds: ownerBounds,
+        metaCenter,
+      };
+
+      const regionLookup = new Map<string, ClusterRegion>();
+      regions.forEach((region) => regionLookup.set(region.id, region));
+      getGraphViewClusterRegions().forEach((region) => {
+        if (!regionLookup.has(region.id)) {
+          regionLookup.set(region.id, region);
+        }
+      });
+      const movedRegions = clustersToMove
+        .map((regionId) => regionLookup.get(regionId))
+        .filter((region): region is ClusterRegion => Boolean(region))
+        .map((region) => ({
+          ...region,
+          labelCenter:
+            layoutConfig.clusterMode === "playlist"
+              ? graphLayerRef.current?.resolveClusterLabelCenter(region) ??
+                getClusterRegionDisplayCenter(region)
+              : getClusterRegionDisplayCenter(region),
+        }));
       const snapshotSongIds = new Set<string>();
       const snapshotSongs: Array<{ song: Song; position: GraphPoint }> = [];
       if (clusterMode === "genre" || clusterMode === "playlist") {
@@ -4375,8 +4392,10 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
                   className={playlistGraphView ? "music-cue-layout-active" : ""}
                   onClick={() => {
                     const enabled = !playlistGraphView;
-                    setPlaylistGraphView(enabled);
-                    savePlaylistGraphView(enabled);
+                    startTransition(() => {
+                      setPlaylistGraphView(enabled);
+                      savePlaylistGraphView(enabled);
+                    });
                     setStatusMessage(
                       enabled
                         ? "Graph view on — playlist nodes and overlap lines only. Drag labels to untangle."

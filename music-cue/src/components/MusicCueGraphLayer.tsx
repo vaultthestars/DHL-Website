@@ -227,6 +227,8 @@ const useMusicCueGraphModel = (props: MusicCueGraphLayerProps) => {
     clusterDragSnapshotRef,
   } = props;
 
+  const deferredPlaylistGraphViewActive = useDeferredValue(playlistGraphViewActive);
+
   const graphSongsRef = useRef(graphSongs);
   graphSongsRef.current = graphSongs;
 
@@ -1023,7 +1025,7 @@ const clusterRegions = useMemo(() => {
   getConglomeratePositionForSong,
 ]);
 
-const showPlaylistMetaGraph = playlistGraphViewActive;
+const showPlaylistMetaGraph = deferredPlaylistGraphViewActive;
 
 const graphViewClusterRegions = useMemo(() => {
   const regions = showPlaylistMetaGraph

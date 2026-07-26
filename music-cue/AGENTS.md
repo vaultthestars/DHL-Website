@@ -24,3 +24,45 @@ This repo builds **two different products** from the same source:
 5. **Local server** (`music-cue/server/`) serves the desktop app. Shared-library and Spotify handler code is synced to `frontend/api/` for Vercel; changes there do not require changing desktop behavior if properly gated.
 
 6. **Desktop cluster layout backup**: committed defaults in `src/data/cluster-layout.json` (bundled into the client). Runtime edits save to `data/cluster-layout.local.json` via `PUT /api/cluster-layout` — never write into `src/` at runtime (that triggers a Vite HMR loop in dev). Legacy browser keys (`music-cue-genre-cluster-layout` without `-isolate`) must keep working on desktop.
+
+## Graph performance (web / large libraries)
+
+The graph is the main perf hotspot (~2,500 songs on the website). Follow these patterns so pan, zoom, cluster drag, and view-mode toggles stay smooth.
+
+### Architecture
+
+- **`MusicCueTool.tsx`** — shell: gestures, sidebar, library state, view transform refs.
+- **`MusicCueGraphLayer.tsx`** — memoized graph compute + canvas. Split from the tool so parent re-renders (Spotify countdown, hover, etc.) do not rerun layout `useMemo`s.
+- **`MusicCueGraphCanvas.tsx`** — SVG render only; memoized on `graphRenderRevision`.
+
+### Memo keys (do not collapse these)
+
+- **`structureKey` (`layoutColdKey`)** — layout-only: config, song count, dimensions. Busting this reruns **all** cluster/layout/cull `useMemo`s (~hundreds of ms on large libraries).
+- **`interactionRevisionKey`** — hover, selection, cluster drag, box select, playlist graph view, force sim, isolate-bounds revision. Busting this reruns the layer component but **cached layout memos stay valid**.
+
+Never put interaction or drag state in `structureKey`. Example bug: `isolateBoundsRevision` in `layoutColdKey` caused a full graph recompute on every cluster-drag pointer down.
+
+### Pan / zoom gestures
+
+- Update **`viewBox` directly** on the SVG each animation frame (`applyLiveViewGesture`). Do **not** pan by CSS-transforming the whole `<svg>` — the frozen `viewBox` clips lines/paths at the old viewport edge.
+- Keep live transform in **`viewTransformRef`** (no React state per mousemove).
+- During gestures: block hover/collaborative cursor updates, defer node-cull refresh until idle (`NODE_CULL_IDLE_MS`), pause layout transitions via `pauseGraphAnimationsRef`.
+- Use DOM class toggles (`.music-cue-view-gesturing`) for pointer-events / hiding labels — not `setState` on every move.
+
+### Cluster drag
+
+- **Pointer down (sync, minimal):** pointer capture, `draggingClusterIdRef`, anchor point, one-region preview snapshot, `setIsClusterDragging(true)`.
+- **Next frame (`requestAnimationFrame`):** member songs, metagraph neighbors, hull context, `startPositions`, full snapshot. Freeze isolate bounds via **ref only** (`frozenIsolateBoundsRef`); bump `isolateBoundsRevision` on drag **end**, not start.
+- Drag preview uses **`ClusterDragPreviewLayer`** + refs so moves do not re-render the full graph.
+
+### Playlist “Graph view” toggle
+
+- Wrap `setPlaylistGraphView` in **`startTransition`** so the UI stays responsive.
+- In the graph layer, use **`useDeferredValue(playlistGraphViewActive)`** for metagraph-specific work (edges, graph-view region centers, hiding song nodes).
+- Include `playlistGraphViewActive` / `playlistGraphForceSim` in **`interactionRevisionKey`**, not `structureKey`.
+
+### Other rules
+
+- Isolate **Spotify rate-limit countdown** (and similar 1s timers) into child components so they do not re-render `MusicCueTool`.
+- Node culling reads **`viewTransformForCullRef`**; refresh cull on idle after pan, not every frame.
+- Desktop (`useWebPerformanceOptimizations === false`): no culling, no deferred layout — do not gate desktop behavior behind web perf flags unless intentional.
