@@ -422,7 +422,9 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     }, durationMs);
   }, []);
   const publishClusterLayoutRef = useRef<(overrides: ClusterCenterOverrides) => void>(() => {});
+  const collaborativeGraphCursorRef = useRef<(cursor: NormalizedPoint | null) => void>(() => {});
   const setGraphCursorRef = useRef<(cursor: NormalizedPoint | null) => void>(() => {});
+  const graphInteractionActiveRef = useRef(false);
   const clusterDragSessionRef = useRef<{
     clusterIds: string[];
     startPositions: Record<string, NormalizedPoint>;
@@ -461,7 +463,11 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
   const gestureVisualRafRef = useRef<number>(0);
   const pendingLiveTransformRef = useRef<ViewTransform | null>(null);
   const viewGestureSettleTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const viewGestureEndTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const nodeCullRefreshTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const viewTransformForCullRef = useRef<ViewTransform>(DEFAULT_VIEW_TRANSFORM);
+  const VIEW_GESTURE_SYNC_MS = 150;
+  const VIEW_GESTURE_END_MS = 400;
   const [nodeCullRevision, setNodeCullRevision] = useState(0);
   const viewPresencePublishRef = useRef<() => void>(() => {});
   const [dimensions, setDimensions] = useState<GraphDimensions>(() => getGraphDimensions(null));
@@ -520,15 +526,23 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     [applyLiveViewGesture]
   );
 
+  const clearViewGestureTimers = useCallback(() => {
+    if (viewGestureSettleTimeoutRef.current) {
+      clearTimeout(viewGestureSettleTimeoutRef.current);
+      viewGestureSettleTimeoutRef.current = null;
+    }
+    if (viewGestureEndTimeoutRef.current) {
+      clearTimeout(viewGestureEndTimeoutRef.current);
+      viewGestureEndTimeoutRef.current = null;
+    }
+  }, []);
+
   const commitViewGesture = useCallback(
     (transform?: ViewTransform) => {
       if (transform) {
         viewTransformRef.current = transform;
       }
-      if (viewGestureSettleTimeoutRef.current) {
-        clearTimeout(viewGestureSettleTimeoutRef.current);
-        viewGestureSettleTimeoutRef.current = null;
-      }
+      clearViewGestureTimers();
       if (gestureVisualRafRef.current) {
         cancelAnimationFrame(gestureVisualRafRef.current);
         gestureVisualRafRef.current = 0;
@@ -538,17 +552,29 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
       setViewGesturingClass(false);
       flushViewTransform();
     },
-    [flushViewTransform, setViewGesturingClass]
+    [clearViewGestureTimers, flushViewTransform, setViewGesturingClass]
   );
 
-  const beginViewGesture = useCallback(() => {
-    if (isViewGesturingRef.current) {
-      commitViewGesture();
+  const syncViewGestureTransform = useCallback(() => {
+    if (!isViewGesturingRef.current) {
+      return;
     }
+    if (gestureVisualRafRef.current) {
+      cancelAnimationFrame(gestureVisualRafRef.current);
+      gestureVisualRafRef.current = 0;
+    }
+    pendingLiveTransformRef.current = null;
     committedViewTransformRef.current = { ...viewTransformRef.current };
-    isViewGesturingRef.current = true;
-    setViewGesturingClass(true);
-  }, [commitViewGesture, setViewGesturingClass]);
+    flushViewTransform();
+  }, [flushViewTransform]);
+
+  const beginViewGesture = useCallback(() => {
+    if (!isViewGesturingRef.current) {
+      committedViewTransformRef.current = { ...viewTransformRef.current };
+      isViewGesturingRef.current = true;
+      setViewGesturingClass(true);
+    }
+  }, [setViewGesturingClass]);
 
   const applyViewTransformLive = useCallback(
     (transform: ViewTransform) => {
@@ -570,20 +596,64 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     setNodeCullRevision((value) => value + 1);
   }, []);
 
+  const scheduleDeferredNodeCullRefresh = useCallback(() => {
+    viewTransformForCullRef.current = { ...viewTransformRef.current };
+    if (nodeCullRefreshTimeoutRef.current) {
+      clearTimeout(nodeCullRefreshTimeoutRef.current);
+    }
+    nodeCullRefreshTimeoutRef.current = setTimeout(() => {
+      nodeCullRefreshTimeoutRef.current = null;
+      const apply = () => {
+        startTransition(() => {
+          setNodeCullRevision((value) => value + 1);
+        });
+      };
+      if (typeof requestIdleCallback !== "undefined") {
+        requestIdleCallback(apply, { timeout: 750 });
+      } else {
+        requestAnimationFrame(() => requestAnimationFrame(apply));
+      }
+    }, 32);
+  }, []);
+
+  const shouldSkipGraphPresenceUpdates = useCallback(() => {
+    return (
+      graphInteractionActiveRef.current ||
+      isViewGesturingRef.current ||
+      Boolean(panSessionRef.current) ||
+      Boolean(pinchSessionRef.current) ||
+      Boolean(draggingClusterIdRef.current)
+    );
+  }, []);
+
   const scheduleViewGestureSettle = useCallback(() => {
     if (viewGestureSettleTimeoutRef.current) {
       clearTimeout(viewGestureSettleTimeoutRef.current);
     }
+    if (viewGestureEndTimeoutRef.current) {
+      clearTimeout(viewGestureEndTimeoutRef.current);
+    }
     viewGestureSettleTimeoutRef.current = setTimeout(() => {
       viewGestureSettleTimeoutRef.current = null;
+      syncViewGestureTransform();
+    }, VIEW_GESTURE_SYNC_MS);
+    viewGestureEndTimeoutRef.current = setTimeout(() => {
+      viewGestureEndTimeoutRef.current = null;
       if (!isViewGesturingRef.current) {
         return;
       }
       commitViewGesture();
-      refreshNodeCullFromView();
+      scheduleDeferredNodeCullRefresh();
       scheduleViewPresencePublish();
-    }, 150);
-  }, [commitViewGesture, refreshNodeCullFromView, scheduleViewPresencePublish]);
+    }, VIEW_GESTURE_END_MS);
+  }, [
+    VIEW_GESTURE_END_MS,
+    VIEW_GESTURE_SYNC_MS,
+    commitViewGesture,
+    scheduleDeferredNodeCullRefresh,
+    scheduleViewPresencePublish,
+    syncViewGestureTransform,
+  ]);
 
   const setGraphPanningClass = useCallback((active: boolean) => {
     svgRef.current?.classList.toggle("music-cue-graph-panning", active);
@@ -1124,6 +1194,25 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     document.addEventListener("wheel", handleWheel, { passive: false, capture: true });
     return () => document.removeEventListener("wheel", handleWheel, { capture: true });
   }, [beginViewGesture, scheduleLiveViewGesture, scheduleViewGestureSettle]);
+
+  useEffect(() => {
+    setGraphCursorRef.current = (cursor) => {
+      if (shouldSkipGraphPresenceUpdates()) {
+        return;
+      }
+      collaborativeGraphCursorRef.current(cursor);
+    };
+  }, [shouldSkipGraphPresenceUpdates]);
+
+  useEffect(
+    () => () => {
+      clearViewGestureTimers();
+      if (nodeCullRefreshTimeoutRef.current) {
+        clearTimeout(nodeCullRefreshTimeoutRef.current);
+      }
+    },
+    [clearViewGestureTimers]
+  );
 
   const handlePointerMoveRef = useRef<(event: PointerEvent) => void>(() => {});
 
@@ -2004,21 +2093,29 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
 
   const scheduleHoverProbe = useCallback(
     (graphPoint: GraphPoint) => {
+      if (shouldSkipGraphPresenceUpdates()) {
+        return;
+      }
       pendingHoverPointRef.current = graphPoint;
       if (hoverProbeRafRef.current) {
         return;
       }
       hoverProbeRafRef.current = requestAnimationFrame(() => {
         hoverProbeRafRef.current = 0;
+        if (shouldSkipGraphPresenceUpdates()) {
+          return;
+        }
         const point = pendingHoverPointRef.current;
         if (!point) {
           return;
         }
         const nextHoveredId = findHoveredSongAtPoint(point);
-        setHoveredSongId((current) => (current === nextHoveredId ? current : nextHoveredId));
+        startTransition(() => {
+          setHoveredSongId((current) => (current === nextHoveredId ? current : nextHoveredId));
+        });
       });
     },
-    [findHoveredSongAtPoint]
+    [findHoveredSongAtPoint, shouldSkipGraphPresenceUpdates]
   );
 
   useLayoutEffect(() => {
@@ -2816,7 +2913,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
         panX: session.panX + (session.lastClientX - session.clientX),
         panY: session.panY + (session.lastClientY - session.clientY),
       });
-      refreshNodeCullFromView();
+      scheduleDeferredNodeCullRefresh();
       scheduleViewPresencePublish();
     }
   };
@@ -2858,7 +2955,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
       pinchSessionRef.current = null;
       if (wasPinching && isViewGesturingRef.current) {
         commitViewGesture();
-        refreshNodeCullFromView();
+        scheduleDeferredNodeCullRefresh();
         scheduleViewPresencePublish();
       }
     }
@@ -2959,6 +3056,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     if (isGuestViewOnly || !isClusterLayout || isSharedIsolateClusterDragDisabled) {
       return;
     }
+    graphInteractionActiveRef.current = true;
     if (playlistGraphForceSim) {
       stopMetaGraphForceSim();
     }
@@ -3196,6 +3294,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
 
   const handleNodePointerDown = (event: React.PointerEvent<SVGCircleElement>, song: Song) => {
     event.stopPropagation();
+    graphInteractionActiveRef.current = true;
     nodePointerStartRef.current = {
       songId: song.id,
       clientX: event.clientX,
@@ -3243,6 +3342,9 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     if (graphTool === "navigate") {
       event.preventDefault();
     }
+
+    graphInteractionActiveRef.current = true;
+    startTransition(() => setHoveredSongId(null));
 
     trackPointer(event);
 
@@ -3304,10 +3406,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
 
     if (
       isWebDeployment &&
-      !isViewGesturingRef.current &&
-      !pinchSessionRef.current &&
-      !panSessionRef.current &&
-      !draggingClusterIdRef.current
+      !shouldSkipGraphPresenceUpdates()
     ) {
       const point = getLocalPoint(event, svg, viewTransformRef.current);
       setGraphCursorRef.current(toNormalizedPosition(point, dimensions));
@@ -3344,9 +3443,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
 
     if (
       (enableGraphNodeCulling || isLocalDesktopApp) &&
-      !isViewGesturingRef.current &&
-      !draggingClusterIdRef.current &&
-      !panSessionRef.current &&
+      !shouldSkipGraphPresenceUpdates() &&
       graphTool === "navigate" &&
       !showPlaylistMetaGraph
     ) {
@@ -3419,6 +3516,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     scheduleHoverProbe,
     scheduleLiveViewGesture,
     setGraphPanningClass,
+    shouldSkipGraphPresenceUpdates,
     showPlaylistMetaGraph,
     updatePinchTransform,
   ]);
@@ -3431,7 +3529,6 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     if (event) {
       releasePointer(event);
     }
-
 
     if (draggingClusterIdRef.current) {
       if (event && svgRef.current?.hasPointerCapture(event.pointerId)) {
@@ -3463,6 +3560,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
       } else {
         void syncClusterLayoutToServer(clusterOverridesRef.current);
       }
+      graphInteractionActiveRef.current = false;
       return;
     }
 
@@ -3472,6 +3570,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     }
 
     if (!session) {
+      graphInteractionActiveRef.current = false;
       return;
     }
 
@@ -3492,6 +3591,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
         selected.length > 0 ? `Selected ${selected.length} cluster(s).` : "No clusters in selection."
       );
       resetPanSession();
+      graphInteractionActiveRef.current = false;
       return;
     }
 
@@ -3499,8 +3599,8 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
       finishStrokeDrawing();
     }
 
-
     resetPanSession();
+    graphInteractionActiveRef.current = false;
   };
 
   const handlePathThresholdChange = (value: number) => {
@@ -4739,7 +4839,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
 
       if (syncedViewTransform) {
         applyViewTransformLive(syncedViewTransform);
-        refreshNodeCullFromView();
+        scheduleDeferredNodeCullRefresh();
       }
 
       startTransition(() => {
@@ -4784,7 +4884,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
       clearFrozenIsolateBounds,
       libraryScopeMode,
       musicService,
-      refreshNodeCullFromView,
+      scheduleDeferredNodeCullRefresh,
       reloadLayoutCaches,
       sharedContributorCount,
       songSpaceMode,
@@ -4826,9 +4926,20 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     },
     onNodePointerDown: handleNodePointerDown,
     onNodePointerUp: handleNodePointerUp,
-    onHoverSongEnter: (songId) => setHoveredSongId(songId),
-    onHoverSongLeave: (songId) =>
-      setHoveredSongId((current) => (current === songId ? null : current)),
+    onHoverSongEnter: (songId) => {
+      if (shouldSkipGraphPresenceUpdates()) {
+        return;
+      }
+      startTransition(() => setHoveredSongId(songId));
+    },
+    onHoverSongLeave: (songId) => {
+      if (shouldSkipGraphPresenceUpdates()) {
+        return;
+      }
+      startTransition(() =>
+        setHoveredSongId((current) => (current === songId ? null : current))
+      );
+    },
   };
 
   return (
@@ -5650,7 +5761,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
             enabled={!isSpotifyGuest || songs.length > 0}
           >
             <CollaborativeSessionUi
-              publishRef={setGraphCursorRef}
+              publishRef={collaborativeGraphCursorRef}
               viewPresencePublishRef={viewPresencePublishRef}
               contentGroupRef={contentGroupRef}
               dimensions={dimensions}

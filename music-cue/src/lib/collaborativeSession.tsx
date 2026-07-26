@@ -1,6 +1,7 @@
 import {
   createContext,
   memo,
+  startTransition,
   useCallback,
   useContext,
   useEffect,
@@ -170,7 +171,9 @@ const CollaborativeSessionBridge = ({
       if (!graphCursorStateFrameRef.current) {
         graphCursorStateFrameRef.current = requestAnimationFrame(() => {
           graphCursorStateFrameRef.current = 0;
-          setMyGraphCursor(graphCursorRef.current);
+          startTransition(() => {
+            setMyGraphCursor(graphCursorRef.current);
+          });
         });
       }
       if (publishFrameRef.current) {
