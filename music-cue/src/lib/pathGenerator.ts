@@ -208,6 +208,16 @@ export const findNearestSong = (
   return bestDistance <= 36 ? bestSong : null;
 };
 
+export const getSongIdsNearStrokes = (
+  songs: Song[],
+  strokes: GraphPoint[][],
+  getPosition: PositionResolver,
+  proximityThreshold: number
+): ReadonlySet<string> => {
+  const candidates = buildCueCandidates(songs, strokes, getPosition, proximityThreshold);
+  return new Set(candidates.map((entry) => entry.song.id));
+};
+
 export const generateCueFromStroke = (
   songs: Song[],
   stroke: GraphPoint[],

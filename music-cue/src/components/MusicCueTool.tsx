@@ -47,7 +47,11 @@ import { asStringArray } from "../lib/arrayUtils";
 import { applyPlaybackAdvance } from "../lib/cuePlaybackTracking";
 import { formatDuration, sumDuration } from "../lib/formatDuration";
 import { getSongNodeFill } from "../lib/graphColors";
-import { generateCueFromStroke, generateCueFromStrokes } from "../lib/pathGenerator";
+import {
+  generateCueFromStroke,
+  generateCueFromStrokes,
+  getSongIdsNearStrokes,
+} from "../lib/pathGenerator";
 import {
   buildTerminalPlayCueCommand,
   buildTerminalSavePlaylistCommand,
@@ -230,6 +234,8 @@ const getLocalPoint = (
 const DRAG_THRESHOLD = 10;
 const LABEL_THRESHOLD = 250;
 const CLUSTER_FADE_MS = 600;
+/** Perf experiment: in path build mode, only render nodes within the path threshold of drawn strokes. */
+const PATH_ONLY_SONG_NODE_RENDER = true;
 
 const defaultExportPlaylistName = (): string => {
   const dateLabel = new Date().toLocaleDateString(undefined, {
@@ -1767,6 +1773,41 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     return prepareGraphSongsForIsolate(visibleSongs, activeContributorIds, playlistOwners);
   }, [activeContributorIds, graphSongs, isScopeMergeTransition, playlistOwners, visibleSongs]);
 
+  const nodeRenderGraphSongs = useMemo(() => {
+    if (!PATH_ONLY_SONG_NODE_RENDER || buildMode !== "path") {
+      return renderGraphSongs;
+    }
+    const segments = [...completedStrokes];
+    if (activeStroke.length > 0) {
+      segments.push(activeStroke);
+    }
+    if (segments.length === 0) {
+      return [];
+    }
+    const graphStrokes = segments.map((segment) =>
+      segment.map((point) => fromNormalizedPosition(point, dimensions))
+    );
+    const matchedIds = getSongIdsNearStrokes(
+      graphSongs,
+      graphStrokes,
+      getPosition,
+      pathThreshold
+    );
+    if (matchedIds.size === 0) {
+      return [];
+    }
+    return renderGraphSongs.filter((song) => matchedIds.has(song.id));
+  }, [
+    activeStroke,
+    buildMode,
+    completedStrokes,
+    dimensions,
+    getPosition,
+    graphSongs,
+    pathThreshold,
+    renderGraphSongs,
+  ]);
+
   const getRenderablePosition = useCallback(
     (song: Song): GraphPoint => getDisplayPosition(song),
     [getDisplayPosition]
@@ -1789,7 +1830,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
   }, [activePersistentId, cue, hoveredSongId, selectedSongId]);
 
   const enableGraphNodeCulling =
-    useWebPerformanceOptimizations && renderGraphSongs.length >= GRAPH_NODE_CULLING_THRESHOLD;
+    useWebPerformanceOptimizations && nodeRenderGraphSongs.length >= GRAPH_NODE_CULLING_THRESHOLD;
 
   const useLazyWebNodeCulling = useWebPerformanceOptimizations && enableGraphNodeCulling;
 
@@ -1804,7 +1845,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     }
     return buildClusterViewportHints(
       coldLayoutConfig.clusterMode,
-      renderGraphSongs,
+      nodeRenderGraphSongs,
       stats,
       dimensions,
       layoutClusterOverrides
@@ -1813,7 +1854,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     coldLayoutConfig,
     dimensions,
     layoutClusterOverrides,
-    renderGraphSongs,
+    nodeRenderGraphSongs,
     showIsolateContributorView,
     stats,
     useLazyWebNodeCulling,
@@ -1823,7 +1864,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     if (useLazyWebNodeCulling) {
       return [] as { song: Song; position: GraphPoint }[];
     }
-    return renderGraphSongs.map((song) => ({
+    return nodeRenderGraphSongs.map((song) => ({
       song,
       position: useWebPerformanceOptimizations
         ? getPosition(song)
@@ -1838,7 +1879,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     getRenderablePosition,
     isLargeLibrary,
     layoutColdKey,
-    renderGraphSongs,
+    nodeRenderGraphSongs,
     useLazyWebNodeCulling,
     useWebPerformanceOptimizations,
   ]);
@@ -1912,7 +1953,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
   const renderedPositionedSongs = useMemo(() => {
     if (useLazyWebNodeCulling) {
       return cullGraphSongsWithLazyPositions(
-        renderGraphSongs,
+        nodeRenderGraphSongs,
         dimensions,
         viewTransformForCullRef.current,
         getPosition,
@@ -1942,8 +1983,8 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     getPosition,
     libraryScopeMode,
     nodeCullRevision,
+    nodeRenderGraphSongs,
     prioritizedNodeIds,
-    renderGraphSongs,
     songSpaceMode,
     useLazyWebNodeCulling,
   ]);
@@ -1958,14 +1999,14 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     : undefined;
 
   const culledNodeCount = enableGraphNodeCulling
-    ? Math.max(0, renderGraphSongs.length - visiblePositionedSongs.length)
+    ? Math.max(0, nodeRenderGraphSongs.length - visiblePositionedSongs.length)
     : 0;
 
   const songNodeFills = useMemo(() => {
     const fills = new Map<string, string>();
     const songsToFill = enableGraphNodeCulling
       ? visiblePositionedSongs.map(({ song }) => song)
-      : renderGraphSongs;
+      : nodeRenderGraphSongs;
     songsToFill.forEach((song) => {
       fills.set(
         song.id,
@@ -1977,8 +2018,8 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     enableGraphNodeCulling,
     layoutConfig,
     renderedPositionedSongs,
+    nodeRenderGraphSongs,
     visiblePositionedSongs,
-    renderGraphSongs,
     stats,
     visibleSongs,
   ]);
