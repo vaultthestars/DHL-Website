@@ -468,11 +468,15 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
   const gestureVisualRafRef = useRef<number>(0);
   const pendingLiveTransformRef = useRef<ViewTransform | null>(null);
   const viewGestureSettleTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const viewGestureEndTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const viewGestureVisualEndTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const nodeCullRefreshTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const nodeCullIdleTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const panCommitDebounceTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const viewTransformForCullRef = useRef<ViewTransform>(DEFAULT_VIEW_TRANSFORM);
   const VIEW_GESTURE_SYNC_MS = 150;
-  const VIEW_GESTURE_END_MS = 400;
+  const VIEW_GESTURE_VISUAL_END_MS = 350;
+  const NODE_CULL_IDLE_MS = 1800;
+  const PAN_COMMIT_DEBOUNCE_MS = 280;
   const [nodeCullRevision, setNodeCullRevision] = useState(0);
   const viewPresencePublishRef = useRef<() => void>(() => {});
   const [dimensions, setDimensions] = useState<GraphDimensions>(() => getGraphDimensions(null));
@@ -536,9 +540,16 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
       clearTimeout(viewGestureSettleTimeoutRef.current);
       viewGestureSettleTimeoutRef.current = null;
     }
-    if (viewGestureEndTimeoutRef.current) {
-      clearTimeout(viewGestureEndTimeoutRef.current);
-      viewGestureEndTimeoutRef.current = null;
+    if (viewGestureVisualEndTimeoutRef.current) {
+      clearTimeout(viewGestureVisualEndTimeoutRef.current);
+      viewGestureVisualEndTimeoutRef.current = null;
+    }
+  }, []);
+
+  const cancelDeferredPanCommit = useCallback(() => {
+    if (panCommitDebounceTimeoutRef.current) {
+      clearTimeout(panCommitDebounceTimeoutRef.current);
+      panCommitDebounceTimeoutRef.current = null;
     }
   }, []);
 
@@ -603,6 +614,16 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     setNodeCullRevision((value) => value + 1);
   }, []);
 
+  const shouldSkipGraphPresenceUpdates = useCallback(() => {
+    return (
+      graphInteractionActiveRef.current ||
+      isViewGesturingRef.current ||
+      Boolean(panSessionRef.current) ||
+      Boolean(pinchSessionRef.current) ||
+      Boolean(draggingClusterIdRef.current)
+    );
+  }, []);
+
   const scheduleDeferredNodeCullRefresh = useCallback(() => {
     viewTransformForCullRef.current = { ...viewTransformRef.current };
     if (nodeCullRefreshTimeoutRef.current) {
@@ -616,49 +637,55 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
         });
       };
       if (typeof requestIdleCallback !== "undefined") {
-        requestIdleCallback(apply, { timeout: 750 });
+        requestIdleCallback(apply, { timeout: 1500 });
       } else {
         requestAnimationFrame(() => requestAnimationFrame(apply));
       }
-    }, 32);
+    }, 64);
   }, []);
 
-  const shouldSkipGraphPresenceUpdates = useCallback(() => {
-    return (
-      graphInteractionActiveRef.current ||
-      isViewGesturingRef.current ||
-      Boolean(panSessionRef.current) ||
-      Boolean(pinchSessionRef.current) ||
-      Boolean(draggingClusterIdRef.current)
-    );
-  }, []);
+  const scheduleNodeCullIdle = useCallback(() => {
+    if (nodeCullIdleTimeoutRef.current) {
+      clearTimeout(nodeCullIdleTimeoutRef.current);
+    }
+    nodeCullIdleTimeoutRef.current = setTimeout(() => {
+      nodeCullIdleTimeoutRef.current = null;
+      if (shouldSkipGraphPresenceUpdates()) {
+        scheduleNodeCullIdle();
+        return;
+      }
+      scheduleDeferredNodeCullRefresh();
+      scheduleViewPresencePublish();
+    }, NODE_CULL_IDLE_MS);
+  }, [NODE_CULL_IDLE_MS, scheduleDeferredNodeCullRefresh, scheduleViewPresencePublish, shouldSkipGraphPresenceUpdates]);
+
+  const scheduleViewGestureVisualEnd = useCallback(() => {
+    if (viewGestureVisualEndTimeoutRef.current) {
+      clearTimeout(viewGestureVisualEndTimeoutRef.current);
+    }
+    viewGestureVisualEndTimeoutRef.current = setTimeout(() => {
+      viewGestureVisualEndTimeoutRef.current = null;
+      if (!isViewGesturingRef.current) {
+        return;
+      }
+      commitViewGesture();
+    }, VIEW_GESTURE_VISUAL_END_MS);
+  }, [VIEW_GESTURE_VISUAL_END_MS, commitViewGesture]);
 
   const scheduleViewGestureSettle = useCallback(() => {
     if (viewGestureSettleTimeoutRef.current) {
       clearTimeout(viewGestureSettleTimeoutRef.current);
     }
-    if (viewGestureEndTimeoutRef.current) {
-      clearTimeout(viewGestureEndTimeoutRef.current);
-    }
     viewGestureSettleTimeoutRef.current = setTimeout(() => {
       viewGestureSettleTimeoutRef.current = null;
       syncViewGestureTransform();
     }, VIEW_GESTURE_SYNC_MS);
-    viewGestureEndTimeoutRef.current = setTimeout(() => {
-      viewGestureEndTimeoutRef.current = null;
-      if (!isViewGesturingRef.current) {
-        return;
-      }
-      commitViewGesture();
-      scheduleDeferredNodeCullRefresh();
-      scheduleViewPresencePublish();
-    }, VIEW_GESTURE_END_MS);
+    scheduleViewGestureVisualEnd();
+    scheduleNodeCullIdle();
   }, [
-    VIEW_GESTURE_END_MS,
     VIEW_GESTURE_SYNC_MS,
-    commitViewGesture,
-    scheduleDeferredNodeCullRefresh,
-    scheduleViewPresencePublish,
+    scheduleNodeCullIdle,
+    scheduleViewGestureVisualEnd,
     syncViewGestureTransform,
   ]);
 
@@ -1214,11 +1241,15 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
   useEffect(
     () => () => {
       clearViewGestureTimers();
+      cancelDeferredPanCommit();
       if (nodeCullRefreshTimeoutRef.current) {
         clearTimeout(nodeCullRefreshTimeoutRef.current);
       }
+      if (nodeCullIdleTimeoutRef.current) {
+        clearTimeout(nodeCullIdleTimeoutRef.current);
+      }
     },
-    [clearViewGestureTimers]
+    [cancelDeferredPanCommit, clearViewGestureTimers]
   );
 
   const handlePointerMoveRef = useRef<(event: PointerEvent) => void>(() => {});
@@ -2924,13 +2955,18 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     panSessionRef.current = null;
     setGraphPanningClass(false);
     if (wasPanning && session) {
-      commitViewGesture({
+      const transform = {
         scale: session.startScale,
         panX: session.panX + (session.lastClientX - session.clientX),
         panY: session.panY + (session.lastClientY - session.clientY),
-      });
-      scheduleDeferredNodeCullRefresh();
-      scheduleViewPresencePublish();
+      };
+      viewTransformRef.current = transform;
+      cancelDeferredPanCommit();
+      panCommitDebounceTimeoutRef.current = setTimeout(() => {
+        panCommitDebounceTimeoutRef.current = null;
+        commitViewGesture(transform);
+        scheduleNodeCullIdle();
+      }, PAN_COMMIT_DEBOUNCE_MS);
     }
   };
 
@@ -2971,8 +3007,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
       pinchSessionRef.current = null;
       if (wasPinching && isViewGesturingRef.current) {
         commitViewGesture();
-        scheduleDeferredNodeCullRefresh();
-        scheduleViewPresencePublish();
+        scheduleNodeCullIdle();
       }
     }
   };
@@ -3361,6 +3396,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
       event.preventDefault();
     }
 
+    cancelDeferredPanCommit();
     graphInteractionActiveRef.current = true;
     updatePauseGraphAnimations();
     startTransition(() => setHoveredSongId(null));
@@ -4862,7 +4898,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
 
       if (syncedViewTransform) {
         applyViewTransformLive(syncedViewTransform);
-        scheduleDeferredNodeCullRefresh();
+        scheduleNodeCullIdle();
       }
 
       startTransition(() => {
@@ -4908,6 +4944,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
       libraryScopeMode,
       musicService,
       scheduleDeferredNodeCullRefresh,
+      scheduleNodeCullIdle,
       reloadLayoutCaches,
       sharedContributorCount,
       songSpaceMode,
