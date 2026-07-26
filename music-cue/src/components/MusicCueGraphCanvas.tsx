@@ -4,7 +4,8 @@ import { playlistMetaGraphEdgeStyle, type PlaylistMetaGraphSegment } from "../li
 import type { MetaGraphForceEdge, MetaGraphForceNode } from "../lib/playlistMetaGraphForceSim";
 import { getCanonicalSongId } from "../lib/isolateScopeSongs";
 import { isLocalDesktopApp } from "../lib/runtime";
-import type { GraphDimensions, GraphPoint, GraphToolMode, Song } from "../lib/types";
+import type { GraphPoint, GraphToolMode, Song } from "../lib/types";
+import type { GraphDimensions } from "../lib/graphLayout";
 import { ClusterDragPreviewLayer, type ClusterDragSnapshot } from "./ClusterDragPreviewLayer";
 import { PlaylistGraphForceSimLayer } from "./PlaylistGraphForceSimLayer";
 
