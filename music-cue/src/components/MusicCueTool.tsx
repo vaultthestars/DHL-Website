@@ -98,6 +98,7 @@ import {
   DEFAULT_VIEW_TRANSFORM,
   MIN_ZOOM,
   screenToGraphPoint,
+  toLiveViewCssTransform,
   toLiveViewTransformString,
   toSvgViewBox,
   ViewTransform,
@@ -466,6 +467,10 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
   const viewPresencePublishRef = useRef<() => void>(() => {});
   const [dimensions, setDimensions] = useState<GraphDimensions>(() => getGraphDimensions(null));
 
+  const setViewGesturingClass = useCallback((active: boolean) => {
+    graphPanelRef.current?.classList.toggle("music-cue-view-gesturing", active);
+  }, []);
+
   const flushViewTransform = useCallback(() => {
     viewTransformRafRef.current = 0;
     const transform = pendingViewTransformRef.current ?? viewTransformRef.current;
@@ -473,20 +478,28 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     viewTransformRef.current = transform;
     committedViewTransformRef.current = { ...transform };
     const svg = svgRef.current;
-    if (svg && dimensions.width > 0 && dimensions.height > 0) {
-      svg.setAttribute("viewBox", toSvgViewBox(transform, dimensions.width, dimensions.height));
+    if (svg) {
+      svg.style.transform = "";
+      if (dimensions.width > 0 && dimensions.height > 0) {
+        svg.setAttribute("viewBox", toSvgViewBox(transform, dimensions.width, dimensions.height));
+      }
     }
     contentGroupRef.current?.removeAttribute("transform");
   }, [dimensions.height, dimensions.width]);
 
   const applyLiveViewGesture = useCallback((live: ViewTransform) => {
     viewTransformRef.current = live;
-    const transformString = toLiveViewTransformString(committedViewTransformRef.current, live);
-    if (!transformString) {
-      contentGroupRef.current?.removeAttribute("transform");
+    const svg = svgRef.current;
+    if (!svg) {
       return;
     }
-    contentGroupRef.current?.setAttribute("transform", transformString);
+    const transformString = toLiveViewCssTransform(committedViewTransformRef.current, live);
+    if (!transformString) {
+      svg.style.transform = "";
+      return;
+    }
+    svg.style.transformOrigin = "0 0";
+    svg.style.transform = transformString;
   }, []);
 
   const scheduleLiveViewGesture = useCallback(
@@ -523,9 +536,10 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
       }
       pendingLiveTransformRef.current = null;
       isViewGesturingRef.current = false;
+      setViewGesturingClass(false);
       flushViewTransform();
     },
-    [flushViewTransform]
+    [flushViewTransform, setViewGesturingClass]
   );
 
   const beginViewGesture = useCallback(() => {
@@ -534,7 +548,8 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     }
     committedViewTransformRef.current = { ...viewTransformRef.current };
     isViewGesturingRef.current = true;
-  }, [commitViewGesture]);
+    setViewGesturingClass(true);
+  }, [commitViewGesture, setViewGesturingClass]);
 
   const applyViewTransformLive = useCallback(
     (transform: ViewTransform) => {
@@ -5395,7 +5410,6 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
             className={`music-cue-graph music-cue-graph-${graphTool}`}
             width={dimensions.width}
             height={dimensions.height}
-            viewBox={toSvgViewBox(viewTransformRef.current, dimensions.width, dimensions.height)}
             onPointerDown={handleGraphPointerDown}
             onPointerUp={(event) => finishPointerInteraction(event)}
             onPointerCancel={(event) => finishPointerInteraction(event)}

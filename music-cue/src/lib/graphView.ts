@@ -71,6 +71,21 @@ export const toLiveViewTransformString = (
   return `translate(${translateX} ${translateY}) scale(${scaleRatio})`;
 };
 
+/** Screen-space transform for the whole SVG element (GPU compositor friendly). */
+export const toLiveViewCssTransform = (
+  committed: ViewTransform,
+  live: ViewTransform
+): string | null => {
+  const committedScale = Math.max(committed.scale, MIN_ZOOM);
+  const scaleRatio = live.scale / committedScale;
+  const translateX = live.panX - committed.panX;
+  const translateY = live.panY - committed.panY;
+  if (scaleRatio === 1 && translateX === 0 && translateY === 0) {
+    return null;
+  }
+  return `translate3d(${translateX}px, ${translateY}px, 0) scale(${scaleRatio})`;
+};
+
 export const zoomAtPoint = (
   transform: ViewTransform,
   clientX: number,

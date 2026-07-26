@@ -531,6 +531,21 @@ body {
   cursor: grabbing;
 }
 
+.music-cue-graph-panel.music-cue-view-gesturing {
+  contain: strict;
+}
+
+.music-cue-view-gesturing .music-cue-graph {
+  will-change: transform;
+  pointer-events: none;
+}
+
+.music-cue-view-gesturing .music-cue-cluster-label,
+.music-cue-view-gesturing .music-cue-axis-label,
+.music-cue-view-gesturing .music-cue-node-label {
+  visibility: hidden;
+}
+
 .music-cue-graph-panning .music-cue-graph-content {
   will-change: transform;
 }
