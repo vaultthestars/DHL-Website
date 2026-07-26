@@ -26,7 +26,6 @@ import {
   buildPlaylistMetaGraphCenterMap,
   buildPlaylistMetaGraphSegments,
   isPlaylistMetaGraphClusterRegion,
-  playlistMetaGraphEdgeStyle,
   resolvePlaylistGraphViewRegionCenter,
 } from "../lib/playlistMetaGraph";
 import {
@@ -139,7 +138,7 @@ import {
 import { getActiveClusterLayoutScope, getEffectiveLibraryScopeMode, isSingleContributorSharedLibrary } from "../lib/clusterLayoutScope";
 import { SpotifySyncDialog } from "./SpotifySyncDialog";
 import { ClusterDragPreviewLayer, type ClusterDragSnapshot } from "./ClusterDragPreviewLayer";
-import { PlaylistGraphForceSimLayer } from "./PlaylistGraphForceSimLayer";
+import { MusicCueGraphCanvas, type MusicCueGraphCanvasHandlers } from "./MusicCueGraphCanvas";
 import {
   getAxisMetricLabel,
   getAxisMetricsForService,
@@ -2501,8 +2500,12 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     activePathLayoutConfig !== null &&
     layoutConfigKey(layoutConfig) === layoutConfigKey(activePathLayoutConfig);
 
-  const axisLabels = getLayoutAxisLabels(layoutConfig, musicService);
+  const axisLabels = useMemo(
+    () => getLayoutAxisLabels(layoutConfig, musicService),
+    [layoutConfig, musicService]
+  );
   const showLabels = visibleSongs.length <= LABEL_THRESHOLD;
+  const cueSongIds = useMemo(() => new Set(cue?.songs.map((song) => song.id) ?? []), [cue]);
 
   const cueEdgePath = useMemo(() => {
     if (!cue || cue.songs.length < 2) {
@@ -4789,6 +4792,45 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     ]
   );
 
+  const graphCanvasHandlersRef = useRef<MusicCueGraphCanvasHandlers>({
+    onGraphPointerDown: () => {},
+    onGraphPointerUp: () => {},
+    onGraphPointerCancel: () => {},
+    onGraphPointerLeave: () => {},
+    onBackgroundPointerDown: () => {},
+    onClusterLabelPointerDown: () => {},
+    onClusterLabelPointerUp: () => {},
+    onNodePointerDown: () => {},
+    onNodePointerUp: () => {},
+    onHoverSongEnter: () => {},
+    onHoverSongLeave: () => {},
+  });
+  graphCanvasHandlersRef.current = {
+    onGraphPointerDown: handleGraphPointerDown,
+    onGraphPointerUp: (event) => finishPointerInteraction(event),
+    onGraphPointerCancel: (event) => finishPointerInteraction(event),
+    onGraphPointerLeave: (event) => {
+      if (event.buttons === 0) {
+        setHoveredSongId(null);
+        finishPointerInteraction(event);
+      }
+    },
+    onBackgroundPointerDown: handleBackgroundPointerDown,
+    onClusterLabelPointerDown: handleClusterLabelPointerDown,
+    onClusterLabelPointerUp: (event) => {
+      if (!draggingClusterIdRef.current) {
+        return;
+      }
+      event.stopPropagation();
+      finishPointerInteraction(event);
+    },
+    onNodePointerDown: handleNodePointerDown,
+    onNodePointerUp: handleNodePointerUp,
+    onHoverSongEnter: (songId) => setHoveredSongId(songId),
+    onHoverSongLeave: (songId) =>
+      setHoveredSongId((current) => (current === songId ? null : current)),
+  };
+
   return (
     <>
       <div className="music-cue-layout">
@@ -5405,266 +5447,53 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
               </svg>
             </button>
           ) : null}
-          <svg
-            ref={svgRef}
-            className={`music-cue-graph music-cue-graph-${graphTool}`}
-            width={dimensions.width}
-            height={dimensions.height}
-            onPointerDown={handleGraphPointerDown}
-            onPointerUp={(event) => finishPointerInteraction(event)}
-            onPointerCancel={(event) => finishPointerInteraction(event)}
-            onPointerLeave={(event) => {
-              if (event.buttons === 0) {
-                setHoveredSongId(null);
-                finishPointerInteraction(event);
-              }
-            }}
-          >
-            <g ref={contentGroupRef} className="music-cue-graph-content">
-              <rect
-                ref={bgRectRef}
-                width={dimensions.width}
-                height={dimensions.height}
-                fill="#ffffff"
-                onPointerDown={handleBackgroundPointerDown}
-              />
-              <text x={dimensions.width / 2} y={22} className="music-cue-axis-label">
-                {axisLabels.x}
-              </text>
-              {axisLabels.y && (
-                <text x={16} y={dimensions.height / 2} className="music-cue-axis-label music-cue-axis-label-vertical">
-                  {axisLabels.y}
-                </text>
-              )}
-
-              {boxSelectRect && (
-                <rect
-                  x={Math.min(boxSelectRect.x1, boxSelectRect.x2)}
-                  y={Math.min(boxSelectRect.y1, boxSelectRect.y2)}
-                  width={Math.abs(boxSelectRect.x2 - boxSelectRect.x1)}
-                  height={Math.abs(boxSelectRect.y2 - boxSelectRect.y1)}
-                  className="music-cue-box-select"
-                  pointerEvents="none"
-                />
-              )}
-
-              {showPlaylistClusterHulls && fadingClusterSnapshot?.regions.map((region) => (
-                <path
-                  key={`fading-region-${region.id}`}
-                  d={region.hullPath}
-                  className="music-cue-cluster-region"
-                  stroke={region.stroke}
-                  opacity={fadingClusterSnapshot.opacity}
-                  pointerEvents="none"
-                />
-              ))}
-
-              {showPlaylistClusterHulls &&
-                isClusterLayout &&
-                clusterRegions
-                  .filter((region) => !clusterDragPreviewRegionIds?.has(region.id))
-                  .map((region) => {
-                  const offset = region.displayOffset;
-                  const transform = offset ? `translate(${offset.x} ${offset.y})` : undefined;
-                  return (
-                    <path
-                      key={`region-${region.id}`}
-                      d={region.hullPath}
-                      className="music-cue-cluster-region"
-                      stroke={region.stroke}
-                      opacity={effectiveClusterRevealOpacity}
-                      pointerEvents="none"
-                      transform={transform}
-                    />
-                  );
-                })}
-
-              {showPlaylistMetaGraph && !playlistGraphForceSim
-                ? staticPlaylistMetaGraphSegments.map((segment) => {
-                    const edgeStyle = playlistMetaGraphEdgeStyle(
-                      segment.sharedSongCount,
-                      maxPlaylistMetaGraphSharedCount
-                    );
-                    return (
-                      <line
-                        key={`metagraph-${segment.leftId}-${segment.rightId}`}
-                        x1={segment.start.x}
-                        y1={segment.start.y}
-                        x2={segment.end.x}
-                        y2={segment.end.y}
-                        className="music-cue-playlist-metagraph-edge"
-                        stroke={edgeStyle.stroke}
-                        strokeWidth={edgeStyle.strokeWidth}
-                        pointerEvents="none"
-                        opacity={effectiveClusterRevealOpacity}
-                      />
-                    );
-                  })
-                : null}
-
-              {showPlaylistMetaGraph && playlistGraphForceSim ? (
-                <PlaylistGraphForceSimLayer
-                  active={playlistGraphForceSim}
-                  nodesRef={metaGraphForceNodesRef}
-                  edgesRef={metaGraphForceEdgesRef}
-                  labelRegions={graphViewClusterRegions}
-                  segments={staticPlaylistMetaGraphSegments}
-                  maxSharedSongCount={maxPlaylistMetaGraphSharedCount}
-                  labelOpacity={effectiveClusterRevealOpacity}
-                  onLabelPointerDown={
-                    isGuestViewOnly || isSharedIsolateClusterDragDisabled
-                      ? undefined
-                      : handleClusterLabelPointerDown
-                  }
-                />
-              ) : null}
-
-              {strokePaths.map((path, index) => (
-                <path
-                  key={`stroke-${index}`}
-                  d={path}
-                  className={`music-cue-stroke ${
-                    isDrawingNewPath && index === strokePaths.length - 1 ? "music-cue-stroke-drafting" : ""
-                  }`}
-                />
-              ))}
-              {showPathOverlays && showSongNodesInGraph && cueEdgePath && !isDrawingNewPath && (
-                <path d={cueEdgePath} className="music-cue-edge-path" />
-              )}
-
-
-              <g className="music-cue-song-nodes">
-              {showSongNodesInGraph &&
-                visiblePositionedSongs
-                  .filter(({ song }) => !clusterDragSongIds?.has(song.id))
-                  .map(({ song, position }) => {
-                const canonicalId = getCanonicalSongId(song.id);
-                const inCue = cue?.songs.some((entry) => entry.id === canonicalId);
-                const isUnavailable = unavailableSongIds.has(canonicalId);
-                const isSelected = selectedSongId === canonicalId;
-                const nodeFill = songNodeFills.get(song.id) ?? "#000080";
-                const radius = renderGraphSongs.length > 1000 ? 2 : renderGraphSongs.length > 400 ? 2 : 3;
-                const useSpatialHover =
-                  enableGraphNodeCulling ||
-                  (isLocalDesktopApp && renderGraphSongs.length > LABEL_THRESHOLD);
-                return (
-                  <g
-                    key={song.id}
-                    transform={`translate(${position.x}, ${position.y})`}
-                    onMouseEnter={
-                      useSpatialHover ? undefined : () => setHoveredSongId(song.id)
-                    }
-                    onMouseLeave={
-                      useSpatialHover
-                        ? undefined
-                        : () => setHoveredSongId((current) => (current === song.id ? null : current))
-                    }
-                  >
-                    <circle
-                      r={radius + 3}
-                      className="music-cue-node-hit music-cue-node-clickable"
-                      onPointerDown={(event) => handleNodePointerDown(event, song)}
-                      onPointerUp={(event) => handleNodePointerUp(event, song)}
-                    />
-                    <circle
-                      r={radius}
-                      fill={isUnavailable ? undefined : nodeFill}
-                      className={`music-cue-node ${
-                        inCue && !isUnavailable ? "music-cue-node-active" : ""
-                      } ${isUnavailable ? "music-cue-node-missing" : ""} ${isSelected ? "music-cue-node-selected" : ""}`}
-                      pointerEvents="none"
-                    />
-                    {showLabels && (
-                      <text y={radius + 10} className="music-cue-node-label" pointerEvents="none">
-                        {song.title}
-                      </text>
-                    )}
-                  </g>
-                );
-              })}
-              </g>
-
-              {showPlaylistClusterHulls &&
-                fadingClusterSnapshot?.regions.map((region) => (
-                  <text
-                    key={`fading-label-${region.id}`}
-                    x={region.center.x}
-                    y={region.center.y}
-                    className="music-cue-cluster-label"
-                    opacity={fadingClusterSnapshot.opacity}
-                    pointerEvents="none"
-                  >
-                    {region.label}
-                  </text>
-                ))}
-
-              {isClusterLayout &&
-                !playlistGraphForceSim &&
-                graphViewClusterRegions
-                  .filter((region) => !clusterDragPreviewRegionIds?.has(region.id))
-                  .map((region) => {
-                  const labelCenter = resolveClusterLabelCenter(region);
-                  const offset = region.displayOffset;
-                  const transform = offset ? `translate(${offset.x} ${offset.y})` : undefined;
-                  return (
-                    <text
-                      key={`label-${region.id}`}
-                      x={labelCenter.x}
-                      y={labelCenter.y}
-                      className={`music-cue-cluster-label ${
-                        effectiveClusterRevealOpacity >= 1 &&
-                        !isGuestViewOnly &&
-                        !isSharedIsolateClusterDragDisabled
-                          ? "music-cue-cluster-label-draggable"
-                          : ""
-                      } ${selectedClusterIds.has(region.id) ? "music-cue-cluster-label-selected" : ""}`}
-                      opacity={effectiveClusterRevealOpacity}
-                      pointerEvents={
-                        effectiveClusterRevealOpacity >= 1 &&
-                        !isGuestViewOnly &&
-                        !isSharedIsolateClusterDragDisabled
-                          ? undefined
-                          : "none"
-                      }
-                      transform={transform}
-                      onPointerDown={
-                      isGuestViewOnly
-                        ? undefined
-                        : (event) => handleClusterLabelPointerDown(event, region.id, region.label)
-                    }
-                    onPointerUp={(event) => {
-                      if (!draggingClusterIdRef.current) {
-                        return;
-                      }
-                      event.stopPropagation();
-                      finishPointerInteraction(event);
-                    }}
-                  >
-                    {region.label}
-                  </text>
-                  );
-                })}
-
-              {!showLabels && !showPlaylistMetaGraph && hoveredSong && hoveredSongRenderPosition && (
-                <text
-                  x={hoveredSongRenderPosition.x}
-                  y={hoveredSongRenderPosition.y - 12}
-                  className="music-cue-hover-label"
-                >
-                  {hoveredSong.artist} — {hoveredSong.title}
-                  {unavailableSongIds.has(hoveredSong.id) ? " (not in library)" : ""}
-                </text>
-              )}
-
-              <ClusterDragPreviewLayer
-                active={isClusterDragging}
-                graphDeltaRef={clusterDragGraphDeltaRef}
-                snapshotRef={clusterDragSnapshotRef}
-                labelOpacity={effectiveClusterRevealOpacity}
-                scheduleRef={clusterDragPreviewScheduleRef}
-              />
-            </g>
-          </svg>
+          <MusicCueGraphCanvas
+            svgRef={svgRef}
+            contentGroupRef={contentGroupRef}
+            bgRectRef={bgRectRef}
+            handlersRef={graphCanvasHandlersRef}
+            graphTool={graphTool}
+            dimensions={dimensions}
+            axisLabels={axisLabels}
+            boxSelectRect={boxSelectRect}
+            showPlaylistClusterHulls={showPlaylistClusterHulls}
+            fadingClusterSnapshot={fadingClusterSnapshot}
+            isClusterLayout={isClusterLayout}
+            clusterRegions={clusterRegions}
+            clusterDragPreviewRegionIds={clusterDragPreviewRegionIds}
+            effectiveClusterRevealOpacity={effectiveClusterRevealOpacity}
+            showPlaylistMetaGraph={showPlaylistMetaGraph}
+            playlistGraphForceSim={playlistGraphForceSim}
+            staticPlaylistMetaGraphSegments={staticPlaylistMetaGraphSegments}
+            maxPlaylistMetaGraphSharedCount={maxPlaylistMetaGraphSharedCount}
+            metaGraphForceNodesRef={metaGraphForceNodesRef}
+            metaGraphForceEdgesRef={metaGraphForceEdgesRef}
+            graphViewClusterRegions={graphViewClusterRegions}
+            strokePaths={strokePaths}
+            isDrawingNewPath={isDrawingNewPath}
+            showPathOverlays={showPathOverlays}
+            showSongNodesInGraph={showSongNodesInGraph}
+            cueEdgePath={cueEdgePath}
+            visiblePositionedSongs={visiblePositionedSongs}
+            clusterDragSongIds={clusterDragSongIds}
+            renderGraphSongCount={renderGraphSongs.length}
+            enableGraphNodeCulling={enableGraphNodeCulling}
+            songNodeFills={songNodeFills}
+            cueSongIds={cueSongIds}
+            unavailableSongIds={unavailableSongIds}
+            selectedSongId={selectedSongId}
+            showLabels={showLabels}
+            selectedClusterIds={selectedClusterIds}
+            isGuestViewOnly={isGuestViewOnly}
+            isSharedIsolateClusterDragDisabled={isSharedIsolateClusterDragDisabled}
+            resolveClusterLabelCenter={resolveClusterLabelCenter}
+            hoveredSong={hoveredSong}
+            hoveredSongRenderPosition={hoveredSongRenderPosition}
+            isClusterDragging={isClusterDragging}
+            clusterDragGraphDeltaRef={clusterDragGraphDeltaRef}
+            clusterDragSnapshotRef={clusterDragSnapshotRef}
+            clusterDragPreviewScheduleRef={clusterDragPreviewScheduleRef}
+          />
         </div>
 
         {showToolSidebar ? (
