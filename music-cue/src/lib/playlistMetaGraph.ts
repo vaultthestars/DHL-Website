@@ -128,7 +128,6 @@ export type PlaylistMetaGraphEdge = {
 const edgeKey = (leftId: string, rightId: string): string =>
   leftId < rightId ? `${leftId}|${rightId}` : `${rightId}|${leftId}`;
 
-/** Undirected edges between playlists that share at least one song. */
 /** Region ids for dragged clusters plus direct meta-graph neighbors (same owner scope). */
 export const collectMetagraphNeighborRegionIds = (
   seedRegionIds: readonly string[],

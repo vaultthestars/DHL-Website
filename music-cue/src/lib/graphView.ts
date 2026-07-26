@@ -19,24 +19,23 @@ const clampMin = (value: number, min: number): number => Math.max(min, value);
 export const toViewTransformString = (transform: ViewTransform): string =>
   `translate(${transform.panX} ${transform.panY}) scale(${transform.scale})`;
 
+/** GPU-friendly viewport transform (applied on an HTML wrapper, not the SVG <g>). */
+export const toCssViewportTransform = (transform: ViewTransform): string =>
+  `translate3d(${transform.panX}px, ${transform.panY}px, 0) scale(${transform.scale})`;
+
 export const screenToGraphPoint = (
   clientX: number,
   clientY: number,
   svg: SVGSVGElement,
-  contentGroup: SVGGElement | null
+  viewTransform: ViewTransform = DEFAULT_VIEW_TRANSFORM
 ): GraphPoint => {
-  const point = svg.createSVGPoint();
-  point.x = clientX;
-  point.y = clientY;
-
-  const matrix = contentGroup?.getScreenCTM();
-  if (!matrix) {
-    const rect = svg.getBoundingClientRect();
-    return { x: clientX - rect.left, y: clientY - rect.top };
-  }
-
-  const transformed = point.matrixTransform(matrix.inverse());
-  return { x: transformed.x, y: transformed.y };
+  const rect = svg.getBoundingClientRect();
+  const screenX = clientX - rect.left;
+  const screenY = clientY - rect.top;
+  return {
+    x: (screenX - viewTransform.panX) / viewTransform.scale,
+    y: (screenY - viewTransform.panY) / viewTransform.scale,
+  };
 };
 
 export const graphPointToPanelPosition = (

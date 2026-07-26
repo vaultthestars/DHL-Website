@@ -404,9 +404,17 @@ body {
   display: flex;
   overscroll-behavior: none;
   touch-action: none;
+  overflow: hidden;
   border: 2px solid;
   border-color: var(--w95-shadow) var(--w95-highlight) var(--w95-highlight) var(--w95-shadow);
   background: var(--w95-window-bg);
+}
+
+.music-cue-graph-viewport {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  transform-origin: 0 0;
 }
 
 .music-cue-graph-loading-overlay {
@@ -529,12 +537,8 @@ body {
   cursor: grabbing;
 }
 
-.music-cue-graph-panning .music-cue-graph-content {
+.music-cue-graph-panning .music-cue-graph-viewport {
   will-change: transform;
-}
-
-.music-cue-graph-panning .music-cue-song-nodes {
-  visibility: hidden;
 }
 
 .music-cue-graph-panning .music-cue-node-hit,

@@ -7,6 +7,8 @@ import type { GraphPoint, Song } from "../lib/types";
 
 export type ClusterDragHullContext = {
   edges: PlaylistMetaGraphEdge[];
+  /** Hull anchor center per region (owner-local space, before displayOffset). */
+  regionCentersByRegionId: Map<string, GraphPoint>;
   playlistCenters: Map<string, GraphPoint>;
   paddingByRegionId: Map<string, number>;
   memberCountByRegionId: Map<string, number>;
@@ -44,7 +46,9 @@ const buildLivePlaylistCenters = (
   const liveCenters = new Map(hullContext.playlistCenters);
   snapshot.movedRegions.forEach((region) => {
     const { clusterId } = parseOwnerScopedRegionId(region.id);
-    const startCenter = hullContext.playlistCenters.get(clusterId);
+    const startCenter =
+      hullContext.regionCentersByRegionId.get(region.id) ??
+      hullContext.playlistCenters.get(clusterId);
     if (!startCenter) {
       return;
     }
@@ -156,10 +160,34 @@ export const ClusterDragPreviewLayer = ({
 
       {snapshot.movedRegions.map((region) => {
         const offset = region.displayOffset;
-        const hullPath =
-          liveCenters && snapshot.showClusterHulls
-            ? buildLiveHullPath(region, snapshot, liveCenters)
-            : region.hullPath;
+        const useLiveHull = Boolean(liveCenters && snapshot.showClusterHulls);
+        const hullPath = useLiveHull
+          ? buildLiveHullPath(region, snapshot, liveCenters!)
+          : region.hullPath;
+        const offsetTransform = offset ? `translate(${offset.x} ${offset.y})` : undefined;
+        const labelX = region.labelCenter.x + delta.x;
+        const labelY = region.labelCenter.y + delta.y;
+        if (useLiveHull) {
+          return (
+            <g key={`drag-moved-${region.id}`} transform={offsetTransform}>
+              <path
+                d={hullPath}
+                className="music-cue-cluster-region"
+                fill={region.fill}
+                stroke={region.stroke}
+                opacity={labelOpacity}
+              />
+              <text
+                x={labelX}
+                y={labelY}
+                className="music-cue-cluster-label music-cue-cluster-label-draggable music-cue-cluster-label-dragging"
+                opacity={labelOpacity}
+              >
+                {region.label}
+              </text>
+            </g>
+          );
+        }
         const transform = offset
           ? `translate(${offset.x + delta.x} ${offset.y + delta.y})`
           : `translate(${delta.x} ${delta.y})`;

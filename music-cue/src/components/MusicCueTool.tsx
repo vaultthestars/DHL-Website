@@ -8,6 +8,7 @@ import {
   ClusterRegion,
   getClusterMemberSongs,
   getClusterRegionDisplayCenter,
+  getPlaylistClusterCenter,
 } from "../lib/clusterRegions";
 import { syncClusterLayoutToServer } from "../lib/clusterLayoutSync";
 import { buildLibraryStatsFromSongs } from "../../shared/sharedLibrary";
@@ -92,7 +93,7 @@ import {
   DEFAULT_VIEW_TRANSFORM,
   MIN_ZOOM,
   screenToGraphPoint,
-  toViewTransformString,
+  toCssViewportTransform,
   ViewTransform,
   zoomAtPoint,
 } from "../lib/graphView";
@@ -220,10 +221,10 @@ const LIBRARY_VALIDATE_CHUNK = 80;
 const META_BOUNDS_RECOMPUTE_DELAY_MS = 3000;
 
 const getLocalPoint = (
-  event: React.PointerEvent<Element>,
+  event: { clientX: number; clientY: number },
   svg: SVGSVGElement,
-  contentGroup: SVGGElement | null
-): GraphPoint => screenToGraphPoint(event.clientX, event.clientY, svg, contentGroup);
+  viewTransform: ViewTransform
+): GraphPoint => screenToGraphPoint(event.clientX, event.clientY, svg, viewTransform);
 
 const DRAG_THRESHOLD = 10;
 const LABEL_THRESHOLD = 250;
@@ -381,6 +382,7 @@ export type MusicCueToolProps = {
 export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) => {
   const graphPanelRef = useRef<HTMLDivElement | null>(null);
   const participantsHostRef = useRef<HTMLSpanElement | null>(null);
+  const graphViewportRef = useRef<HTMLDivElement | null>(null);
   const svgRef = useRef<SVGSVGElement | null>(null);
   const contentGroupRef = useRef<SVGGElement | null>(null);
   const bgRectRef = useRef<SVGRectElement | null>(null);
@@ -454,10 +456,11 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     viewTransformRafRef.current = 0;
     const transform = pendingViewTransformRef.current ?? viewTransformRef.current;
     pendingViewTransformRef.current = null;
-    const group = contentGroupRef.current;
-    if (group) {
-      group.setAttribute("transform", toViewTransformString(transform));
+    const viewport = graphViewportRef.current;
+    if (viewport) {
+      viewport.style.transform = toCssViewportTransform(transform);
     }
+    contentGroupRef.current?.removeAttribute("transform");
   }, []);
 
   const applyViewTransformLive = useCallback(
@@ -1033,30 +1036,23 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     return () => document.removeEventListener("wheel", handleWheel, { capture: true });
   }, [applyViewTransformLive, scheduleZoomCullRefresh]);
 
+  const handlePointerMoveRef = useRef<(event: PointerEvent) => void>(() => {});
+
   useEffect(() => {
     const svg = svgRef.current;
     if (!svg) {
       return undefined;
     }
 
-    const handleNativePointerMove = (event: PointerEvent) => {
-      const session = panSessionRef.current;
-      if (!session || session.mode !== "pan" || session.pointerId !== event.pointerId) {
-        return;
-      }
-      event.preventDefault();
-      applyViewTransformLive({
-        scale: viewTransformRef.current.scale,
-        panX: session.panX + (event.clientX - session.clientX),
-        panY: session.panY + (event.clientY - session.clientY),
-      });
+    const onPointerMove = (event: PointerEvent) => {
+      handlePointerMoveRef.current(event);
     };
 
-    svg.addEventListener("pointermove", handleNativePointerMove, { passive: false });
+    svg.addEventListener("pointermove", onPointerMove, { passive: false });
     return () => {
-      svg.removeEventListener("pointermove", handleNativePointerMove);
+      svg.removeEventListener("pointermove", onPointerMove);
     };
-  }, [applyViewTransformLive]);
+  }, []);
 
   useEffect(() => {
     if (songs.length === 0) {
@@ -2868,7 +2864,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
 
     const anchorRegion = clusterRegions.find((entry) => entry.id === clusterId);
     const anchorStart = svgRef.current
-      ? toNormalizedPosition(getLocalPoint(event, svgRef.current, contentGroupRef.current), dimensions)
+      ? toNormalizedPosition(getLocalPoint(event, svgRef.current, viewTransformRef.current), dimensions)
       : startPositions[clusterId] ??
         getClusterDragDisplayNormalizedStart(clusterId, anchorRegion, overrideMap, dimensions, dragSpaceOptions);
 
@@ -2950,45 +2946,99 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     const neighborRegionIds = [...previewRegionIds].filter(
       (regionId) => !draggedRegionSet.has(regionId)
     );
+    const regionCentersByRegionId = new Map<string, GraphPoint>();
     const playlistCenters = new Map<string, GraphPoint>();
     const paddingByRegionId = new Map<string, number>();
     const memberCountByRegionId = new Map<string, number>();
-    clusterRegions.forEach((region) => {
+    const resolveRegionHullCenter = (region: ClusterRegion): GraphPoint => {
+      if (clusterMode !== "playlist") {
+        return getClusterRegionDisplayCenter(region);
+      }
+      const { ownerId, clusterId } = parseOwnerScopedRegionId(region.id);
+      if (ownerId) {
+        const ownerSongs = scopeSongsForIsolateOwner(
+          graphSongs.filter(
+            (song) => resolveIsolateDisplayOwnerId(song, activeContributorIds) === ownerId
+          ),
+          ownerId,
+          playlistOwners
+        );
+        const ownerPlaylistNames =
+          Object.keys(playlistOwners).length === 0
+            ? stats.playlistNames
+            : Object.fromEntries(
+                Object.entries(stats.playlistNames).filter(
+                  ([playlistId]) => playlistOwners[playlistId] === ownerId
+                )
+              );
+        const ownerStats = buildLibraryStatsFromSongs(ownerSongs, ownerPlaylistNames);
+        const ownerOverrides = getClusterOverridesForOwner(
+          layoutClusterOverrides,
+          ownerId,
+          layoutConfig
+        );
+        return getPlaylistClusterCenter(
+          clusterId,
+          ownerStats,
+          dimensions,
+          ownerOverrides,
+          ownerSongs
+        );
+      }
+      return getPlaylistClusterCenter(
+        clusterId,
+        stats,
+        dimensions,
+        layoutClusterOverrides,
+        graphSongs
+      );
+    };
+    const regionLookup = new Map<string, ClusterRegion>();
+    clusterRegions.forEach((region) => regionLookup.set(region.id, region));
+    graphViewClusterRegions.forEach((region) => {
+      if (!regionLookup.has(region.id)) {
+        regionLookup.set(region.id, region);
+      }
+    });
+    regionLookup.forEach((region) => {
       if (!previewRegionIds.has(region.id)) {
         return;
       }
       const { clusterId } = parseOwnerScopedRegionId(region.id);
-      const center =
-        layoutConfig.clusterMode === "playlist"
-          ? resolveClusterLabelCenter(region)
-          : getClusterRegionDisplayCenter(region);
-      playlistCenters.set(clusterId, center);
+      const hullCenter = resolveRegionHullCenter(region);
+      regionCentersByRegionId.set(region.id, hullCenter);
+      playlistCenters.set(clusterId, hullCenter);
       paddingByRegionId.set(
         region.id,
         Math.max(20, Math.min(42, 14 + Math.sqrt(region.memberCount) * 3))
       );
       memberCountByRegionId.set(region.id, region.memberCount);
     });
+    const movedRegions = clustersToMove
+      .map((regionId) => regionLookup.get(regionId))
+      .filter((region): region is ClusterRegion => Boolean(region))
+      .map((region) => ({
+        ...region,
+        labelCenter:
+          layoutConfig.clusterMode === "playlist"
+            ? resolveClusterLabelCenter(region)
+            : getClusterRegionDisplayCenter(region),
+      }));
     clusterDragSnapshotRef.current = {
       movedRegionIds: draggedRegionSet,
       previewRegionIds,
       songIds: snapshotSongIds,
-      movedRegions: clusterRegions
-        .filter((region) => draggedRegionSet.has(region.id))
-        .map((region) => ({
-          ...region,
-          labelCenter:
-            layoutConfig.clusterMode === "playlist"
-              ? resolveClusterLabelCenter(region)
-              : getClusterRegionDisplayCenter(region),
-        })),
-      neighborRegions: clusterRegions.filter((region) => neighborRegionIds.includes(region.id)),
+      movedRegions,
+      neighborRegions: neighborRegionIds
+        .map((regionId) => regionLookup.get(regionId))
+        .filter((region): region is ClusterRegion => Boolean(region)),
       songs: snapshotSongs,
       showClusterHulls: showPlaylistClusterHulls,
       hullContext:
         clusterMode === "playlist"
           ? {
               edges: edgesForDrag,
+              regionCentersByRegionId,
               playlistCenters,
               paddingByRegionId,
               memberCountByRegionId,
@@ -3055,7 +3105,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
 
     trackPointer(event);
 
-    const point = getLocalPoint(event, svgRef.current, contentGroupRef.current);
+    const point = getLocalPoint(event, svgRef.current, viewTransformRef.current);
     const startPanImmediately = graphTool === "navigate" && event.pointerType === "touch";
     panSessionRef.current = {
       pointerId: event.pointerId,
@@ -3079,16 +3129,20 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     handleGraphPointerDown(event as unknown as React.PointerEvent<SVGSVGElement>);
   };
 
-  const handlePointerMove = (event: React.PointerEvent<SVGSVGElement>) => {
-    if (!svgRef.current) {
+  const handlePointerMove = useCallback((event: PointerEvent) => {
+    const svg = svgRef.current;
+    if (!svg) {
       return;
     }
 
     const activePanSession = panSessionRef.current;
-    if (
-      activePanSession?.mode === "pan" &&
-      activePanSession.pointerId === event.pointerId
-    ) {
+    if (activePanSession?.mode === "pan" && activePanSession.pointerId === event.pointerId) {
+      event.preventDefault();
+      applyViewTransformLive({
+        scale: viewTransformRef.current.scale,
+        panX: activePanSession.panX + (event.clientX - activePanSession.clientX),
+        panY: activePanSession.panY + (event.clientY - activePanSession.clientY),
+      });
       return;
     }
 
@@ -3107,13 +3161,12 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
       panSessionRef.current?.mode !== "pan" &&
       !draggingClusterIdRef.current
     ) {
-      const point = getLocalPoint(event, svgRef.current, contentGroupRef.current);
+      const point = getLocalPoint(event, svg, viewTransformRef.current);
       setGraphCursorRef.current(toNormalizedPosition(point, dimensions));
     }
 
-
     if (draggingClusterIdRef.current) {
-      const point = getLocalPoint(event, svgRef.current, contentGroupRef.current);
+      const point = getLocalPoint(event, svg, viewTransformRef.current);
       const normalized = toNormalizedPosition(point, dimensions);
       const session = clusterDragSessionRef.current;
       if (!session) {
@@ -3148,7 +3201,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
       graphTool === "navigate" &&
       !showPlaylistMetaGraph
     ) {
-      const point = getLocalPoint(event, svgRef.current, contentGroupRef.current);
+      const point = getLocalPoint(event, svg, viewTransformRef.current);
       scheduleHoverProbe(point);
     }
 
@@ -3165,7 +3218,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
 
       if (session.metaShiftHeld && isClusterLayout && !isGuestViewOnly && !isSharedIsolateClusterDragDisabled) {
         session.mode = "box-select";
-        const point = getLocalPoint(event, svgRef.current, contentGroupRef.current);
+        const point = getLocalPoint(event, svg, viewTransformRef.current);
         session.boxEnd = point;
         setBoxSelectRect({
           x1: session.graphStart.x,
@@ -3176,7 +3229,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
       } else if (graphTool === "draw" && graphSongs.length > 0) {
         session.mode = "draw";
         beginNewStroke(session.graphStart);
-        appendStrokePoint(getLocalPoint(event, svgRef.current, contentGroupRef.current));
+        appendStrokePoint(getLocalPoint(event, svg, viewTransformRef.current));
       } else {
         session.mode = "pan";
         setGraphPanningClass(true);
@@ -3184,7 +3237,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     }
 
     if (session.mode === "box-select" && session.boxEnd) {
-      const point = getLocalPoint(event, svgRef.current, contentGroupRef.current);
+      const point = getLocalPoint(event, svg, viewTransformRef.current);
       session.boxEnd = point;
       setBoxSelectRect({
         x1: session.graphStart.x,
@@ -3195,15 +3248,31 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
       return;
     }
 
-    if (session.mode === "pan") {
-      return;
-    }
-
-
     if (session.mode === "draw" && isDrawingRef.current) {
-      appendStrokePoint(getLocalPoint(event, svgRef.current, contentGroupRef.current));
+      appendStrokePoint(getLocalPoint(event, svg, viewTransformRef.current));
     }
-  };
+  }, [
+    applyViewTransformLive,
+    appendStrokePoint,
+    beginNewStroke,
+    buildClusterDragOverrides,
+    dimensions,
+    enableGraphNodeCulling,
+    graphSongs.length,
+    graphTool,
+    isClusterLayout,
+    isGuestViewOnly,
+    isSharedIsolateClusterDragDisabled,
+    resolveOverrideOwnerId,
+    scheduleHoverProbe,
+    setGraphPanningClass,
+    showPlaylistMetaGraph,
+    updatePinchTransform,
+  ]);
+
+  useEffect(() => {
+    handlePointerMoveRef.current = handlePointerMove;
+  }, [handlePointerMove]);
 
   const finishPointerInteraction = (event?: React.PointerEvent<SVGSVGElement>) => {
     if (event) {
@@ -5184,13 +5253,13 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
               </svg>
             </button>
           ) : null}
+          <div ref={graphViewportRef} className="music-cue-graph-viewport">
           <svg
             ref={svgRef}
             className={`music-cue-graph music-cue-graph-${graphTool}`}
             width={dimensions.width}
             height={dimensions.height}
             onPointerDown={handleGraphPointerDown}
-            onPointerMove={handlePointerMove}
             onPointerUp={(event) => finishPointerInteraction(event)}
             onPointerCancel={(event) => finishPointerInteraction(event)}
             onPointerLeave={(event) => {
@@ -5449,6 +5518,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
               />
             </g>
           </svg>
+          </div>
         </div>
 
         {showToolSidebar ? (
