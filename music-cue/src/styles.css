@@ -542,8 +542,21 @@ body {
 
 .music-cue-view-gesturing .music-cue-cluster-label,
 .music-cue-view-gesturing .music-cue-axis-label,
-.music-cue-view-gesturing .music-cue-node-label {
+.music-cue-view-gesturing .music-cue-node-label,
+.music-cue-view-gesturing .music-cue-song-nodes {
   visibility: hidden;
+}
+
+.music-cue-view-gesturing .music-cue-hover-label-overlay {
+  display: none;
+}
+
+.music-cue-hover-label-overlay {
+  position: absolute;
+  pointer-events: none;
+  z-index: 2;
+  transform: translate(-50%, -100%);
+  white-space: nowrap;
 }
 
 .music-cue-graph-panning .music-cue-graph-content {

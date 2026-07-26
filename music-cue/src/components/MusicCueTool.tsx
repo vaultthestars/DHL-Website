@@ -425,6 +425,11 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
   const collaborativeGraphCursorRef = useRef<(cursor: NormalizedPoint | null) => void>(() => {});
   const setGraphCursorRef = useRef<(cursor: NormalizedPoint | null) => void>(() => {});
   const graphInteractionActiveRef = useRef(false);
+  const pauseGraphAnimationsRef = useRef(false);
+  const updatePauseGraphAnimations = useCallback(() => {
+    pauseGraphAnimationsRef.current =
+      isViewGesturingRef.current || graphInteractionActiveRef.current;
+  }, []);
   const clusterDragSessionRef = useRef<{
     clusterIds: string[];
     startPositions: Record<string, NormalizedPoint>;
@@ -550,9 +555,10 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
       pendingLiveTransformRef.current = null;
       isViewGesturingRef.current = false;
       setViewGesturingClass(false);
+      updatePauseGraphAnimations();
       flushViewTransform();
     },
-    [clearViewGestureTimers, flushViewTransform, setViewGesturingClass]
+    [clearViewGestureTimers, flushViewTransform, setViewGesturingClass, updatePauseGraphAnimations]
   );
 
   const syncViewGestureTransform = useCallback(() => {
@@ -573,8 +579,9 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
       committedViewTransformRef.current = { ...viewTransformRef.current };
       isViewGesturingRef.current = true;
       setViewGesturingClass(true);
+      updatePauseGraphAnimations();
     }
-  }, [setViewGesturingClass]);
+  }, [setViewGesturingClass, updatePauseGraphAnimations]);
 
   const applyViewTransformLive = useCallback(
     (transform: ViewTransform) => {
@@ -1932,7 +1939,8 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     layoutTransitionSongs,
     dimensions,
     layoutTransitionCompute,
-    layoutTransitionKey
+    layoutTransitionKey,
+    pauseGraphAnimationsRef
   );
 
   const isLayoutTransitioning = transition.isAnimating;
@@ -1982,7 +1990,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
 
   const getRenderablePosition = useCallback(
     (song: Song): GraphPoint => getDisplayPosition(song),
-    [getDisplayPosition]
+    [getDisplayPosition, transition.isAnimating, transition.progress]
   );
   const effectiveClusterRevealOpacity = clusterRevealOpacity;
 
@@ -2533,6 +2541,10 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     let frameId = 0;
 
     const tick = (now: number) => {
+      if (pauseGraphAnimationsRef.current) {
+        frameId = requestAnimationFrame(tick);
+        return;
+      }
       const progress = Math.min(1, (now - startTime) / CLUSTER_FADE_MS);
       if (fadeId !== clusterRevealFadeIdRef.current) {
         return;
@@ -2557,6 +2569,10 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     let frameId = 0;
 
     const tick = (now: number) => {
+      if (pauseGraphAnimationsRef.current) {
+        frameId = requestAnimationFrame(tick);
+        return;
+      }
       const progress = Math.min(1, (now - startTime) / CLUSTER_FADE_MS);
       const opacity = 1 - progress;
       if (progress < 1) {
@@ -3057,6 +3073,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
       return;
     }
     graphInteractionActiveRef.current = true;
+    updatePauseGraphAnimations();
     if (playlistGraphForceSim) {
       stopMetaGraphForceSim();
     }
@@ -3295,6 +3312,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
   const handleNodePointerDown = (event: React.PointerEvent<SVGCircleElement>, song: Song) => {
     event.stopPropagation();
     graphInteractionActiveRef.current = true;
+    updatePauseGraphAnimations();
     nodePointerStartRef.current = {
       songId: song.id,
       clientX: event.clientX,
@@ -3344,6 +3362,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     }
 
     graphInteractionActiveRef.current = true;
+    updatePauseGraphAnimations();
     startTransition(() => setHoveredSongId(null));
 
     trackPointer(event);
@@ -3561,6 +3580,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
         void syncClusterLayoutToServer(clusterOverridesRef.current);
       }
       graphInteractionActiveRef.current = false;
+      updatePauseGraphAnimations();
       return;
     }
 
@@ -3571,6 +3591,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
 
     if (!session) {
       graphInteractionActiveRef.current = false;
+      updatePauseGraphAnimations();
       return;
     }
 
@@ -3592,6 +3613,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
       );
       resetPanSession();
       graphInteractionActiveRef.current = false;
+      updatePauseGraphAnimations();
       return;
     }
 
@@ -3601,6 +3623,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
 
     resetPanSession();
     graphInteractionActiveRef.current = false;
+    updatePauseGraphAnimations();
   };
 
   const handlePathThresholdChange = (value: number) => {
@@ -5558,6 +5581,21 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
               </svg>
             </button>
           ) : null}
+          {!showLabels && !showPlaylistMetaGraph && hoveredSong && hoveredSongRenderPosition ? (
+            <div
+              className="music-cue-hover-label music-cue-hover-label-overlay"
+              style={{
+                left: viewTransformRef.current.panX + hoveredSongRenderPosition.x * viewTransformRef.current.scale,
+                top:
+                  viewTransformRef.current.panY +
+                  hoveredSongRenderPosition.y * viewTransformRef.current.scale -
+                  12,
+              }}
+            >
+              {hoveredSong.artist} — {hoveredSong.title}
+              {unavailableSongIds.has(hoveredSong.id) ? " (not in library)" : ""}
+            </div>
+          ) : null}
           <MusicCueGraphCanvas
             svgRef={svgRef}
             contentGroupRef={contentGroupRef}
@@ -5598,8 +5636,6 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
             isGuestViewOnly={isGuestViewOnly}
             isSharedIsolateClusterDragDisabled={isSharedIsolateClusterDragDisabled}
             resolveClusterLabelCenter={resolveClusterLabelCenter}
-            hoveredSong={hoveredSong}
-            hoveredSongRenderPosition={hoveredSongRenderPosition}
             isClusterDragging={isClusterDragging}
             clusterDragGraphDeltaRef={clusterDragGraphDeltaRef}
             clusterDragSnapshotRef={clusterDragSnapshotRef}

@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useLayoutEffect, useRef, useState, type MutableRefObject } from "react";
 import { flushSync } from "react-dom";
 import { GraphDimensions } from "./graphCoordinates";
 import { LARGE_LIBRARY_LAYOUT_SNAP_THRESHOLD } from "./layoutConstants";
@@ -26,7 +26,8 @@ export const useLayoutTransition = (
   visibleSongs: Song[],
   dimensions: GraphDimensions,
   computePosition: (song: Song, config: LayoutConfig) => GraphPoint,
-  extraTransitionKey = ""
+  extraTransitionKey = "",
+  pauseAnimationsRef?: MutableRefObject<boolean>
 ): {
   getDisplayPosition: (song: Song) => GraphPoint;
   transition: LayoutTransitionState;
@@ -136,6 +137,10 @@ export const useLayoutTransition = (
 
   const animatedPositionsRef = useRef(animatedPositions);
   animatedPositionsRef.current = animatedPositions;
+  const transitionRef = useRef(transition);
+  transitionRef.current = transition;
+  const layoutConfigRef = useRef(layoutConfig);
+  layoutConfigRef.current = layoutConfig;
 
   useLayoutEffect(() => {
     const toLayout = layoutConfig;
@@ -282,6 +287,11 @@ export const useLayoutTransition = (
         return;
       }
 
+      if (pauseAnimationsRef?.current) {
+        session.frameId = requestAnimationFrame(tick);
+        return;
+      }
+
       const rawProgress = Math.min(1, (now - session.startTime) / session.durationMs);
       const progress = easeInOut(rawProgress);
       const nextPositions = new Map<string, GraphPoint>();
@@ -356,13 +366,14 @@ export const useLayoutTransition = (
     };
   }, [dimensions.height, dimensions.width, extraTransitionKey, isLargeLibrary, layoutConfig, visibleSongs]);
 
-  const getDisplayPosition = (song: Song): GraphPoint => {
+  const getDisplayPosition = useCallback((song: Song): GraphPoint => {
+    const config = layoutConfigRef.current;
     if (isLargeLibrary) {
-      return computePositionRef.current(song, layoutConfig);
+      return computePositionRef.current(song, config);
     }
 
-    if (transition.isAnimating) {
-      const animated = animatedPositions.get(song.id);
+    if (transitionRef.current.isAnimating) {
+      const animated = animatedPositionsRef.current.get(song.id);
       if (animated) {
         return animated;
       }
@@ -373,8 +384,8 @@ export const useLayoutTransition = (
       }
     }
 
-    return computePosition(song, layoutConfig);
-  };
+    return computePositionRef.current(song, config);
+  }, [isLargeLibrary]);
 
   return {
     getDisplayPosition,

@@ -74,8 +74,6 @@ export type MusicCueGraphCanvasProps = {
   isGuestViewOnly: boolean;
   isSharedIsolateClusterDragDisabled: boolean;
   resolveClusterLabelCenter: (region: ClusterRegion) => GraphPoint;
-  hoveredSong?: Song;
-  hoveredSongRenderPosition: GraphPoint | null;
   isClusterDragging: boolean;
   clusterDragGraphDeltaRef: MutableRefObject<GraphPoint>;
   clusterDragSnapshotRef: MutableRefObject<ClusterDragSnapshot | null>;
@@ -122,8 +120,6 @@ const MusicCueGraphCanvasComponent = ({
   isGuestViewOnly,
   isSharedIsolateClusterDragDisabled,
   resolveClusterLabelCenter,
-  hoveredSong,
-  hoveredSongRenderPosition,
   isClusterDragging,
   clusterDragGraphDeltaRef,
   clusterDragSnapshotRef,
@@ -362,17 +358,6 @@ const MusicCueGraphCanvasComponent = ({
                 );
               })
           : null}
-
-        {!showLabels && !showPlaylistMetaGraph && hoveredSong && hoveredSongRenderPosition ? (
-          <text
-            x={hoveredSongRenderPosition.x}
-            y={hoveredSongRenderPosition.y - 12}
-            className="music-cue-hover-label"
-          >
-            {hoveredSong.artist} — {hoveredSong.title}
-            {unavailableSongIds.has(hoveredSong.id) ? " (not in library)" : ""}
-          </text>
-        ) : null}
 
         <ClusterDragPreviewLayer
           active={isClusterDragging}
