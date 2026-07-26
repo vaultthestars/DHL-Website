@@ -226,7 +226,8 @@ export const buildMetaGraphForceSimPlaylistOverrides = (
           displayNorm,
           dimensions,
           context.bounds,
-          context.metaCenter
+          context.metaCenter,
+          { skipBoundsClamp: true }
         );
         return;
       }

@@ -157,7 +157,6 @@ export type MusicCueGraphLayerProps = {
   cue: GeneratedCue | null;
   buildMode: CueBuildMode;
   completedStrokes: NormalizedPoint[][];
-  activeStroke: NormalizedPoint[];
   pathThreshold: number;
 
   graphTool: GraphToolMode;
@@ -180,6 +179,8 @@ export type MusicCueGraphLayerProps = {
   metaGraphForceNodesRef: MutableRefObject<import("../lib/playlistMetaGraphForceSim").MetaGraphForceNode[]>;
   metaGraphForceEdgesRef: MutableRefObject<import("../lib/playlistMetaGraphForceSim").MetaGraphForceEdge[]>;
   isDrawingNewPath: boolean;
+  draftStrokeRef: MutableRefObject<NormalizedPoint[]>;
+  draftStrokeScheduleRef: MutableRefObject<(() => void) | null>;
   strokeLayoutConfig: LayoutConfig | null;
   viewTransformForHoverRef: MutableRefObject<ViewTransform>;
 
@@ -220,7 +221,6 @@ const useMusicCueGraphModel = (props: MusicCueGraphLayerProps) => {
     cue,
     buildMode,
     completedStrokes,
-    activeStroke,
     pathThreshold,
     clusterRevealOpacity,
     isClusterDragging,
@@ -619,9 +619,7 @@ const getPosition = useCallback(
   ]
 );
 
-const layoutTransitionKey = useWebPerformanceOptimizations
-  ? songSpaceMode
-  : `${songSpaceMode}:${libraryScopeMode}`;
+const layoutTransitionKey = `${songSpaceMode}:${libraryScopeMode}`;
 
 const layoutTransitionSongs = useWebPerformanceOptimizations ? visibleSongs : graphSongs;
 const layoutTransitionCompute = useWebPerformanceOptimizations
@@ -652,9 +650,6 @@ const nodeRenderGraphSongs = useMemo(() => {
     return renderGraphSongs;
   }
   const segments = [...completedStrokes];
-  if (activeStroke.length > 0) {
-    segments.push(activeStroke);
-  }
   if (segments.length === 0) {
     return [];
   }
@@ -672,7 +667,6 @@ const nodeRenderGraphSongs = useMemo(() => {
   }
   return renderGraphSongs.filter((song) => matchedIds.has(song.id));
 }, [
-  activeStroke,
   buildMode,
   completedStrokes,
   dimensions,
@@ -1234,9 +1228,6 @@ const staticPlaylistMetaGraphSegments = useMemo(() => {
 
   const strokePaths = useMemo(() => {
     const segments = [...completedStrokes];
-    if (activeStroke.length > 0) {
-      segments.push(activeStroke);
-    }
     const paths: string[] = [];
     let connectedPoints: NormalizedPoint[] = [];
     const pointsEquivalent = (a: NormalizedPoint, b: NormalizedPoint) =>
@@ -1275,7 +1266,7 @@ const staticPlaylistMetaGraphSegments = useMemo(() => {
     });
     flushPath();
     return paths;
-  }, [activeStroke, completedStrokes, dimensions]);
+  }, [completedStrokes, dimensions]);
 
   const cueEdgePath = useMemo(() => {
     if (!cue || cue.songs.length < 2) {
@@ -1382,6 +1373,8 @@ const MusicCueGraphLayerComponent = (props: MusicCueGraphLayerProps) => {
         graphViewClusterRegions={model.graphViewClusterRegions}
         strokePaths={model.strokePaths}
         isDrawingNewPath={props.isDrawingNewPath}
+        draftStrokeRef={props.draftStrokeRef}
+        draftStrokeScheduleRef={props.draftStrokeScheduleRef}
         showPathOverlays={model.showPathOverlays}
         showSongNodesInGraph={model.showSongNodesInGraph}
         cueEdgePath={model.cueEdgePath}

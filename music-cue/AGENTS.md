@@ -61,6 +61,23 @@ Never put interaction or drag state in `structureKey`. Example bug: `isolateBoun
 - In the graph layer, use **`useDeferredValue(playlistGraphViewActive)`** for metagraph-specific work (edges, graph-view region centers, hiding song nodes).
 - Include `playlistGraphViewActive` / `playlistGraphForceSim` in **`interactionRevisionKey`**, not `structureKey`.
 
+### Isolate contributors toggle (shared song space)
+
+- Include **`libraryScopeMode`** in both `layoutTransitionKey` and `interactionRevisionKey` so the graph layer actually re-renders when toggling.
+- On toggle: `clearFrozenIsolateBounds()`, `reloadLayoutCaches(...)`, `invalidateLayoutPositionCaches()` inside `startTransition` — web and desktop use the same path.
+- Do **not** bump `isolateBoundsRevision` on drag **start** (ref-only freeze); only on drag end.
+
+### Path drawing (cue build)
+
+- While the pointer is down, render the draft segment via **`StrokeDraftLayer`** (rAF + refs) — never `setState` per `pointermove`.
+- **`nodeRenderGraphSongs`** / `getSongIdsNearStrokes` use **`completedStrokes` only**, not the in-progress stroke. Song matching and cue regeneration run in **`finishStrokeDrawing`** on pointer up.
+- Bump **`completedStrokesRevision`** (in `interactionRevisionKey`) when strokes are committed or cleared.
+
+### Force simulation stop
+
+- Persist force-sim positions **without** `clampDisplayNormalizedToOwnerBounds` (`skipBoundsClamp: true` in `displayNormalizedToSoloNormalized`).
+- Cluster override storage allows a wider normalized range (`-2`…`3`) so expanded layouts are not clipped to the viewport box.
+
 ### Other rules
 
 - Isolate **Spotify rate-limit countdown** (and similar 1s timers) into child components so they do not re-render `MusicCueTool`.

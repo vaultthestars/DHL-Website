@@ -356,14 +356,12 @@ export const displayNormalizedToSoloNormalized = (
   displayNorm: NormalizedPoint,
   dimensions: GraphDimensions,
   bounds: { centroid: GraphPoint; radius: number },
-  metaCenter: GraphPoint
+  metaCenter: GraphPoint,
+  options?: { skipBoundsClamp?: boolean }
 ): NormalizedPoint => {
-  const clampedDisplayNorm = clampDisplayNormalizedToOwnerBounds(
-    displayNorm,
-    dimensions,
-    bounds,
-    metaCenter
-  );
+  const clampedDisplayNorm = options?.skipBoundsClamp
+    ? displayNorm
+    : clampDisplayNormalizedToOwnerBounds(displayNorm, dimensions, bounds, metaCenter);
   const display = fromNormalizedPosition(clampedDisplayNorm, dimensions);
   const solo = displayPositionToSoloPosition(display, bounds, metaCenter);
   return toNormalizedPosition(solo, dimensions);

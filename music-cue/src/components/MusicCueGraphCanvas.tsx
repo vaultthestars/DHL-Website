@@ -4,10 +4,11 @@ import { playlistMetaGraphEdgeStyle, type PlaylistMetaGraphSegment } from "../li
 import type { MetaGraphForceEdge, MetaGraphForceNode } from "../lib/playlistMetaGraphForceSim";
 import { getCanonicalSongId } from "../lib/isolateScopeSongs";
 import { isLocalDesktopApp } from "../lib/runtime";
-import type { GraphPoint, GraphToolMode, Song } from "../lib/types";
 import type { GraphDimensions } from "../lib/graphLayout";
+import type { GraphPoint, GraphToolMode, NormalizedPoint, Song } from "../lib/types";
 import { ClusterDragPreviewLayer, type ClusterDragSnapshot } from "./ClusterDragPreviewLayer";
 import { PlaylistGraphForceSimLayer } from "./PlaylistGraphForceSimLayer";
+import { StrokeDraftLayer } from "./StrokeDraftLayer";
 
 const LABEL_THRESHOLD = 250;
 
@@ -60,6 +61,8 @@ export type MusicCueGraphCanvasProps = {
   graphViewClusterRegions: ClusterRegion[];
   strokePaths: string[];
   isDrawingNewPath: boolean;
+  draftStrokeRef: MutableRefObject<NormalizedPoint[]>;
+  draftStrokeScheduleRef: MutableRefObject<(() => void) | null>;
   showPathOverlays: boolean;
   showSongNodesInGraph: boolean;
   cueEdgePath: string;
@@ -126,6 +129,8 @@ const MusicCueGraphCanvasComponent = ({
   clusterDragGraphDeltaRef,
   clusterDragSnapshotRef,
   clusterDragPreviewScheduleRef,
+  draftStrokeRef,
+  draftStrokeScheduleRef,
 }: MusicCueGraphCanvasProps) => {
   const useSpatialHover =
     enableGraphNodeCulling || (isLocalDesktopApp && renderGraphSongCount > LABEL_THRESHOLD);
@@ -248,11 +253,15 @@ const MusicCueGraphCanvasComponent = ({
           <path
             key={`stroke-${index}`}
             d={path}
-            className={`music-cue-stroke ${
-              isDrawingNewPath && index === strokePaths.length - 1 ? "music-cue-stroke-drafting" : ""
-            }`}
+            className="music-cue-stroke"
           />
         ))}
+        <StrokeDraftLayer
+          active={isDrawingNewPath}
+          strokeRef={draftStrokeRef}
+          dimensions={dimensions}
+          scheduleRef={draftStrokeScheduleRef}
+        />
         {showPathOverlays && showSongNodesInGraph && cueEdgePath && !isDrawingNewPath ? (
           <path d={cueEdgePath} className="music-cue-edge-path" />
         ) : null}

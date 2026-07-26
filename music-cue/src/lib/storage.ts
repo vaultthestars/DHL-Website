@@ -171,8 +171,8 @@ export const normalizeClusterCenterOverrides = (
   overrides: Partial<ClusterCenterOverrides> | ClusterCenterOverrides
 ): ClusterCenterOverrides => {
   const clampPoint = (point: NormalizedPoint): NormalizedPoint => ({
-    x: Math.min(1.25, Math.max(-0.25, point.x)),
-    y: Math.min(1.25, Math.max(-0.25, point.y)),
+    x: Math.min(3, Math.max(-2, point.x)),
+    y: Math.min(3, Math.max(-2, point.y)),
   });
   const clampMap = (map: Record<string, NormalizedPoint>): Record<string, NormalizedPoint> =>
     Object.fromEntries(Object.entries(map).map(([key, point]) => [key, clampPoint(point)]));

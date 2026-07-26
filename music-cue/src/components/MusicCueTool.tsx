@@ -933,7 +933,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
   const [pathThreshold, setPathThreshold] = useState(() => loadPathThreshold());
   const [cueLength, setCueLength] = useState(() => loadCueLength());
   const [completedStrokes, setCompletedStrokes] = useState<NormalizedPoint[][]>([]);
-  const [activeStroke, setActiveStroke] = useState<NormalizedPoint[]>([]);
+  const [completedStrokesRevision, setCompletedStrokesRevision] = useState(0);
   const [strokeLayoutConfig, setStrokeLayoutConfig] = useState<LayoutConfig | null>(null);
   const [isDrawingNewPath, setIsDrawingNewPath] = useState(false);
   const [cue, setCue] = useState<GeneratedCue | null>(null);
@@ -999,6 +999,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
   const clusterDragSnapshotRef = useRef<ClusterDragSnapshot | null>(null);
   const clusterDragGraphDeltaRef = useRef<GraphPoint>({ x: 0, y: 0 });
   const clusterDragPreviewScheduleRef = useRef<(() => void) | null>(null);
+  const draftStrokeScheduleRef = useRef<(() => void) | null>(null);
 
   const showToolSidebar = graphTool === "draw";
 
@@ -1386,16 +1387,18 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
   const coldLayoutConfig = isLargeLibrary ? deferredLayoutConfig : layoutConfig;
   const skipIsolateCentroidTranslation = isolateOwnerCount <= 1;
 
-  const layoutTransitionKey = useWebPerformanceOptimizations
-    ? songSpaceMode
-    : `${songSpaceMode}:${libraryScopeMode}`;
+  const layoutTransitionKey = `${songSpaceMode}:${libraryScopeMode}`;
   const layoutColdKey = `${layoutConfigKey(coldLayoutConfig)}|${layoutTransitionKey}|${graphSongs.length}|${dimensions.width}x${dimensions.height}`;
   const graphStructureKey = layoutColdKey;
   const interactionRevisionKey = [
+    graphTool,
+    libraryScopeMode,
     hoveredSongId ?? "",
     selectedSongId ?? "",
     activePersistentId ?? "",
     cue?.songs.length ?? 0,
+    completedStrokesRevision,
+    isDrawingNewPath ? 1 : 0,
     isClusterDragging ? 1 : 0,
     clusterDragSnapshotRevision,
     playlistGraphViewActive ? 1 : 0,
@@ -1774,12 +1777,13 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     if (entry?.completedStrokes !== undefined) {
       completedStrokesRef.current = entry.completedStrokes.map((stroke) => [...stroke]);
       setCompletedStrokes(completedStrokesRef.current);
+      setCompletedStrokesRevision((value) => value + 1);
     }
     if (entry?.action === "stroke" || entry?.action === "node") {
       strokeRef.current = [];
-      setActiveStroke([]);
       isDrawingRef.current = false;
       setIsDrawingNewPath(false);
+      draftStrokeScheduleRef.current?.();
     }
     if (!entry?.cue) {
       setSelectedSongId(null);
@@ -1918,8 +1922,10 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
 
   const handleGraphToolChange = useCallback(
     (tool: GraphToolMode) => {
-      setGraphTool(tool);
-      saveGraphTool(tool);
+      startTransition(() => {
+        setGraphTool(tool);
+        saveGraphTool(tool);
+      });
       if (tool === "navigate") {
         setStatusMessage(
           isGuestViewOnly
@@ -2094,33 +2100,29 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     const lastPoint = lastCompleted?.[lastCompleted.length - 1];
     isDrawingRef.current = true;
     setIsDrawingNewPath(true);
-    setStrokeLayoutConfig(layoutConfig);
     strokeRef.current = lastPoint ? [lastPoint, normalized] : [normalized];
-    setActiveStroke([...strokeRef.current]);
+    draftStrokeScheduleRef.current?.();
     setStatusMessage("Drawing path… release to finish this segment.");
   };
 
   const appendStrokePoint = (point: GraphPoint) => {
     const normalized = toNormalizedPosition(point, dimensions);
-    setActiveStroke((current) => {
-      const last = current[current.length - 1];
-      if (!last || Math.hypot(normalized.x - last.x, normalized.y - last.y) < 0.004) {
-        return current;
-      }
-      const next = [...current, normalized];
-      strokeRef.current = next;
-      return next;
-    });
+    const last = strokeRef.current[strokeRef.current.length - 1];
+    if (!last || Math.hypot(normalized.x - last.x, normalized.y - last.y) < 0.004) {
+      return;
+    }
+    strokeRef.current = [...strokeRef.current, normalized];
+    draftStrokeScheduleRef.current?.();
   };
 
   const finishStrokeDrawing = () => {
     const currentStroke = strokeRef.current;
     isDrawingRef.current = false;
     setIsDrawingNewPath(false);
+    draftStrokeScheduleRef.current?.();
 
     if (currentStroke.length < 2) {
       strokeRef.current = [];
-      setActiveStroke([]);
       setStatusMessage("Draw a longer path to generate a cue.");
       return;
     }
@@ -2129,7 +2131,6 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     const generated = regenerateCueFromStrokes(nextCompleted, pathThreshold, cueLength);
     if (!generated || generated.songs.length === 0) {
       strokeRef.current = [];
-      setActiveStroke([]);
       setStatusMessage("No songs matched that path. Widen the path threshold or draw closer to nodes.");
       return;
     }
@@ -2138,14 +2139,14 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
 
     completedStrokesRef.current = nextCompleted;
     setCompletedStrokes(nextCompleted);
+    setCompletedStrokesRevision((value) => value + 1);
     strokeRef.current = [];
-    setActiveStroke([]);
+    setStrokeLayoutConfig(layoutConfig);
 
     setCue({
       ...generated,
       buildMode: "path",
     });
-    setStrokeLayoutConfig(layoutConfig);
     setStatusMessage(
       `Added segment · ${generated.songs.length} song${generated.songs.length === 1 ? "" : "s"} in cue. Draw another path or click nodes. ⌘Z to undo.`
     );
@@ -2795,7 +2796,8 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
       setCue(null);
       setCompletedStrokes([]);
       completedStrokesRef.current = [];
-      setActiveStroke([]);
+      setCompletedStrokesRevision((value) => value + 1);
+      strokeRef.current = [];
       setStrokeLayoutConfig(null);
       setActivePlaylistName(null);
       setActivePersistentId(null);
@@ -3195,17 +3197,15 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
   const handleIsolateToggle = () => {
     const nextMode: LibraryScopeMode = libraryScopeMode === "isolate" ? "conglomerate" : "isolate";
     pauseLayoutSync();
-    if (useWebPerformanceOptimizations) {
+    clearFrozenIsolateBounds();
+    startTransition(() => {
       setLibraryScopeMode(nextMode);
       saveLibraryScopeMode(nextMode);
-    } else {
-      startTransition(() => {
-        clearFrozenIsolateBounds();
-        setLibraryScopeMode(nextMode);
-        saveLibraryScopeMode(nextMode);
-        reloadLayoutCaches(getActiveClusterLayoutScope(songSpaceMode, nextMode, sharedContributorCount));
-      });
-    }
+      reloadLayoutCaches(
+        getActiveClusterLayoutScope(songSpaceMode, nextMode, sharedContributorCount)
+      );
+      invalidateLayoutPositionCaches();
+    });
     setStatusMessage(
       nextMode === "isolate"
         ? "Isolate on — each contributor keeps their own cluster room inside metaclusters."
@@ -3256,7 +3256,8 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     setCue(null);
     setCompletedStrokes([]);
     completedStrokesRef.current = [];
-    setActiveStroke([]);
+    setCompletedStrokesRevision((value) => value + 1);
+    strokeRef.current = [];
     setStrokeLayoutConfig(null);
     setActivePlaylistName(null);
     setActivePersistentId(null);
@@ -3564,10 +3565,11 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     strokeRef.current = [];
     completedStrokesRef.current = [];
     setCompletedStrokes([]);
-    setActiveStroke([]);
+    setCompletedStrokesRevision((value) => value + 1);
     setStrokeLayoutConfig(null);
     setIsDrawingNewPath(false);
     isDrawingRef.current = false;
+    draftStrokeScheduleRef.current?.();
   };
 
   const handleClearPaths = () => {
@@ -4621,7 +4623,6 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
             cue={cue}
             buildMode={buildMode}
             completedStrokes={completedStrokes}
-            activeStroke={activeStroke}
             pathThreshold={pathThreshold}
             graphTool={graphTool}
             svgRef={svgRef}
@@ -4643,6 +4644,8 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
             metaGraphForceNodesRef={metaGraphForceNodesRef}
             metaGraphForceEdgesRef={metaGraphForceEdgesRef}
             isDrawingNewPath={isDrawingNewPath}
+            draftStrokeRef={strokeRef}
+            draftStrokeScheduleRef={draftStrokeScheduleRef}
             strokeLayoutConfig={strokeLayoutConfig}
             viewTransformForHoverRef={viewTransformRef}
             hoveredSong={hoveredSong}
