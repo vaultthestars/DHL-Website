@@ -1,4 +1,4 @@
-import type { PlaylistMetaGraphEdge } from "./playlistMetaGraph";
+import type { PlaylistMetaGraphEdge } from "./playlistMetaGraphEdges";
 import type { GraphPoint } from "./types";
 
 const cross = (origin: GraphPoint, a: GraphPoint, b: GraphPoint): number =>

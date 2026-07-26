@@ -5,7 +5,7 @@ import {
 } from "./isolateClusterLayout";
 import type { ClusterLayoutScope } from "./storage";
 import type { ClusterCenterOverrides, GraphPoint, NormalizedPoint } from "./types";
-import type { PlaylistMetaGraphEdge } from "./playlistMetaGraph";
+import type { PlaylistMetaGraphEdge } from "./playlistMetaGraphEdges";
 
 export type MetaGraphForceSimLayoutScope = ClusterLayoutScope;
 

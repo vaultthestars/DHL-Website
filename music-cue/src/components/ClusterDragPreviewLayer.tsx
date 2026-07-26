@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type MutableRefObject } from "react";
 import { parseOwnerScopedRegionId } from "../lib/isolateClusterLayout";
 import { buildPlaylistNeighborHullPath } from "../lib/playlistClusterHull";
-import type { PlaylistMetaGraphEdge } from "../lib/playlistMetaGraph";
+import type { PlaylistMetaGraphEdge } from "../lib/playlistMetaGraphEdges";
 import type { ClusterRegion } from "../lib/clusterRegions";
 import type { GraphPoint, Song } from "../lib/types";
 

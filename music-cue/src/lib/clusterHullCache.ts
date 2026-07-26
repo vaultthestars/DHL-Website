@@ -1,5 +1,5 @@
 import type { GraphPoint } from "./types";
-import type { PlaylistMetaGraphEdge } from "./playlistMetaGraph";
+import type { PlaylistMetaGraphEdge } from "./playlistMetaGraphEdges";
 
 const hullPathCache = new Map<string, string>();
 

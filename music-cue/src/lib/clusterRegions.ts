@@ -19,7 +19,7 @@ import { useWebPerformanceOptimizations } from "./runtime";
 import { buildLibraryStatsFromSongs } from "../../shared/sharedLibrary";
 import { UNASSIGNED_PLAYLIST_CLUSTER_ID } from "./playlistConstants";
 import { asStringArray } from "./arrayUtils";
-import { buildPlaylistMetaGraphEdges } from "./playlistMetaGraph";
+import { buildPlaylistMetaGraphEdges } from "./playlistMetaGraphEdges";
 import {
   buildPlaylistHullCacheKey,
   getCachedPlaylistHullPath,
