@@ -451,6 +451,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
   const viewTransformForCullRef = useRef<ViewTransform>(DEFAULT_VIEW_TRANSFORM);
   const [nodeCullRevision, setNodeCullRevision] = useState(0);
   const viewPresencePublishRef = useRef<() => void>(() => {});
+  const [dimensions, setDimensions] = useState<GraphDimensions>(() => getGraphDimensions(null));
 
   const flushViewTransform = useCallback(() => {
     viewTransformRafRef.current = 0;
@@ -577,7 +578,6 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
   );
   const [sharedTrackCount, setSharedTrackCount] = useState(0);
   const [isLoadingSharedLibrary, setIsLoadingSharedLibrary] = useState(false);
-  const [dimensions, setDimensions] = useState<GraphDimensions>(() => getGraphDimensions(null));
   const [buildMode, setBuildMode] = useState<CueBuildMode>(() => loadBuildMode());
   const [graphTool, setGraphTool] = useState<GraphToolMode>(() => loadGraphTool());
   const [canUndo, setCanUndo] = useState(false);
