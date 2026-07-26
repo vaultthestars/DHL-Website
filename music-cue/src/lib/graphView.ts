@@ -19,9 +19,16 @@ const clampMin = (value: number, min: number): number => Math.max(min, value);
 export const toViewTransformString = (transform: ViewTransform): string =>
   `translate(${transform.panX} ${transform.panY}) scale(${transform.scale})`;
 
-/** GPU-friendly viewport transform (applied on an HTML wrapper, not the SVG <g>). */
-export const toCssViewportTransform = (transform: ViewTransform): string =>
-  `translate3d(${transform.panX}px, ${transform.panY}px, 0) scale(${transform.scale})`;
+/** Pan/zoom via SVG viewBox — avoids CSS-transform clipping and keeps graph coords stable. */
+export const toSvgViewBox = (
+  transform: ViewTransform,
+  width: number,
+  height: number
+): string => {
+  const { panX, panY, scale } = transform;
+  const safeScale = Math.max(scale, MIN_ZOOM);
+  return `${-panX / safeScale} ${-panY / safeScale} ${width / safeScale} ${height / safeScale}`;
+};
 
 export const screenToGraphPoint = (
   clientX: number,

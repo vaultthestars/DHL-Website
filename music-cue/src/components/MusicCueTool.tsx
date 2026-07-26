@@ -93,7 +93,7 @@ import {
   DEFAULT_VIEW_TRANSFORM,
   MIN_ZOOM,
   screenToGraphPoint,
-  toCssViewportTransform,
+  toSvgViewBox,
   ViewTransform,
   zoomAtPoint,
 } from "../lib/graphView";
@@ -382,7 +382,6 @@ export type MusicCueToolProps = {
 export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) => {
   const graphPanelRef = useRef<HTMLDivElement | null>(null);
   const participantsHostRef = useRef<HTMLSpanElement | null>(null);
-  const graphViewportRef = useRef<HTMLDivElement | null>(null);
   const svgRef = useRef<SVGSVGElement | null>(null);
   const contentGroupRef = useRef<SVGGElement | null>(null);
   const bgRectRef = useRef<SVGRectElement | null>(null);
@@ -456,12 +455,12 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     viewTransformRafRef.current = 0;
     const transform = pendingViewTransformRef.current ?? viewTransformRef.current;
     pendingViewTransformRef.current = null;
-    const viewport = graphViewportRef.current;
-    if (viewport) {
-      viewport.style.transform = toCssViewportTransform(transform);
+    const svg = svgRef.current;
+    if (svg && dimensions.width > 0 && dimensions.height > 0) {
+      svg.setAttribute("viewBox", toSvgViewBox(transform, dimensions.width, dimensions.height));
     }
     contentGroupRef.current?.removeAttribute("transform");
-  }, []);
+  }, [dimensions.height, dimensions.width]);
 
   const applyViewTransformLive = useCallback(
     (transform: ViewTransform) => {
@@ -3138,11 +3137,13 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     const activePanSession = panSessionRef.current;
     if (activePanSession?.mode === "pan" && activePanSession.pointerId === event.pointerId) {
       event.preventDefault();
-      applyViewTransformLive({
+      const transform = {
         scale: viewTransformRef.current.scale,
         panX: activePanSession.panX + (event.clientX - activePanSession.clientX),
         panY: activePanSession.panY + (event.clientY - activePanSession.clientY),
-      });
+      };
+      viewTransformRef.current = transform;
+      flushViewTransform();
       return;
     }
 
@@ -3158,7 +3159,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     if (
       isWebDeployment &&
       !pinchSessionRef.current &&
-      panSessionRef.current?.mode !== "pan" &&
+      !panSessionRef.current &&
       !draggingClusterIdRef.current
     ) {
       const point = getLocalPoint(event, svg, viewTransformRef.current);
@@ -3197,7 +3198,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     if (
       (enableGraphNodeCulling || isLocalDesktopApp) &&
       !draggingClusterIdRef.current &&
-      panSessionRef.current?.mode !== "pan" &&
+      !panSessionRef.current &&
       graphTool === "navigate" &&
       !showPlaylistMetaGraph
     ) {
@@ -3252,12 +3253,12 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
       appendStrokePoint(getLocalPoint(event, svg, viewTransformRef.current));
     }
   }, [
-    applyViewTransformLive,
     appendStrokePoint,
     beginNewStroke,
     buildClusterDragOverrides,
     dimensions,
     enableGraphNodeCulling,
+    flushViewTransform,
     graphSongs.length,
     graphTool,
     isClusterLayout,
@@ -5253,12 +5254,12 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
               </svg>
             </button>
           ) : null}
-          <div ref={graphViewportRef} className="music-cue-graph-viewport">
           <svg
             ref={svgRef}
             className={`music-cue-graph music-cue-graph-${graphTool}`}
             width={dimensions.width}
             height={dimensions.height}
+            viewBox={toSvgViewBox(viewTransformRef.current, dimensions.width, dimensions.height)}
             onPointerDown={handleGraphPointerDown}
             onPointerUp={(event) => finishPointerInteraction(event)}
             onPointerCancel={(event) => finishPointerInteraction(event)}
@@ -5302,7 +5303,6 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
                   key={`fading-region-${region.id}`}
                   d={region.hullPath}
                   className="music-cue-cluster-region"
-                  fill={region.fill}
                   stroke={region.stroke}
                   opacity={fadingClusterSnapshot.opacity}
                   pointerEvents="none"
@@ -5321,7 +5321,6 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
                       key={`region-${region.id}`}
                       d={region.hullPath}
                       className="music-cue-cluster-region"
-                      fill={region.fill}
                       stroke={region.stroke}
                       opacity={effectiveClusterRevealOpacity}
                       pointerEvents="none"
@@ -5518,7 +5517,6 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
               />
             </g>
           </svg>
-          </div>
         </div>
 
         {showToolSidebar ? (

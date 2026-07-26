@@ -404,17 +404,9 @@ body {
   display: flex;
   overscroll-behavior: none;
   touch-action: none;
-  overflow: hidden;
   border: 2px solid;
   border-color: var(--w95-shadow) var(--w95-highlight) var(--w95-highlight) var(--w95-shadow);
   background: var(--w95-window-bg);
-}
-
-.music-cue-graph-viewport {
-  flex: 1 1 auto;
-  min-width: 0;
-  min-height: 0;
-  transform-origin: 0 0;
 }
 
 .music-cue-graph-loading-overlay {
@@ -501,9 +493,11 @@ body {
 
 .music-cue-graph {
   display: block;
+  flex: 1 1 auto;
   width: 100%;
   height: 100%;
   min-height: 0;
+  min-width: 0;
   touch-action: none;
   user-select: none;
   -webkit-user-select: none;
@@ -535,10 +529,6 @@ body {
 
 .music-cue-graph-panning {
   cursor: grabbing;
-}
-
-.music-cue-graph-panning .music-cue-graph-viewport {
-  will-change: transform;
 }
 
 .music-cue-graph-panning .music-cue-node-hit,
@@ -1121,7 +1111,13 @@ body.music-cue-web-deployment .playhtml-chat-container {
 }
 
 .music-cue-cluster-region {
+  fill: none;
   stroke-width: 1.5;
+  vector-effect: non-scaling-stroke;
+  pointer-events: none;
+}
+
+.music-cue-cluster-region-drag-active {
   vector-effect: non-scaling-stroke;
   pointer-events: none;
 }

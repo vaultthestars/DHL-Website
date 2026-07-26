@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useRef } from "react";
 import {
   playlistMetaGraphEdgeStyle,
   type PlaylistMetaGraphSegment,
@@ -25,7 +25,7 @@ type PlaylistGraphForceSimLayerProps = {
   ) => void;
 };
 
-/** Isolated rAF loop + SVG overlay so force sim does not re-render the full graph. */
+/** Isolated rAF loop; imperative SVG updates avoid React re-renders each tick. */
 export const PlaylistGraphForceSimLayer = ({
   active,
   nodesRef,
@@ -36,7 +36,8 @@ export const PlaylistGraphForceSimLayer = ({
   labelOpacity = 1,
   onLabelPointerDown,
 }: PlaylistGraphForceSimLayerProps) => {
-  const [frame, setFrame] = useState(0);
+  const edgeLineRefs = useRef<(SVGLineElement | null)[]>([]);
+  const labelTextRefs = useRef<Map<string, SVGTextElement>>(new Map());
 
   useEffect(() => {
     if (!active) {
@@ -50,7 +51,29 @@ export const PlaylistGraphForceSimLayer = ({
       if (nodes.length > 0) {
         stepMetaGraphForceSim(nodes, edges);
       }
-      setFrame((value) => value + 1);
+
+      edges.forEach((edge, index) => {
+        const line = edgeLineRefs.current[index];
+        const source = nodes[edge.sourceIndex];
+        const target = nodes[edge.targetIndex];
+        if (!line || !source || !target) {
+          return;
+        }
+        line.setAttribute("x1", source.x.toFixed(1));
+        line.setAttribute("y1", source.y.toFixed(1));
+        line.setAttribute("x2", target.x.toFixed(1));
+        line.setAttribute("y2", target.y.toFixed(1));
+      });
+
+      nodes.forEach((node) => {
+        const label = labelTextRefs.current.get(node.regionId);
+        if (!label) {
+          return;
+        }
+        label.setAttribute("x", node.x.toFixed(1));
+        label.setAttribute("y", node.y.toFixed(1));
+      });
+
       animationId = requestAnimationFrame(tick);
     };
 
@@ -60,37 +83,23 @@ export const PlaylistGraphForceSimLayer = ({
     };
   }, [active, edgesRef, nodesRef]);
 
-  const positionsByRegionId = useMemo(() => {
-    void frame;
-    return new Map(nodesRef.current.map((node) => [node.regionId, node]));
-  }, [frame, nodesRef]);
-
-  const liveSegments = useMemo(() => {
-    void frame;
-    const nodes = nodesRef.current;
-    if (nodes.length === 0) {
-      return segments;
-    }
-    return edgesRef.current.map((edge) => ({
-      leftId: nodes[edge.sourceIndex].playlistId,
-      rightId: nodes[edge.targetIndex].playlistId,
-      sharedSongCount: edge.weight,
-      start: { x: nodes[edge.sourceIndex].x, y: nodes[edge.sourceIndex].y },
-      end: { x: nodes[edge.targetIndex].x, y: nodes[edge.targetIndex].y },
-    }));
-  }, [edgesRef, frame, nodesRef, segments]);
-
   if (!active) {
     return null;
   }
 
+  const initialNodes = nodesRef.current;
+  const positionsByRegionId = new Map(initialNodes.map((node) => [node.regionId, node]));
+
   return (
     <>
-      {liveSegments.map((segment) => {
+      {segments.map((segment, index) => {
         const edgeStyle = playlistMetaGraphEdgeStyle(segment.sharedSongCount, maxSharedSongCount);
         return (
           <line
             key={`metagraph-sim-${segment.leftId}-${segment.rightId}`}
+            ref={(element) => {
+              edgeLineRefs.current[index] = element;
+            }}
             x1={segment.start.x}
             y1={segment.start.y}
             x2={segment.end.x}
@@ -109,6 +118,13 @@ export const PlaylistGraphForceSimLayer = ({
         return (
           <text
             key={`label-sim-${region.id}`}
+            ref={(element) => {
+              if (element) {
+                labelTextRefs.current.set(region.id, element);
+              } else {
+                labelTextRefs.current.delete(region.id);
+              }
+            }}
             x={center.x}
             y={center.y}
             className="music-cue-cluster-label"

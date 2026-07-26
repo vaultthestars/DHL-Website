@@ -149,7 +149,7 @@ export const ClusterDragPreviewLayer = ({
               <path
                 d={hullPath}
                 className="music-cue-cluster-region"
-                fill={region.fill}
+                fill="none"
                 stroke={region.stroke}
                 opacity={labelOpacity}
               />
@@ -172,7 +172,7 @@ export const ClusterDragPreviewLayer = ({
             <g key={`drag-moved-${region.id}`} transform={offsetTransform}>
               <path
                 d={hullPath}
-                className="music-cue-cluster-region"
+                className="music-cue-cluster-region music-cue-cluster-region-drag-active"
                 fill={region.fill}
                 stroke={region.stroke}
                 opacity={labelOpacity}
@@ -196,7 +196,7 @@ export const ClusterDragPreviewLayer = ({
             {snapshot.showClusterHulls ? (
               <path
                 d={hullPath}
-                className="music-cue-cluster-region"
+                className="music-cue-cluster-region music-cue-cluster-region-drag-active"
                 fill={region.fill}
                 stroke={region.stroke}
                 opacity={labelOpacity}
