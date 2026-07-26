@@ -17,12 +17,11 @@ import {
   getIsolateOwnerBoundsForLayout,
   getLayoutAxisLabels,
   GraphDimensions,
-  invalidateLayoutPositionCaches,
   layoutSongPosition,
   toNormalizedPosition,
 } from "../lib/graphLayout";
+import { invalidateLayoutPositionCaches } from "../lib/layoutInvalidation";
 import { invalidatePlaylistOverlapLayoutCache } from "../lib/playlistOverlapLayout";
-import { invalidateAllPlaylistHullCaches } from "../lib/clusterHullCache";
 import {
   buildPlaylistMetaGraphCenterMap,
   buildPlaylistMetaGraphSegments,
@@ -3300,7 +3299,6 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
       } else if (layoutConfig.viewMode === "cluster" && layoutConfig.clusterMode === "playlist") {
         savePlaylistClusterCenterOverrides(nextOverrides.playlist, activeLayoutScope);
         invalidatePlaylistOverlapLayoutCache();
-        invalidateAllPlaylistHullCaches();
       }
       invalidateLayoutPositionCaches();
       setStatusMessage(

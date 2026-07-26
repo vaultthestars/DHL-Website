@@ -1,7 +1,7 @@
 import { asStringArray, getSongPlaylists } from "./arrayUtils";
 import { ClusterCenterOverrides, GraphPoint, LibraryStats, Song } from "./types";
 import { UNASSIGNED_PLAYLIST_CLUSTER_ID } from "./playlistConstants";
-import { GraphDimensions, resolveClusterCenter } from "./graphLayout";
+import { GraphDimensions, resolveClusterCenter } from "./graphCoordinates";
 
 const GRAPH_PADDING = 48;
 

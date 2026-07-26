@@ -1,13 +1,13 @@
 import { useLayoutEffect, useRef, useState } from "react";
 import { flushSync } from "react-dom";
-import { GraphDimensions } from "./graphLayout";
+import { GraphDimensions } from "./graphCoordinates";
+import { LARGE_LIBRARY_LAYOUT_SNAP_THRESHOLD } from "./layoutConstants";
 import { layoutConfigKey } from "./layoutMetrics";
 import { GraphPoint, LayoutConfig, Song } from "./types";
 import { getCanonicalSongId, isIsolateScopedSongId } from "./isolateScopeSongs";
 
 export const LAYOUT_TRANSITION_SPEED_PX_PER_SEC = 360;
-/** Above this count, layout changes snap instantly instead of animating every node. */
-export const LARGE_LIBRARY_LAYOUT_SNAP_THRESHOLD = 500;
+export { LARGE_LIBRARY_LAYOUT_SNAP_THRESHOLD } from "./layoutConstants";
 
 const easeInOut = (value: number): number =>
   value < 0.5 ? 2 * value * value : 1 - (-2 * value + 2) ** 2 / 2;

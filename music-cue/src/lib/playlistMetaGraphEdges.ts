@@ -1,5 +1,5 @@
 import { asStringArray, getSongPlaylists } from "./arrayUtils";
-import { parseOwnerScopedRegionId } from "./isolateClusterLayout";
+import { parseOwnerScopedRegionId } from "./clusterRegionIds";
 import type { Song } from "./types";
 
 export type PlaylistMetaGraphEdge = {

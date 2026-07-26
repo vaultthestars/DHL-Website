@@ -1,5 +1,9 @@
 import type { GraphPoint } from "./types";
-import type { PlaylistMetaGraphEdge } from "./playlistMetaGraphEdges";
+
+type HullCacheEdge = {
+  leftId: string;
+  rightId: string;
+};
 
 const hullPathCache = new Map<string, string>();
 
@@ -10,7 +14,7 @@ export const buildPlaylistHullCacheKey = (
   playlistId: string,
   center: GraphPoint,
   playlistCenters: Map<string, GraphPoint>,
-  edges: PlaylistMetaGraphEdge[],
+  edges: HullCacheEdge[],
   memberCount: number,
   padding: number
 ): string => {

@@ -5,7 +5,8 @@ import {
   radiusForSongCount,
   songsForOwnerScope,
 } from "./libraryScope";
-import { LARGE_LIBRARY_LAYOUT_SNAP_THRESHOLD } from "./useLayoutTransition";
+import { LARGE_LIBRARY_LAYOUT_SNAP_THRESHOLD } from "./layoutConstants";
+import { parseOwnerScopedRegionId, ownerScopedOverrideKey } from "./clusterRegionIds";
 import { getCanonicalSongId } from "./isolateScopeSongs";
 import { normalizeClusterCenterOverrides } from "./storage";
 import {
@@ -48,25 +49,7 @@ export const getIsolateOwnerIds = (
   );
 };
 
-export const parseOwnerScopedRegionId = (
-  regionId: string
-): { ownerId: string | null; clusterId: string } => {
-  if (!regionId.startsWith("owner:")) {
-    return { ownerId: null, clusterId: regionId };
-  }
-  const withoutPrefix = regionId.slice("owner:".length);
-  const separator = withoutPrefix.indexOf(":");
-  if (separator < 0) {
-    return { ownerId: withoutPrefix, clusterId: withoutPrefix };
-  }
-  return {
-    ownerId: withoutPrefix.slice(0, separator),
-    clusterId: withoutPrefix.slice(separator + 1),
-  };
-};
-
-export const ownerScopedOverrideKey = (ownerId: string, clusterId: string): string =>
-  `${ownerId}::${clusterId}`;
+export { parseOwnerScopedRegionId, ownerScopedOverrideKey } from "./clusterRegionIds";
 
 const clusterModeForLayout = (layoutConfig: LayoutConfig): ClusterMode | null => {
   if (!isClusterView(layoutConfig)) {

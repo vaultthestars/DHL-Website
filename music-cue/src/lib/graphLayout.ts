@@ -1,6 +1,22 @@
 import { asStringArray } from "./arrayUtils";
-import { invalidateAllPlaylistHullCaches } from "./clusterHullCache";
+import {
+  clampGraphPoint,
+  fromNormalizedPosition,
+  GRAPH_PADDING,
+  GraphDimensions,
+  resolveClusterCenter,
+  toNormalizedPosition,
+} from "./graphCoordinates";
 import { ClusterCenterOverrides, GraphPoint, LayoutConfig, LibraryStats, NormalizedPoint, Song } from "./types";
+
+export type { GraphDimensions } from "./graphCoordinates";
+export {
+  clampGraphPoint,
+  fromNormalizedPosition,
+  GRAPH_PADDING,
+  resolveClusterCenter,
+  toNormalizedPosition,
+} from "./graphCoordinates";
 import {
   getAxisMetricLabel,
   getMetricRange,
@@ -33,8 +49,6 @@ import {
 import { getCanonicalSongId } from "./isolateScopeSongs";
 import { MusicServiceId } from "./musicProvider";
 
-const GRAPH_PADDING = 48;
-
 export type LayoutContext = {
   libraryScopeMode?: LibraryScopeMode;
   enabledOwnerIds?: string[];
@@ -46,11 +60,6 @@ export type LayoutContext = {
   /** Web perf: reuse conglomerate node positions and only translate into owner metaclusters. */
   useConglomerateOffsetIsolate?: boolean;
   conglomeratePositionsBySongId?: Map<string, GraphPoint>;
-};
-
-export type GraphDimensions = {
-  width: number;
-  height: number;
 };
 
 const clamp01 = (value: number): number => Math.min(1, Math.max(0, value));
@@ -70,35 +79,6 @@ const jitter = (seed: string, amplitude: number): number => {
 };
 
 const hashUnit = (seed: string, salt = ""): number => (hashString(`${seed}:${salt}`) % 1000) / 1000;
-
-export const toNormalizedPosition = (point: { x: number; y: number }, dimensions: GraphDimensions): NormalizedPoint => {
-  const usableWidth = dimensions.width - GRAPH_PADDING * 2;
-  const usableHeight = dimensions.height - GRAPH_PADDING * 2;
-  return {
-    x: (point.x - GRAPH_PADDING) / usableWidth,
-    y: (point.y - GRAPH_PADDING) / usableHeight,
-  };
-};
-
-export const fromNormalizedPosition = (point: NormalizedPoint, dimensions: GraphDimensions): { x: number; y: number } => {
-  const usableWidth = dimensions.width - GRAPH_PADDING * 2;
-  const usableHeight = dimensions.height - GRAPH_PADDING * 2;
-  return {
-    x: GRAPH_PADDING + point.x * usableWidth,
-    y: GRAPH_PADDING + point.y * usableHeight,
-  };
-};
-
-export const resolveClusterCenter = (
-  defaultCenter: { x: number; y: number },
-  override: NormalizedPoint | undefined,
-  dimensions: GraphDimensions
-): { x: number; y: number } => (override ? fromNormalizedPosition(override, dimensions) : defaultCenter);
-
-export const clampGraphPoint = (point: { x: number; y: number }, dimensions: GraphDimensions): { x: number; y: number } => ({
-  x: Math.min(dimensions.width - GRAPH_PADDING, Math.max(GRAPH_PADDING, point.x)),
-  y: Math.min(dimensions.height - GRAPH_PADDING, Math.max(GRAPH_PADDING, point.y)),
-});
 
 const yearToX = (year: number, stats: LibraryStats, dimensions: GraphDimensions): number => {
   const usableWidth = dimensions.width - GRAPH_PADDING * 2;
@@ -534,10 +514,9 @@ const layoutSongPositionConglomerate = (
   return genreClusterPosition(song, stats, dimensions, clusterOverrides);
 };
 
-export const invalidateLayoutPositionCaches = (): void => {
+export const invalidateGraphLayoutPositionCaches = (): void => {
   isolateLayoutCache = null;
   axisRangeCache = null;
-  invalidateAllPlaylistHullCaches();
 };
 
 export const buildInitialCustomPositions = (
