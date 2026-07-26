@@ -57,6 +57,20 @@ export const graphPointToPanelPosition = (
   };
 };
 
+export const toLiveViewTransformString = (
+  committed: ViewTransform,
+  live: ViewTransform
+): string | null => {
+  const committedScale = Math.max(committed.scale, MIN_ZOOM);
+  const scaleRatio = live.scale / committedScale;
+  const translateX = (live.panX - committed.panX) / committedScale;
+  const translateY = (live.panY - committed.panY) / committedScale;
+  if (scaleRatio === 1 && translateX === 0 && translateY === 0) {
+    return null;
+  }
+  return `translate(${translateX} ${translateY}) scale(${scaleRatio})`;
+};
+
 export const zoomAtPoint = (
   transform: ViewTransform,
   clientX: number,

@@ -98,6 +98,7 @@ import {
   DEFAULT_VIEW_TRANSFORM,
   MIN_ZOOM,
   screenToGraphPoint,
+  toLiveViewTransformString,
   toSvgViewBox,
   ViewTransform,
   zoomAtPoint,
@@ -445,19 +446,21 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     lastClientY: number;
     panX: number;
     panY: number;
+    startScale: number;
     graphStart: GraphPoint;
     shiftHeld: boolean;
     metaShiftHeld: boolean;
     boxEnd?: GraphPoint;
     mode: "pending" | "pan" | "draw" | "box-select";
   } | null>(null);
-  const panVisualRafRef = useRef<number>(0);
-  const pendingPanVisualRef = useRef<{ clientX: number; clientY: number } | null>(null);
   const viewTransformRef = useRef<ViewTransform>(DEFAULT_VIEW_TRANSFORM);
+  const committedViewTransformRef = useRef<ViewTransform>(DEFAULT_VIEW_TRANSFORM);
+  const isViewGesturingRef = useRef(false);
   const pendingViewTransformRef = useRef<ViewTransform | null>(null);
   const viewTransformRafRef = useRef<number>(0);
-  const zoomCullRafRef = useRef<number>(0);
-  const zoomCullPendingRef = useRef(false);
+  const gestureVisualRafRef = useRef<number>(0);
+  const pendingLiveTransformRef = useRef<ViewTransform | null>(null);
+  const viewGestureSettleTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const viewTransformForCullRef = useRef<ViewTransform>(DEFAULT_VIEW_TRANSFORM);
   const [nodeCullRevision, setNodeCullRevision] = useState(0);
   const viewPresencePublishRef = useRef<() => void>(() => {});
@@ -467,6 +470,8 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     viewTransformRafRef.current = 0;
     const transform = pendingViewTransformRef.current ?? viewTransformRef.current;
     pendingViewTransformRef.current = null;
+    viewTransformRef.current = transform;
+    committedViewTransformRef.current = { ...transform };
     const svg = svgRef.current;
     if (svg && dimensions.width > 0 && dimensions.height > 0) {
       svg.setAttribute("viewBox", toSvgViewBox(transform, dimensions.width, dimensions.height));
@@ -474,44 +479,62 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     contentGroupRef.current?.removeAttribute("transform");
   }, [dimensions.height, dimensions.width]);
 
-  const applyLivePanVisual = useCallback((session: NonNullable<typeof panSessionRef.current>) => {
-    const scale = Math.max(viewTransformRef.current.scale, MIN_ZOOM);
-    const graphDx = (session.lastClientX - session.clientX) / scale;
-    const graphDy = (session.lastClientY - session.clientY) / scale;
-    contentGroupRef.current?.setAttribute("transform", `translate(${graphDx} ${graphDy})`);
+  const applyLiveViewGesture = useCallback((live: ViewTransform) => {
+    viewTransformRef.current = live;
+    const transformString = toLiveViewTransformString(committedViewTransformRef.current, live);
+    if (!transformString) {
+      contentGroupRef.current?.removeAttribute("transform");
+      return;
+    }
+    contentGroupRef.current?.setAttribute("transform", transformString);
   }, []);
 
-  const scheduleLivePanVisual = useCallback(
-    (session: NonNullable<typeof panSessionRef.current>) => {
-      pendingPanVisualRef.current = { clientX: session.lastClientX, clientY: session.lastClientY };
-      if (panVisualRafRef.current) {
+  const scheduleLiveViewGesture = useCallback(
+    (live: ViewTransform) => {
+      pendingLiveTransformRef.current = live;
+      if (gestureVisualRafRef.current) {
         return;
       }
-      panVisualRafRef.current = requestAnimationFrame(() => {
-        panVisualRafRef.current = 0;
-        const activeSession = panSessionRef.current;
-        if (!activeSession || activeSession.mode !== "pan") {
-          pendingPanVisualRef.current = null;
+      gestureVisualRafRef.current = requestAnimationFrame(() => {
+        gestureVisualRafRef.current = 0;
+        const pending = pendingLiveTransformRef.current;
+        if (!pending) {
           return;
         }
-        applyLivePanVisual(activeSession);
-        pendingPanVisualRef.current = null;
+        applyLiveViewGesture(pending);
+        pendingLiveTransformRef.current = null;
       });
     },
-    [applyLivePanVisual]
+    [applyLiveViewGesture]
   );
 
-  const commitPanSessionTransform = useCallback(
-    (session: NonNullable<typeof panSessionRef.current>) => {
-      viewTransformRef.current = {
-        scale: viewTransformRef.current.scale,
-        panX: session.panX + (session.lastClientX - session.clientX),
-        panY: session.panY + (session.lastClientY - session.clientY),
-      };
+  const commitViewGesture = useCallback(
+    (transform?: ViewTransform) => {
+      if (transform) {
+        viewTransformRef.current = transform;
+      }
+      if (viewGestureSettleTimeoutRef.current) {
+        clearTimeout(viewGestureSettleTimeoutRef.current);
+        viewGestureSettleTimeoutRef.current = null;
+      }
+      if (gestureVisualRafRef.current) {
+        cancelAnimationFrame(gestureVisualRafRef.current);
+        gestureVisualRafRef.current = 0;
+      }
+      pendingLiveTransformRef.current = null;
+      isViewGesturingRef.current = false;
       flushViewTransform();
     },
     [flushViewTransform]
   );
+
+  const beginViewGesture = useCallback(() => {
+    if (isViewGesturingRef.current) {
+      commitViewGesture();
+    }
+    committedViewTransformRef.current = { ...viewTransformRef.current };
+    isViewGesturingRef.current = true;
+  }, [commitViewGesture]);
 
   const applyViewTransformLive = useCallback(
     (transform: ViewTransform) => {
@@ -533,20 +556,20 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     setNodeCullRevision((value) => value + 1);
   }, []);
 
-  const scheduleZoomCullRefresh = useCallback(() => {
-    zoomCullPendingRef.current = true;
-    if (zoomCullRafRef.current) {
-      return;
+  const scheduleViewGestureSettle = useCallback(() => {
+    if (viewGestureSettleTimeoutRef.current) {
+      clearTimeout(viewGestureSettleTimeoutRef.current);
     }
-    zoomCullRafRef.current = requestAnimationFrame(() => {
-      zoomCullRafRef.current = 0;
-      if (!zoomCullPendingRef.current) {
+    viewGestureSettleTimeoutRef.current = setTimeout(() => {
+      viewGestureSettleTimeoutRef.current = null;
+      if (!isViewGesturingRef.current) {
         return;
       }
-      zoomCullPendingRef.current = false;
+      commitViewGesture();
       refreshNodeCullFromView();
-    });
-  }, [refreshNodeCullFromView]);
+      scheduleViewPresencePublish();
+    }, 150);
+  }, [commitViewGesture, refreshNodeCullFromView, scheduleViewPresencePublish]);
 
   const setGraphPanningClass = useCallback((active: boolean) => {
     svgRef.current?.classList.toggle("music-cue-graph-panning", active);
@@ -1075,15 +1098,18 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
       event.stopPropagation();
       const svg = svgRef.current;
       if (svg) {
+        if (!isViewGesturingRef.current) {
+          beginViewGesture();
+        }
         const next = zoomAtPoint(viewTransformRef.current, event.clientX, event.clientY, svg, event.deltaY);
-        applyViewTransformLive(next);
-        scheduleZoomCullRefresh();
+        scheduleLiveViewGesture(next);
+        scheduleViewGestureSettle();
       }
     };
 
     document.addEventListener("wheel", handleWheel, { passive: false, capture: true });
     return () => document.removeEventListener("wheel", handleWheel, { capture: true });
-  }, [applyViewTransformLive, scheduleZoomCullRefresh]);
+  }, [beginViewGesture, scheduleLiveViewGesture, scheduleViewGestureSettle]);
 
   const handlePointerMoveRef = useRef<(event: PointerEvent) => void>(() => {});
 
@@ -2766,13 +2792,12 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     const wasPanning = session?.mode === "pan";
     panSessionRef.current = null;
     setGraphPanningClass(false);
-    if (panVisualRafRef.current) {
-      cancelAnimationFrame(panVisualRafRef.current);
-      panVisualRafRef.current = 0;
-    }
-    pendingPanVisualRef.current = null;
     if (wasPanning && session) {
-      commitPanSessionTransform(session);
+      commitViewGesture({
+        scale: session.startScale,
+        panX: session.panX + (session.lastClientX - session.clientX),
+        panY: session.panY + (session.lastClientY - session.clientY),
+      });
       refreshNodeCullFromView();
       scheduleViewPresencePublish();
     }
@@ -2799,6 +2824,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
         startMidX: midClientX - rect.left,
         startMidY: midClientY - rect.top,
       };
+      beginViewGesture();
       const session = panSessionRef.current;
       if (session && svgRef.current?.hasPointerCapture(session.pointerId)) {
         svgRef.current.releasePointerCapture(session.pointerId);
@@ -2808,9 +2834,15 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
   };
 
   const releasePointer = (event: React.PointerEvent<Element>) => {
+    const wasPinching = Boolean(pinchSessionRef.current);
     pointerPositionsRef.current.delete(event.pointerId);
     if (pointerPositionsRef.current.size < 2) {
       pinchSessionRef.current = null;
+      if (wasPinching && isViewGesturingRef.current) {
+        commitViewGesture();
+        refreshNodeCullFromView();
+        scheduleViewPresencePublish();
+      }
     }
   };
 
@@ -2830,12 +2862,12 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     const graphY = (session.startMidY - session.startPanY) / session.startScale;
     const screenMidX = midClientX - rect.left;
     const screenMidY = midClientY - rect.top;
-    applyViewTransformLive({
+    scheduleLiveViewGesture({
       scale: nextScale,
       panX: screenMidX - graphX * nextScale,
       panY: screenMidY - graphY * nextScale,
     });
-    scheduleZoomCullRefresh();
+    scheduleViewGestureSettle();
   };
 
   const beginNewStroke = (point: GraphPoint) => {
@@ -3206,12 +3238,14 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
       lastClientY: event.clientY,
       panX: viewTransformRef.current.panX,
       panY: viewTransformRef.current.panY,
+      startScale: viewTransformRef.current.scale,
       graphStart: point,
       shiftHeld: event.shiftKey,
       metaShiftHeld: (event.metaKey || event.ctrlKey) && event.shiftKey,
       mode: startPanImmediately ? "pan" : "pending",
     };
     if (startPanImmediately) {
+      beginViewGesture();
       setGraphPanningClass(true);
     }
     svgRef.current.setPointerCapture(event.pointerId);
@@ -3233,7 +3267,11 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
       event.preventDefault();
       activePanSession.lastClientX = event.clientX;
       activePanSession.lastClientY = event.clientY;
-      scheduleLivePanVisual(activePanSession);
+      scheduleLiveViewGesture({
+        scale: activePanSession.startScale,
+        panX: activePanSession.panX + (activePanSession.lastClientX - activePanSession.clientX),
+        panY: activePanSession.panY + (activePanSession.lastClientY - activePanSession.clientY),
+      });
       return;
     }
 
@@ -3248,6 +3286,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
 
     if (
       isWebDeployment &&
+      !isViewGesturingRef.current &&
       !pinchSessionRef.current &&
       !panSessionRef.current &&
       !draggingClusterIdRef.current
@@ -3287,6 +3326,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
 
     if (
       (enableGraphNodeCulling || isLocalDesktopApp) &&
+      !isViewGesturingRef.current &&
       !draggingClusterIdRef.current &&
       !panSessionRef.current &&
       graphTool === "navigate" &&
@@ -3325,6 +3365,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
         session.mode = "pan";
         session.lastClientX = event.clientX;
         session.lastClientY = event.clientY;
+        beginViewGesture();
         setGraphPanningClass(true);
       }
     }
@@ -3347,8 +3388,8 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
   }, [
     appendStrokePoint,
     beginNewStroke,
+    beginViewGesture,
     buildClusterDragOverrides,
-    commitPanSessionTransform,
     dimensions,
     enableGraphNodeCulling,
     graphSongs.length,
@@ -3358,7 +3399,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     isSharedIsolateClusterDragDisabled,
     resolveOverrideOwnerId,
     scheduleHoverProbe,
-    scheduleLivePanVisual,
+    scheduleLiveViewGesture,
     setGraphPanningClass,
     showPlaylistMetaGraph,
     updatePinchTransform,
@@ -3632,11 +3673,11 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
       if (viewTransformRafRef.current) {
         cancelAnimationFrame(viewTransformRafRef.current);
       }
-      if (zoomCullRafRef.current) {
-        cancelAnimationFrame(zoomCullRafRef.current);
+      if (gestureVisualRafRef.current) {
+        cancelAnimationFrame(gestureVisualRafRef.current);
       }
-      if (panVisualRafRef.current) {
-        cancelAnimationFrame(panVisualRafRef.current);
+      if (viewGestureSettleTimeoutRef.current) {
+        clearTimeout(viewGestureSettleTimeoutRef.current);
       }
       if (metaBoundsDebounceRef.current) {
         clearTimeout(metaBoundsDebounceRef.current);
