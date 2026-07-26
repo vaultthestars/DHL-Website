@@ -21,10 +21,12 @@ import {
   toNormalizedPosition,
 } from "../lib/graphLayout";
 import { invalidatePlaylistOverlapLayoutCache } from "../lib/playlistOverlapLayout";
+import { invalidateAllPlaylistHullCaches } from "../lib/clusterHullCache";
 import {
   buildPlaylistMetaGraphCenterMap,
   buildPlaylistMetaGraphEdges,
   buildPlaylistMetaGraphSegments,
+  collectMetagraphNeighborRegionIds,
   isPlaylistMetaGraphClusterRegion,
   playlistMetaGraphEdgeStyle,
   resolvePlaylistGraphViewRegionCenter,
@@ -1032,6 +1034,31 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
   }, [applyViewTransformLive, scheduleZoomCullRefresh]);
 
   useEffect(() => {
+    const svg = svgRef.current;
+    if (!svg) {
+      return undefined;
+    }
+
+    const handleNativePointerMove = (event: PointerEvent) => {
+      const session = panSessionRef.current;
+      if (!session || session.mode !== "pan" || session.pointerId !== event.pointerId) {
+        return;
+      }
+      event.preventDefault();
+      applyViewTransformLive({
+        scale: viewTransformRef.current.scale,
+        panX: session.panX + (event.clientX - session.clientX),
+        panY: session.panY + (event.clientY - session.clientY),
+      });
+    };
+
+    svg.addEventListener("pointermove", handleNativePointerMove, { passive: false });
+    return () => {
+      svg.removeEventListener("pointermove", handleNativePointerMove);
+    };
+  }, [applyViewTransformLive]);
+
+  useEffect(() => {
     if (songs.length === 0) {
       setUnavailableSongIds(new Set());
       return undefined;
@@ -1930,7 +1957,9 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
   const visiblePositionedSongs = renderedPositionedSongs;
 
   const clusterDragSongIds = isClusterDragging ? clusterDragSnapshotRef.current?.songIds : undefined;
-  const clusterDragRegionIds = isClusterDragging ? clusterDragSnapshotRef.current?.clusterIds : undefined;
+  const clusterDragPreviewRegionIds = isClusterDragging
+    ? clusterDragSnapshotRef.current?.previewRegionIds
+    : undefined;
 
   const culledNodeCount = enableGraphNodeCulling
     ? Math.max(0, renderGraphSongs.length - visiblePositionedSongs.length)
@@ -2879,10 +2908,72 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
       });
     }
     const draggedRegionSet = new Set(clustersToMove);
+    const resolveDragMetaGraphEdges = (scopeOwnerId: string | null) => {
+      if (clusterMode !== "playlist") {
+        return [];
+      }
+      if (scopeOwnerId) {
+        const ownerSongs = scopeSongsForIsolateOwner(
+          graphSongs.filter(
+            (song) => resolveIsolateDisplayOwnerId(song, activeContributorIds) === scopeOwnerId
+          ),
+          scopeOwnerId,
+          playlistOwners
+        );
+        if (ownerSongs.length === 0) {
+          return [];
+        }
+        const ownerPlaylistNames =
+          Object.keys(playlistOwners).length === 0
+            ? stats.playlistNames
+            : Object.fromEntries(
+                Object.entries(stats.playlistNames).filter(
+                  ([playlistId]) => playlistOwners[playlistId] === scopeOwnerId
+                )
+              );
+        const ownerStats = buildLibraryStatsFromSongs(ownerSongs, ownerPlaylistNames);
+        return buildPlaylistMetaGraphEdges(asStringArray(ownerStats.playlistIds), ownerSongs);
+      }
+      return buildPlaylistMetaGraphEdges(asStringArray(stats.playlistIds), graphSongs);
+    };
+    const dragOwnerIds = new Set(
+      clustersToMove.map((regionId) => parseOwnerScopedRegionId(regionId).ownerId)
+    );
+    const edgesForDrag = [...dragOwnerIds].flatMap((scopeOwnerId) =>
+      resolveDragMetaGraphEdges(scopeOwnerId)
+    );
+    const previewRegionIds = collectMetagraphNeighborRegionIds(
+      clustersToMove,
+      edgesForDrag,
+      clusterRegions.map((region) => region.id)
+    );
+    const neighborRegionIds = [...previewRegionIds].filter(
+      (regionId) => !draggedRegionSet.has(regionId)
+    );
+    const playlistCenters = new Map<string, GraphPoint>();
+    const paddingByRegionId = new Map<string, number>();
+    const memberCountByRegionId = new Map<string, number>();
+    clusterRegions.forEach((region) => {
+      if (!previewRegionIds.has(region.id)) {
+        return;
+      }
+      const { clusterId } = parseOwnerScopedRegionId(region.id);
+      const center =
+        layoutConfig.clusterMode === "playlist"
+          ? resolveClusterLabelCenter(region)
+          : getClusterRegionDisplayCenter(region);
+      playlistCenters.set(clusterId, center);
+      paddingByRegionId.set(
+        region.id,
+        Math.max(20, Math.min(42, 14 + Math.sqrt(region.memberCount) * 3))
+      );
+      memberCountByRegionId.set(region.id, region.memberCount);
+    });
     clusterDragSnapshotRef.current = {
-      clusterIds: draggedRegionSet,
+      movedRegionIds: draggedRegionSet,
+      previewRegionIds,
       songIds: snapshotSongIds,
-      regions: clusterRegions
+      movedRegions: clusterRegions
         .filter((region) => draggedRegionSet.has(region.id))
         .map((region) => ({
           ...region,
@@ -2891,8 +2982,18 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
               ? resolveClusterLabelCenter(region)
               : getClusterRegionDisplayCenter(region),
         })),
+      neighborRegions: clusterRegions.filter((region) => neighborRegionIds.includes(region.id)),
       songs: snapshotSongs,
       showClusterHulls: showPlaylistClusterHulls,
+      hullContext:
+        clusterMode === "playlist"
+          ? {
+              edges: edgesForDrag,
+              playlistCenters,
+              paddingByRegionId,
+              memberCountByRegionId,
+            }
+          : null,
     };
     clusterDragGraphDeltaRef.current = { x: 0, y: 0 };
     setIsClusterDragging(true);
@@ -2980,6 +3081,14 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
 
   const handlePointerMove = (event: React.PointerEvent<SVGSVGElement>) => {
     if (!svgRef.current) {
+      return;
+    }
+
+    const activePanSession = panSessionRef.current;
+    if (
+      activePanSession?.mode === "pan" &&
+      activePanSession.pointerId === event.pointerId
+    ) {
       return;
     }
 
@@ -3087,12 +3196,6 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     }
 
     if (session.mode === "pan") {
-      event.preventDefault();
-      applyViewTransformLive({
-        scale: viewTransformRef.current.scale,
-        panX: session.panX + (event.clientX - session.clientX),
-        panY: session.panY + (event.clientY - session.clientY),
-      });
       return;
     }
 
@@ -3125,6 +3228,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
       } else if (layoutConfig.viewMode === "cluster" && layoutConfig.clusterMode === "playlist") {
         savePlaylistClusterCenterOverrides(nextOverrides.playlist, activeLayoutScope);
         invalidatePlaylistOverlapLayoutCache();
+        invalidateAllPlaylistHullCaches();
       }
       invalidateLayoutPositionCaches();
       setStatusMessage(
@@ -5139,7 +5243,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
               {showPlaylistClusterHulls &&
                 isClusterLayout &&
                 clusterRegions
-                  .filter((region) => !clusterDragRegionIds?.has(region.id))
+                  .filter((region) => !clusterDragPreviewRegionIds?.has(region.id))
                   .map((region) => {
                   const offset = region.displayOffset;
                   const transform = offset ? `translate(${offset.x} ${offset.y})` : undefined;
@@ -5211,6 +5315,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
               )}
 
 
+              <g className="music-cue-song-nodes">
               {showSongNodesInGraph &&
                 visiblePositionedSongs
                   .filter(({ song }) => !clusterDragSongIds?.has(song.id))
@@ -5259,6 +5364,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
                   </g>
                 );
               })}
+              </g>
 
               {showPlaylistClusterHulls &&
                 fadingClusterSnapshot?.regions.map((region) => (
@@ -5277,7 +5383,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
               {isClusterLayout &&
                 !playlistGraphForceSim &&
                 graphViewClusterRegions
-                  .filter((region) => !clusterDragRegionIds?.has(region.id))
+                  .filter((region) => !clusterDragPreviewRegionIds?.has(region.id))
                   .map((region) => {
                   const labelCenter = resolveClusterLabelCenter(region);
                   const offset = region.displayOffset;

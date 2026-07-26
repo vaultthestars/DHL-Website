@@ -1,4 +1,5 @@
 import { asStringArray } from "./arrayUtils";
+import { invalidateAllPlaylistHullCaches } from "./clusterHullCache";
 import { ClusterCenterOverrides, GraphPoint, LayoutConfig, LibraryStats, NormalizedPoint, Song } from "./types";
 import {
   getAxisMetricLabel,
@@ -536,6 +537,7 @@ const layoutSongPositionConglomerate = (
 export const invalidateLayoutPositionCaches = (): void => {
   isolateLayoutCache = null;
   axisRangeCache = null;
+  invalidateAllPlaylistHullCaches();
 };
 
 export const buildInitialCustomPositions = (

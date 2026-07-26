@@ -20,6 +20,11 @@ import { buildLibraryStatsFromSongs } from "../../shared/sharedLibrary";
 import { UNASSIGNED_PLAYLIST_CLUSTER_ID } from "./playlistConstants";
 import { asStringArray } from "./arrayUtils";
 import { buildPlaylistMetaGraphEdges } from "./playlistMetaGraph";
+import {
+  buildPlaylistHullCacheKey,
+  getCachedPlaylistHullPath,
+  setCachedPlaylistHullPath,
+} from "./clusterHullCache";
 import { buildPlaylistNeighborHullPath } from "./playlistClusterHull";
 
 export const LARGE_LIBRARY_CLUSTER_HULL_THRESHOLD = 300;
@@ -481,14 +486,28 @@ export const buildClusterRegions = (
         playlistOverlapContext.playlistCenters.forEach((center, playlistId) => {
           displayPlaylistCenters.set(playlistId, toDisplayPoint ? toDisplayPoint(center) : center);
         });
-        hullPath = buildPlaylistNeighborHullPath(
+        const hullCacheKey = buildPlaylistHullCacheKey(
           cluster.id,
           displayCenter,
-          playlistMetaGraphEdges,
           displayPlaylistCenters,
+          playlistMetaGraphEdges,
           members.length,
           padding
         );
+        const cachedHullPath = getCachedPlaylistHullPath(hullCacheKey);
+        hullPath =
+          cachedHullPath ??
+          buildPlaylistNeighborHullPath(
+            cluster.id,
+            displayCenter,
+            playlistMetaGraphEdges,
+            displayPlaylistCenters,
+            members.length,
+            padding
+          );
+        if (!cachedHullPath) {
+          setCachedPlaylistHullPath(hullCacheKey, hullPath);
+        }
       } else if (useLiteHulls) {
         const memberPositions = sampleMemberPositions(members, getPosition).map((point) =>
           toDisplayPoint ? toDisplayPoint(point) : point

@@ -1,13 +1,26 @@
 import { useCallback, useEffect, useRef, useState, type MutableRefObject } from "react";
+import { parseOwnerScopedRegionId } from "../lib/isolateClusterLayout";
+import { buildPlaylistNeighborHullPath } from "../lib/playlistClusterHull";
+import type { PlaylistMetaGraphEdge } from "../lib/playlistMetaGraph";
 import type { ClusterRegion } from "../lib/clusterRegions";
 import type { GraphPoint, Song } from "../lib/types";
 
+export type ClusterDragHullContext = {
+  edges: PlaylistMetaGraphEdge[];
+  playlistCenters: Map<string, GraphPoint>;
+  paddingByRegionId: Map<string, number>;
+  memberCountByRegionId: Map<string, number>;
+};
+
 export type ClusterDragSnapshot = {
-  clusterIds: Set<string>;
+  movedRegionIds: Set<string>;
+  previewRegionIds: Set<string>;
   songIds: Set<string>;
-  regions: Array<ClusterRegion & { labelCenter: GraphPoint }>;
+  movedRegions: Array<ClusterRegion & { labelCenter: GraphPoint }>;
+  neighborRegions: ClusterRegion[];
   songs: Array<{ song: Song; position: GraphPoint }>;
   showClusterHulls: boolean;
+  hullContext: ClusterDragHullContext | null;
 };
 
 type ClusterDragPreviewLayerProps = {
@@ -18,6 +31,53 @@ type ClusterDragPreviewLayerProps = {
   getSongFill: (song: Song) => string;
   renderGraphSongCount: number;
   scheduleRef: MutableRefObject<(() => void) | null>;
+};
+
+const buildLivePlaylistCenters = (
+  snapshot: ClusterDragSnapshot,
+  delta: GraphPoint
+): Map<string, GraphPoint> | null => {
+  const { hullContext } = snapshot;
+  if (!hullContext) {
+    return null;
+  }
+  const liveCenters = new Map(hullContext.playlistCenters);
+  snapshot.movedRegions.forEach((region) => {
+    const { clusterId } = parseOwnerScopedRegionId(region.id);
+    const startCenter = hullContext.playlistCenters.get(clusterId);
+    if (!startCenter) {
+      return;
+    }
+    liveCenters.set(clusterId, {
+      x: startCenter.x + delta.x,
+      y: startCenter.y + delta.y,
+    });
+  });
+  return liveCenters;
+};
+
+const buildLiveHullPath = (
+  region: ClusterRegion,
+  snapshot: ClusterDragSnapshot,
+  liveCenters: Map<string, GraphPoint>
+): string => {
+  const { hullContext } = snapshot;
+  if (!hullContext) {
+    return region.hullPath;
+  }
+  const { clusterId } = parseOwnerScopedRegionId(region.id);
+  const center = liveCenters.get(clusterId);
+  if (!center) {
+    return region.hullPath;
+  }
+  return buildPlaylistNeighborHullPath(
+    clusterId,
+    center,
+    hullContext.edges,
+    liveCenters,
+    hullContext.memberCountByRegionId.get(region.id) ?? region.memberCount,
+    hullContext.paddingByRegionId.get(region.id) ?? 24
+  );
 };
 
 /** Lightweight rAF overlay so cluster drag does not re-render the full graph. */
@@ -66,21 +126,48 @@ export const ClusterDragPreviewLayer = ({
   }
 
   const delta = graphDeltaRef.current;
+  const liveCenters = buildLivePlaylistCenters(snapshot, delta);
   const radius =
     renderGraphSongCount > 1000 ? 2 : renderGraphSongCount > 400 ? 2 : 3;
 
   return (
     <g className="music-cue-cluster-drag-preview" pointerEvents="none">
-      {snapshot.regions.map((region) => {
+      {snapshot.neighborRegions.map((region) => {
         const offset = region.displayOffset;
+        const hullPath =
+          liveCenters && snapshot.showClusterHulls
+            ? buildLiveHullPath(region, snapshot, liveCenters)
+            : region.hullPath;
+        const transform = offset ? `translate(${offset.x} ${offset.y})` : undefined;
+        return (
+          <g key={`drag-neighbor-${region.id}`} transform={transform}>
+            {snapshot.showClusterHulls ? (
+              <path
+                d={hullPath}
+                className="music-cue-cluster-region"
+                fill={region.fill}
+                stroke={region.stroke}
+                opacity={labelOpacity}
+              />
+            ) : null}
+          </g>
+        );
+      })}
+
+      {snapshot.movedRegions.map((region) => {
+        const offset = region.displayOffset;
+        const hullPath =
+          liveCenters && snapshot.showClusterHulls
+            ? buildLiveHullPath(region, snapshot, liveCenters)
+            : region.hullPath;
         const transform = offset
           ? `translate(${offset.x + delta.x} ${offset.y + delta.y})`
           : `translate(${delta.x} ${delta.y})`;
         return (
-          <g key={`drag-region-${region.id}`} transform={transform}>
+          <g key={`drag-moved-${region.id}`} transform={transform}>
             {snapshot.showClusterHulls ? (
               <path
-                d={region.hullPath}
+                d={hullPath}
                 className="music-cue-cluster-region"
                 fill={region.fill}
                 stroke={region.stroke}
@@ -98,6 +185,7 @@ export const ClusterDragPreviewLayer = ({
           </g>
         );
       })}
+
       <g transform={`translate(${delta.x} ${delta.y})`}>
         {snapshot.songs.map(({ song, position }) => (
           <circle
