@@ -30,8 +30,6 @@ type ClusterDragPreviewLayerProps = {
   graphDeltaRef: MutableRefObject<GraphPoint>;
   snapshotRef: MutableRefObject<ClusterDragSnapshot | null>;
   labelOpacity: number;
-  getSongFill: (song: Song) => string;
-  renderGraphSongCount: number;
   scheduleRef: MutableRefObject<(() => void) | null>;
 };
 
@@ -90,8 +88,6 @@ export const ClusterDragPreviewLayer = ({
   graphDeltaRef,
   snapshotRef,
   labelOpacity,
-  getSongFill,
-  renderGraphSongCount,
   scheduleRef,
 }: ClusterDragPreviewLayerProps) => {
   const [frame, setFrame] = useState(0);
@@ -131,8 +127,6 @@ export const ClusterDragPreviewLayer = ({
 
   const delta = graphDeltaRef.current;
   const liveCenters = buildLivePlaylistCenters(snapshot, delta);
-  const radius =
-    renderGraphSongCount > 1000 ? 2 : renderGraphSongCount > 400 ? 2 : 3;
 
   return (
     <g className="music-cue-cluster-drag-preview" pointerEvents="none">
@@ -214,19 +208,6 @@ export const ClusterDragPreviewLayer = ({
         );
       })}
 
-      <g transform={`translate(${delta.x} ${delta.y})`}>
-        {snapshot.songs.map(({ song, position }) => (
-          <circle
-            key={`drag-song-${song.id}`}
-            cx={position.x}
-            cy={position.y}
-            r={radius}
-            fill={getSongFill(song)}
-            className="music-cue-node"
-            pointerEvents="none"
-          />
-        ))}
-      </g>
     </g>
   );
 };

@@ -441,6 +441,8 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     pointerId: number;
     clientX: number;
     clientY: number;
+    lastClientX: number;
+    lastClientY: number;
     panX: number;
     panY: number;
     graphStart: GraphPoint;
@@ -449,6 +451,8 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     boxEnd?: GraphPoint;
     mode: "pending" | "pan" | "draw" | "box-select";
   } | null>(null);
+  const panVisualRafRef = useRef<number>(0);
+  const pendingPanVisualRef = useRef<{ clientX: number; clientY: number } | null>(null);
   const viewTransformRef = useRef<ViewTransform>(DEFAULT_VIEW_TRANSFORM);
   const pendingViewTransformRef = useRef<ViewTransform | null>(null);
   const viewTransformRafRef = useRef<number>(0);
@@ -469,6 +473,45 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     }
     contentGroupRef.current?.removeAttribute("transform");
   }, [dimensions.height, dimensions.width]);
+
+  const applyLivePanVisual = useCallback((session: NonNullable<typeof panSessionRef.current>) => {
+    const scale = Math.max(viewTransformRef.current.scale, MIN_ZOOM);
+    const graphDx = (session.lastClientX - session.clientX) / scale;
+    const graphDy = (session.lastClientY - session.clientY) / scale;
+    contentGroupRef.current?.setAttribute("transform", `translate(${graphDx} ${graphDy})`);
+  }, []);
+
+  const scheduleLivePanVisual = useCallback(
+    (session: NonNullable<typeof panSessionRef.current>) => {
+      pendingPanVisualRef.current = { clientX: session.lastClientX, clientY: session.lastClientY };
+      if (panVisualRafRef.current) {
+        return;
+      }
+      panVisualRafRef.current = requestAnimationFrame(() => {
+        panVisualRafRef.current = 0;
+        const activeSession = panSessionRef.current;
+        if (!activeSession || activeSession.mode !== "pan") {
+          pendingPanVisualRef.current = null;
+          return;
+        }
+        applyLivePanVisual(activeSession);
+        pendingPanVisualRef.current = null;
+      });
+    },
+    [applyLivePanVisual]
+  );
+
+  const commitPanSessionTransform = useCallback(
+    (session: NonNullable<typeof panSessionRef.current>) => {
+      viewTransformRef.current = {
+        scale: viewTransformRef.current.scale,
+        panX: session.panX + (session.lastClientX - session.clientX),
+        panY: session.panY + (session.lastClientY - session.clientY),
+      };
+      flushViewTransform();
+    },
+    [flushViewTransform]
+  );
 
   const applyViewTransformLive = useCallback(
     (transform: ViewTransform) => {
@@ -2719,10 +2762,17 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
   }, [cue, musicProvider, playbackTrackingEnabled]);
 
   const resetPanSession = () => {
-    const wasPanning = panSessionRef.current?.mode === "pan";
+    const session = panSessionRef.current;
+    const wasPanning = session?.mode === "pan";
     panSessionRef.current = null;
     setGraphPanningClass(false);
-    if (wasPanning) {
+    if (panVisualRafRef.current) {
+      cancelAnimationFrame(panVisualRafRef.current);
+      panVisualRafRef.current = 0;
+    }
+    pendingPanVisualRef.current = null;
+    if (wasPanning && session) {
+      commitPanSessionTransform(session);
       refreshNodeCullFromView();
       scheduleViewPresencePublish();
     }
@@ -3152,6 +3202,8 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
       pointerId: event.pointerId,
       clientX: event.clientX,
       clientY: event.clientY,
+      lastClientX: event.clientX,
+      lastClientY: event.clientY,
       panX: viewTransformRef.current.panX,
       panY: viewTransformRef.current.panY,
       graphStart: point,
@@ -3179,13 +3231,9 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     const activePanSession = panSessionRef.current;
     if (activePanSession?.mode === "pan" && activePanSession.pointerId === event.pointerId) {
       event.preventDefault();
-      const transform = {
-        scale: viewTransformRef.current.scale,
-        panX: activePanSession.panX + (event.clientX - activePanSession.clientX),
-        panY: activePanSession.panY + (event.clientY - activePanSession.clientY),
-      };
-      viewTransformRef.current = transform;
-      flushViewTransform();
+      activePanSession.lastClientX = event.clientX;
+      activePanSession.lastClientY = event.clientY;
+      scheduleLivePanVisual(activePanSession);
       return;
     }
 
@@ -3275,6 +3323,8 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
         appendStrokePoint(getLocalPoint(event, svg, viewTransformRef.current));
       } else {
         session.mode = "pan";
+        session.lastClientX = event.clientX;
+        session.lastClientY = event.clientY;
         setGraphPanningClass(true);
       }
     }
@@ -3298,9 +3348,9 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     appendStrokePoint,
     beginNewStroke,
     buildClusterDragOverrides,
+    commitPanSessionTransform,
     dimensions,
     enableGraphNodeCulling,
-    flushViewTransform,
     graphSongs.length,
     graphTool,
     isClusterLayout,
@@ -3308,6 +3358,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     isSharedIsolateClusterDragDisabled,
     resolveOverrideOwnerId,
     scheduleHoverProbe,
+    scheduleLivePanVisual,
     setGraphPanningClass,
     showPlaylistMetaGraph,
     updatePinchTransform,
@@ -3583,6 +3634,9 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
       }
       if (zoomCullRafRef.current) {
         cancelAnimationFrame(zoomCullRafRef.current);
+      }
+      if (panVisualRafRef.current) {
+        cancelAnimationFrame(panVisualRafRef.current);
       }
       if (metaBoundsDebounceRef.current) {
         clearTimeout(metaBoundsDebounceRef.current);
@@ -5552,8 +5606,6 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
                 graphDeltaRef={clusterDragGraphDeltaRef}
                 snapshotRef={clusterDragSnapshotRef}
                 labelOpacity={effectiveClusterRevealOpacity}
-                getSongFill={(song) => songNodeFills.get(song.id) ?? "#000080"}
-                renderGraphSongCount={renderGraphSongs.length}
                 scheduleRef={clusterDragPreviewScheduleRef}
               />
             </g>
