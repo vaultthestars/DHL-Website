@@ -80,9 +80,17 @@ const jitter = (seed: string, amplitude: number): number => {
 
 const hashUnit = (seed: string, salt = ""): number => (hashString(`${seed}:${salt}`) % 1000) / 1000;
 
-const yearToX = (year: number, stats: LibraryStats, dimensions: GraphDimensions): number => {
+const yearToX = (
+  year: number,
+  stats: LibraryStats,
+  dimensions: GraphDimensions,
+  songId?: string
+): number => {
   const usableWidth = dimensions.width - GRAPH_PADDING * 2;
   const span = Math.max(1, stats.maxYear - stats.minYear);
+  if (!Number.isFinite(year)) {
+    return GRAPH_PADDING + hashUnit(songId ?? "unknown-year", "missing-year") * usableWidth;
+  }
   return GRAPH_PADDING + ((year - stats.minYear) / span) * usableWidth;
 };
 
@@ -237,7 +245,7 @@ const yearTimelinePosition = (
 ): { x: number; y: number } => {
   const usableHeight = dimensions.height - GRAPH_PADDING * 2;
   return {
-    x: yearToX(song.year, stats, dimensions),
+    x: yearToX(song.year, stats, dimensions, song.id),
     y: GRAPH_PADDING + usableHeight / 2 + jitter(song.id, usableHeight * 0.42),
   };
 };

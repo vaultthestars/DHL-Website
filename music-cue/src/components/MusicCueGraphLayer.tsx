@@ -60,7 +60,7 @@ import {
   isClusterView,
   layoutConfigKey,
 } from "../lib/layoutMetrics";
-import { LARGE_LIBRARY_LAYOUT_SNAP_THRESHOLD } from "../lib/layoutConstants";
+import { isFiniteGraphPoint } from "../lib/graphCoordinates";
 import { getSongIdsNearStrokes } from "../lib/pathGenerator";
 import { getSongNodeFill } from "../lib/graphColors";
 import { prepareGraphSongsForIsolate, scopeSongsForIsolateOwner } from "../lib/isolateScopeSongs";
@@ -300,9 +300,6 @@ const axisConglomeratePositionBySongId = useMemo(() => {
   if (!useWebPerformanceOptimizations || isClusterView(layoutConfig)) {
     return null;
   }
-  if (libraryScopeMode === "isolate") {
-    return null;
-  }
   const overridesForLayout = resolveConglomerateOverridesForLayout();
   const positions = new Map<string, GraphPoint>();
   visibleSongs.forEach((song) => {
@@ -367,34 +364,51 @@ isolateDisplayContextRef.current = isolateDisplayContext;
 const getConglomeratePositionForSong = useCallback(
   (song: Song, config: LayoutConfig = layoutConfig): GraphPoint => {
     const clusterCached = conglomeratePositionBySongId?.get(song.id);
-    if (clusterCached) {
+    if (isFiniteGraphPoint(clusterCached)) {
       return clusterCached;
     }
     const axisCached = axisConglomeratePositionBySongId?.get(song.id);
-    if (axisCached) {
+    if (isFiniteGraphPoint(axisCached)) {
       return axisCached;
     }
+    const overridesForScope =
+      layoutLibraryScopeMode === "isolate"
+        ? songSpaceMode === "mine" || isSingleContributorSharedLibrary(sharedContributorCount)
+          ? layoutClusterOverrides
+          : clusterOverrides
+        : resolveConglomerateOverridesForLayout();
     return layoutSongPosition(
       song,
       dimensions,
       config,
       stats,
       {},
-      resolveConglomerateOverridesForLayout(),
+      overridesForScope,
       visibleSongs,
       {
-        libraryScopeMode: "conglomerate",
+        libraryScopeMode: layoutLibraryScopeMode,
         enabledOwnerIds: activeContributorIds,
+        isolateOwnerBounds,
+        skipIsolateCentroidTranslation,
+        metaClusterCenterForOwner: getMetaClusterCenter,
       }
     );
   },
   [
     activeContributorIds,
     axisConglomeratePositionBySongId,
+    clusterOverrides,
     conglomeratePositionBySongId,
     dimensions,
+    getMetaClusterCenter,
+    isolateOwnerBounds,
+    layoutClusterOverrides,
     layoutConfig,
+    layoutLibraryScopeMode,
     resolveConglomerateOverridesForLayout,
+    sharedContributorCount,
+    skipIsolateCentroidTranslation,
+    songSpaceMode,
     stats,
     visibleSongs,
   ]
@@ -471,8 +485,9 @@ const webDisplayPositionBySongId = useMemo(() => {
   getConglomeratePositionForSong,
   isolateDisplayContext,
   layoutConfig,
+  layoutLibraryScopeMode,
   libraryScopeMode,
-  layoutShowIsolateContributorView,
+  showIsolateContributorView,
   songSpaceMode,
   stats,
   useWebPerformanceOptimizations,
@@ -614,15 +629,23 @@ const getPosition = useCallback(
   (song: Song): GraphPoint => {
     if (useWebPerformanceOptimizations) {
       const cached = webDisplayPositionBySongIdRef.current?.get(song.id);
-      if (cached) {
+      if (isFiniteGraphPoint(cached)) {
         return cached;
       }
-      return getConglomeratePositionForSong(song);
+      const fallback = getConglomeratePositionForSong(song);
+      if (isFiniteGraphPoint(fallback)) {
+        return fallback;
+      }
     }
-    return computeLayoutPosition(song, layoutConfig, layoutLibraryScopeMode, graphSongsRef.current);
+    const computed = computeLayoutPosition(song, layoutConfig, layoutLibraryScopeMode);
+    return isFiniteGraphPoint(computed)
+      ? computed
+      : { x: dimensions.width / 2, y: dimensions.height / 2 };
   },
   [
     computeLayoutPosition,
+    dimensions.height,
+    dimensions.width,
     getConglomeratePositionForSong,
     layoutConfig,
     layoutLibraryScopeMode,
@@ -782,7 +805,7 @@ const findHoveredSongAtPoint = useCallback(
         );
 
     nodes.forEach(({ song, position }) => {
-      if (!position) {
+      if (!isFiniteGraphPoint(position)) {
         return;
       }
       const renderPosition = position;
@@ -848,8 +871,7 @@ const visiblePositionedSongs = renderedPositionedSongs;
 
 const clusterDragSongIds = isClusterDragging ? clusterDragSnapshotRef.current?.songIds : undefined;
 const clusterDragHiddenHullRegionIds = isClusterDragging
-  ? clusterDragSnapshotRef.current?.previewRegionIds ??
-    clusterDragSnapshotRef.current?.movedRegionIds
+  ? clusterDragSnapshotRef.current?.movedRegionIds
   : undefined;
 const clusterDragHiddenLabelRegionIds = isClusterDragging
   ? clusterDragSnapshotRef.current?.movedRegionIds

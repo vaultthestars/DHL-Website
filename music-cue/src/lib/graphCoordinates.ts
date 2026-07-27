@@ -7,6 +7,11 @@ export type GraphDimensions = {
   height: number;
 };
 
+export const isFiniteGraphPoint = (
+  point: { x: number; y: number } | null | undefined
+): point is { x: number; y: number } =>
+  Boolean(point && Number.isFinite(point.x) && Number.isFinite(point.y));
+
 export const toNormalizedPosition = (
   point: { x: number; y: number },
   dimensions: GraphDimensions

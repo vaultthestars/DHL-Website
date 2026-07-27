@@ -5,6 +5,7 @@ import {
   type OwnerMetaCluster,
 } from "./libraryScope";
 import { getIsolateOwnerBoundsFromConglomeratePositions } from "./isolateClusterLayout";
+import { isFiniteGraphPoint } from "./graphCoordinates";
 import { getMetricRange, getMetricValue, isClusterView } from "./layoutMetrics";
 import type { AxisMetric, GraphPoint, LayoutConfig, LibraryStats, Song } from "./types";
 
@@ -207,10 +208,21 @@ export const buildWebDisplayPositionCache = (
 ): Map<string, GraphPoint> => {
   const positions = new Map<string, GraphPoint>();
 
+  const setPosition = (song: Song, point: GraphPoint) => {
+    if (isFiniteGraphPoint(point)) {
+      positions.set(song.id, point);
+      return;
+    }
+    const fallback = fallbackPosition(song);
+    if (isFiniteGraphPoint(fallback)) {
+      positions.set(song.id, fallback);
+    }
+  };
+
   if (isolateContext?.isAxisView) {
     songs.forEach((song) => {
-      positions.set(
-        song.id,
+      setPosition(
+        song,
         applyIsolateDisplayPosition(song, fallbackPosition(song), isolateContext, layoutConfig, stats, songs)
       );
     });
@@ -220,8 +232,8 @@ export const buildWebDisplayPositionCache = (
   if (isolateContext && conglomeratePositions) {
     songs.forEach((song) => {
       const base = conglomeratePositions.get(song.id) ?? fallbackPosition(song);
-      positions.set(
-        song.id,
+      setPosition(
+        song,
         applyIsolateDisplayTranslation(song, base, isolateContext.offsets, isolateContext.enabledOwnerIds)
       );
     });
@@ -230,13 +242,13 @@ export const buildWebDisplayPositionCache = (
 
   if (conglomeratePositions) {
     songs.forEach((song) => {
-      positions.set(song.id, conglomeratePositions.get(song.id) ?? fallbackPosition(song));
+      setPosition(song, conglomeratePositions.get(song.id) ?? fallbackPosition(song));
     });
     return positions;
   }
 
   songs.forEach((song) => {
-    positions.set(song.id, fallbackPosition(song));
+    setPosition(song, fallbackPosition(song));
   });
   return positions;
 };

@@ -130,28 +130,6 @@ export const ClusterDragPreviewLayer = ({
 
   return (
     <g className="music-cue-cluster-drag-preview" pointerEvents="none">
-      {snapshot.neighborRegions.map((region) => {
-        const offset = region.displayOffset;
-        const hullPath =
-          liveCenters && snapshot.showClusterHulls
-            ? buildLiveHullPath(region, snapshot, liveCenters)
-            : region.hullPath;
-        const transform = offset ? `translate(${offset.x} ${offset.y})` : undefined;
-        return (
-          <g key={`drag-neighbor-${region.id}`} transform={transform}>
-            {snapshot.showClusterHulls ? (
-              <path
-                d={hullPath}
-                className="music-cue-cluster-region"
-                fill="none"
-                stroke={region.stroke}
-                opacity={labelOpacity}
-              />
-            ) : null}
-          </g>
-        );
-      })}
-
       {snapshot.movedRegions.map((region) => {
         const offset = region.displayOffset;
         const useLiveHull = Boolean(liveCenters && snapshot.showClusterHulls);

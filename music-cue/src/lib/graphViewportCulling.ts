@@ -1,3 +1,4 @@
+import { isFiniteGraphPoint } from "./graphCoordinates";
 import type { GraphDimensions } from "./graphLayout";
 import type { ClusterViewportHint } from "./clusterRegions";
 import type { ViewTransform } from "./graphView";
@@ -24,7 +25,7 @@ const toPositionedNodes = <T>(
 ): PositionedGraphNode<T>[] =>
   songs.flatMap((song) => {
     const position = getPosition(song);
-    return position ? [{ song, position }] : [];
+    return isFiniteGraphPoint(position) ? [{ song, position }] : [];
   });
 
 const VIEWPORT_PADDING_PX = 28;
@@ -236,7 +237,7 @@ export const cullGraphSongsWithLazyPositions = <T extends { id: string }>(
         return;
       }
       const position = getPosition(song);
-      if (!position) {
+      if (!isFiniteGraphPoint(position)) {
         return;
       }
       if (isPointInGraphViewport(position, bounds) || alwaysInclude?.has(songId)) {
@@ -251,7 +252,7 @@ export const cullGraphSongsWithLazyPositions = <T extends { id: string }>(
         return;
       }
       const position = getPosition(song);
-      if (!position) {
+      if (!isFiniteGraphPoint(position)) {
         return;
       }
       if (isPointInGraphViewport(position, bounds)) {
