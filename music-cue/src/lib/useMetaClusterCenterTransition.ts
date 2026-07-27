@@ -73,6 +73,9 @@ export const useMetaClusterCenterTransition = (
 
       let maxDistance = 0;
       toCenters.forEach((toCenter, ownerId) => {
+        if (!toCenter) {
+          return;
+        }
         const fromCenter = fromCenters.get(ownerId) ?? toCenter;
         maxDistance = Math.max(
           maxDistance,

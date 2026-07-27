@@ -413,7 +413,14 @@ const webDisplayPositionBySongId = useMemo(() => {
     showIsolateContributorView && isolateDisplayContext ? isolateDisplayContext : null;
 
   if (!isClusterView(layoutConfig) && libraryScopeMode === "isolate" && !isolateContext) {
-    return new Map<string, GraphPoint>();
+    return buildWebDisplayPositionCache(
+      visibleSongs,
+      null,
+      null,
+      layoutConfig,
+      stats,
+      getConglomeratePositionForSong
+    );
   }
 
   if (isolateContext?.isAxisView) {
@@ -775,6 +782,9 @@ const findHoveredSongAtPoint = useCallback(
         );
 
     nodes.forEach(({ song, position }) => {
+      if (!position) {
+        return;
+      }
       const renderPosition = position;
       if (bounds && !isPointInGraphViewport(renderPosition, bounds)) {
         return;
@@ -837,7 +847,11 @@ renderedPositionedSongsRef.current = renderedPositionedSongs;
 const visiblePositionedSongs = renderedPositionedSongs;
 
 const clusterDragSongIds = isClusterDragging ? clusterDragSnapshotRef.current?.songIds : undefined;
-const clusterDragHiddenRegionIds = isClusterDragging
+const clusterDragHiddenHullRegionIds = isClusterDragging
+  ? clusterDragSnapshotRef.current?.previewRegionIds ??
+    clusterDragSnapshotRef.current?.movedRegionIds
+  : undefined;
+const clusterDragHiddenLabelRegionIds = isClusterDragging
   ? clusterDragSnapshotRef.current?.movedRegionIds
   : undefined;
 
@@ -1292,8 +1306,12 @@ const staticPlaylistMetaGraphSegments = useMemo(() => {
     return cue.songs
       .map((song, index) => {
         const position = getPosition(song);
+        if (!position) {
+          return null;
+        }
         return `${index === 0 ? "M" : "L"} ${position.x.toFixed(1)} ${position.y.toFixed(1)}`;
       })
+      .filter((segment): segment is string => Boolean(segment))
       .join(" ");
   }, [cue, getPosition]);
 
@@ -1331,7 +1349,8 @@ const staticPlaylistMetaGraphSegments = useMemo(() => {
     visiblePositionedSongs,
     songNodeFills,
     clusterDragSongIds,
-    clusterDragHiddenRegionIds,
+    clusterDragHiddenHullRegionIds,
+    clusterDragHiddenLabelRegionIds,
     enableGraphNodeCulling,
     renderGraphSongCount: renderGraphSongs.length,
     resolveClusterLabelCenter,
@@ -1379,7 +1398,8 @@ const MusicCueGraphLayerComponent = (props: MusicCueGraphLayerProps) => {
         fadingClusterSnapshot={props.fadingClusterSnapshot}
         isClusterLayout={model.isClusterLayout}
         clusterRegions={model.clusterRegions}
-        clusterDragPreviewRegionIds={model.clusterDragHiddenRegionIds}
+        clusterDragHiddenHullRegionIds={model.clusterDragHiddenHullRegionIds}
+        clusterDragHiddenLabelRegionIds={model.clusterDragHiddenLabelRegionIds}
         isDrawingNewPathRef={props.isDrawingNewPathRef}
         draftStrokeActiveRef={props.draftStrokeActiveRef}
         effectiveClusterRevealOpacity={model.effectiveClusterRevealOpacity}

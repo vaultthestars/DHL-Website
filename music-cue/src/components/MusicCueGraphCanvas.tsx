@@ -52,7 +52,8 @@ export type MusicCueGraphCanvasProps = {
   fadingClusterSnapshot: FadingClusterSnapshot | null;
   isClusterLayout: boolean;
   clusterRegions: ClusterRegion[];
-  clusterDragPreviewRegionIds?: Set<string>;
+  clusterDragHiddenHullRegionIds?: Set<string>;
+  clusterDragHiddenLabelRegionIds?: Set<string>;
   effectiveClusterRevealOpacity: number;
   showPlaylistMetaGraph: boolean;
   pinPlaylistGraphLabelCenters?: boolean;
@@ -103,7 +104,8 @@ const MusicCueGraphCanvasComponent = ({
   fadingClusterSnapshot,
   isClusterLayout,
   clusterRegions,
-  clusterDragPreviewRegionIds,
+  clusterDragHiddenHullRegionIds,
+  clusterDragHiddenLabelRegionIds,
   effectiveClusterRevealOpacity,
   showPlaylistMetaGraph,
   pinPlaylistGraphLabelCenters = false,
@@ -198,7 +200,7 @@ const MusicCueGraphCanvasComponent = ({
 
         {showPlaylistClusterHulls && isClusterLayout
           ? clusterRegions
-              .filter((region) => !clusterDragPreviewRegionIds?.has(region.id))
+              .filter((region) => !clusterDragHiddenHullRegionIds?.has(region.id))
               .map((region) => {
                 const offset = region.displayOffset;
                 const transform = offset ? `translate(${offset.x} ${offset.y})` : undefined;
@@ -348,7 +350,7 @@ const MusicCueGraphCanvasComponent = ({
 
         {isClusterLayout && !playlistGraphForceSim
           ? graphViewClusterRegions
-              .filter((region) => !clusterDragPreviewRegionIds?.has(region.id))
+              .filter((region) => !clusterDragHiddenLabelRegionIds?.has(region.id))
               .map((region) => {
                 const labelCenter = resolveClusterLabelCenter(region);
                 const offset = region.displayOffset;

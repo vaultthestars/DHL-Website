@@ -18,6 +18,15 @@ export type PositionedGraphNode<T> = {
   position: GraphPoint;
 };
 
+const toPositionedNodes = <T>(
+  songs: T[],
+  getPosition: (song: T) => GraphPoint
+): PositionedGraphNode<T>[] =>
+  songs.flatMap((song) => {
+    const position = getPosition(song);
+    return position ? [{ song, position }] : [];
+  });
+
 const VIEWPORT_PADDING_PX = 28;
 
 /** Extra graph-space padding so panning does not require immediate cull refreshes. */
@@ -194,7 +203,7 @@ export const cullGraphSongsWithLazyPositions = <T extends { id: string }>(
 
   const enableCulling = options?.enableCulling ?? songs.length >= GRAPH_NODE_CULLING_THRESHOLD;
   if (!enableCulling) {
-    return songs.map((song) => ({ song, position: getPosition(song) }));
+    return toPositionedNodes(songs, getPosition);
   }
 
   const paddingPx = options?.viewportPaddingPx ?? getCullingViewportPadding(dimensions);
@@ -212,6 +221,9 @@ export const cullGraphSongsWithLazyPositions = <T extends { id: string }>(
       }
     });
     clusterHints.forEach((hint) => {
+      if (!hint.center) {
+        return;
+      }
       if (!clusterIntersectsViewport(hint.center, hint.songIds.length, bounds)) {
         return;
       }
@@ -224,6 +236,9 @@ export const cullGraphSongsWithLazyPositions = <T extends { id: string }>(
         return;
       }
       const position = getPosition(song);
+      if (!position) {
+        return;
+      }
       if (isPointInGraphViewport(position, bounds) || alwaysInclude?.has(songId)) {
         inViewport.push(song);
       }
@@ -235,7 +250,11 @@ export const cullGraphSongsWithLazyPositions = <T extends { id: string }>(
         inViewport.push(song);
         return;
       }
-      if (isPointInGraphViewport(getPosition(song), bounds)) {
+      const position = getPosition(song);
+      if (!position) {
+        return;
+      }
+      if (isPointInGraphViewport(position, bounds)) {
         inViewport.push(song);
       }
     });
@@ -246,7 +265,7 @@ export const cullGraphSongsWithLazyPositions = <T extends { id: string }>(
     cullSeed: options?.cullSeed,
   });
 
-  return selected.map((song) => ({ song, position: getPosition(song) }));
+  return toPositionedNodes(selected, getPosition);
 };
 
 const clusterIntersectsViewport = (
@@ -282,7 +301,7 @@ export const buildCulledPositionedSongs = <T extends { id: string }>(
 
   const enableCulling = options?.enableCulling ?? songs.length >= GRAPH_NODE_CULLING_THRESHOLD;
   if (!enableCulling) {
-    return songs.map((song) => ({ song, position: getPosition(song) }));
+    return toPositionedNodes(songs, getPosition);
   }
 
   const bounds = getGraphViewportBounds(dimensions, transform);
@@ -301,6 +320,9 @@ export const buildCulledPositionedSongs = <T extends { id: string }>(
   const clusterHints = options?.clusterHints;
   if (clusterHints && clusterHints.length > 0) {
     clusterHints.forEach((hint) => {
+      if (!hint.center) {
+        return;
+      }
       if (!clusterIntersectsViewport(hint.center, hint.songIds.length, bounds)) {
         return;
       }
@@ -346,5 +368,5 @@ export const buildCulledPositionedSongs = <T extends { id: string }>(
     toPosition.push(song);
   });
 
-  return toPosition.map((song) => ({ song, position: getPosition(song) }));
+  return toPositionedNodes(toPosition, getPosition);
 };

@@ -230,10 +230,7 @@ export const buildWebDisplayPositionCache = (
 
   if (conglomeratePositions) {
     songs.forEach((song) => {
-      const cached = conglomeratePositions.get(song.id);
-      if (cached) {
-        positions.set(song.id, cached);
-      }
+      positions.set(song.id, conglomeratePositions.get(song.id) ?? fallbackPosition(song));
     });
     return positions;
   }
