@@ -161,32 +161,8 @@ export const ClusterDragPreviewLayer = ({
         const offsetTransform = offset ? `translate(${offset.x} ${offset.y})` : undefined;
         const labelX = region.labelCenter.x + delta.x;
         const labelY = region.labelCenter.y + delta.y;
-        if (useLiveHull) {
-          return (
-            <g key={`drag-moved-${region.id}`} transform={offsetTransform}>
-              <path
-                d={hullPath}
-                className="music-cue-cluster-region music-cue-cluster-region-drag-active"
-                fill={region.fill}
-                stroke={region.stroke}
-                opacity={labelOpacity}
-              />
-              <text
-                x={labelX}
-                y={labelY}
-                className="music-cue-cluster-label music-cue-cluster-label-draggable music-cue-cluster-label-dragging"
-                opacity={labelOpacity}
-              >
-                {region.label}
-              </text>
-            </g>
-          );
-        }
-        const transform = offset
-          ? `translate(${offset.x + delta.x} ${offset.y + delta.y})`
-          : `translate(${delta.x} ${delta.y})`;
         return (
-          <g key={`drag-moved-${region.id}`} transform={transform}>
+          <g key={`drag-moved-${region.id}`} transform={offsetTransform}>
             {snapshot.showClusterHulls ? (
               <path
                 d={hullPath}
@@ -197,8 +173,8 @@ export const ClusterDragPreviewLayer = ({
               />
             ) : null}
             <text
-              x={region.labelCenter.x}
-              y={region.labelCenter.y}
+              x={labelX}
+              y={labelY}
               className="music-cue-cluster-label music-cue-cluster-label-draggable music-cue-cluster-label-dragging"
               opacity={labelOpacity}
             >

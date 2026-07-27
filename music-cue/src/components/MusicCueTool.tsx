@@ -1829,7 +1829,8 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     if (entry?.action === "stroke" || entry?.action === "node") {
       strokeRef.current = [];
       isDrawingRef.current = false;
-      setIsDrawingNewPath(false);
+      isDrawingNewPathRef.current = false;
+      draftStrokeActiveRef.current = false;
       draftStrokeScheduleRef.current?.();
     }
     if (!entry?.cue) {
@@ -2228,15 +2229,16 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
           dimensions
         )
       : { x: 0.5, y: 0.5 };
-    const anchorRegion = getClusterRegions().find((entry) => entry.id === clusterId);
-    const initialMovedRegions = anchorRegion
-      ? [
-          {
-            ...anchorRegion,
-            labelCenter: getClusterRegionDisplayCenter(anchorRegion),
-          },
-        ]
-      : [];
+    const resolveDragLabelCenter = (region: ClusterRegion) =>
+      graphLayerRef.current?.resolveClusterLabelCenter(region) ??
+      getClusterRegionDisplayCenter(region);
+    const initialMovedRegions = clustersToMove
+      .map((regionId) => getClusterRegions().find((entry) => entry.id === regionId))
+      .filter((region): region is ClusterRegion => Boolean(region))
+      .map((region) => ({
+        ...region,
+        labelCenter: resolveDragLabelCenter(region),
+      }));
     const initialSongIds = new Set<string>();
     const clusterMode = layoutConfig.clusterMode;
     if (clusterMode === "genre" || clusterMode === "playlist") {
@@ -2347,11 +2349,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
         .filter((region): region is ClusterRegion => Boolean(region))
         .map((region) => ({
           ...region,
-          labelCenter:
-            layoutConfig.clusterMode === "playlist"
-              ? graphLayerRef.current?.resolveClusterLabelCenter(region) ??
-                getClusterRegionDisplayCenter(region)
-              : getClusterRegionDisplayCenter(region),
+          labelCenter: resolveDragLabelCenter(region),
         }));
       const snapshotSongIds = new Set<string>();
       const snapshotSongs: Array<{ song: Song; position: GraphPoint }> = [];
@@ -3739,7 +3737,8 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     setCompletedStrokes([]);
     setCompletedStrokesRevision((value) => value + 1);
     setStrokeLayoutConfig(null);
-    setIsDrawingNewPath(false);
+    isDrawingNewPathRef.current = false;
+    draftStrokeActiveRef.current = false;
     isDrawingRef.current = false;
     draftStrokeScheduleRef.current?.();
   };

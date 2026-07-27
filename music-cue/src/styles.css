@@ -1149,6 +1149,10 @@ body.music-cue-web-deployment .playhtml-chat-container {
   pointer-events: none;
 }
 
+.music-cue-cluster-region-hovered {
+  vector-effect: non-scaling-stroke;
+}
+
 .music-cue-playlist-metagraph-edge {
   stroke: rgba(72, 52, 140, 0.42);
   vector-effect: non-scaling-stroke;

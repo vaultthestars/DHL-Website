@@ -212,8 +212,11 @@ const MusicCueGraphCanvasComponent = ({
                       isHovered ? " music-cue-cluster-region-hovered" : ""
                     }`}
                     stroke={region.stroke}
-                    fill={isHovered ? region.stroke : "none"}
-                    fillOpacity={isHovered ? 0.1 : undefined}
+                    style={
+                      isHovered
+                        ? { fill: region.stroke, fillOpacity: 0.2 }
+                        : { fill: "none" }
+                    }
                     opacity={effectiveClusterRevealOpacity}
                     pointerEvents="none"
                     transform={transform}
@@ -384,6 +387,16 @@ const MusicCueGraphCanvasComponent = ({
                         : () => handlersRef.current.onClusterLabelPointerEnter(region.id)
                     }
                     onPointerLeave={
+                      showPlaylistMetaGraph
+                        ? undefined
+                        : () => handlersRef.current.onClusterLabelPointerLeave(region.id)
+                    }
+                    onMouseEnter={
+                      showPlaylistMetaGraph
+                        ? undefined
+                        : () => handlersRef.current.onClusterLabelPointerEnter(region.id)
+                    }
+                    onMouseLeave={
                       showPlaylistMetaGraph
                         ? undefined
                         : () => handlersRef.current.onClusterLabelPointerLeave(region.id)
