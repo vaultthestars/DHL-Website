@@ -61,6 +61,7 @@ import {
   layoutConfigKey,
 } from "../lib/layoutMetrics";
 import { isFiniteGraphPoint } from "../lib/graphCoordinates";
+import { LARGE_LIBRARY_LAYOUT_SNAP_THRESHOLD } from "../lib/layoutConstants";
 import { getSongIdsNearStrokes } from "../lib/pathGenerator";
 import { getSongNodeFill } from "../lib/graphColors";
 import { prepareGraphSongsForIsolate, scopeSongsForIsolateOwner } from "../lib/isolateScopeSongs";
