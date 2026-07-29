@@ -164,20 +164,62 @@ const sampleCandidatesEvenly = (candidates: PathCandidate[], maxCount: number): 
   return selected.sort((left, right) => left.t - right.t);
 };
 
+const getStrokesBoundingBox = (
+  strokes: GraphPoint[][],
+  padding: number
+): { minX: number; minY: number; maxX: number; maxY: number } | null => {
+  let minX = Number.POSITIVE_INFINITY;
+  let minY = Number.POSITIVE_INFINITY;
+  let maxX = Number.NEGATIVE_INFINITY;
+  let maxY = Number.NEGATIVE_INFINITY;
+
+  strokes.forEach((stroke) => {
+    stroke.forEach((point) => {
+      minX = Math.min(minX, point.x);
+      minY = Math.min(minY, point.y);
+      maxX = Math.max(maxX, point.x);
+      maxY = Math.max(maxY, point.y);
+    });
+  });
+
+  if (!Number.isFinite(minX)) {
+    return null;
+  }
+
+  return {
+    minX: minX - padding,
+    minY: minY - padding,
+    maxX: maxX + padding,
+    maxY: maxY + padding,
+  };
+};
+
+const isPointInBoundingBox = (point: GraphPoint, box: { minX: number; minY: number; maxX: number; maxY: number }): boolean =>
+  point.x >= box.minX && point.x <= box.maxX && point.y >= box.minY && point.y <= box.maxY;
+
 const buildCueCandidates = (
   songs: Song[],
   strokes: GraphPoint[][],
   getPosition: PositionResolver,
   proximityThreshold: number
-): PathCandidate[] =>
-  songs
+): PathCandidate[] => {
+  const bounds = getStrokesBoundingBox(strokes, proximityThreshold);
+  if (!bounds) {
+    return [];
+  }
+
+  return songs
     .map((song) => {
       const position = getPosition(song);
+      if (!isPointInBoundingBox(position, bounds)) {
+        return null;
+      }
       const { distance, t } = distanceAndParameterOnStrokes(position, strokes);
       return { song, distance, t };
     })
-    .filter((entry) => entry.distance <= proximityThreshold)
+    .filter((entry): entry is PathCandidate => entry !== null && entry.distance <= proximityThreshold)
     .sort((left, right) => left.t - right.t || left.distance - right.distance);
+};
 
 const finalizeCueSelection = (candidates: PathCandidate[], cueLength: number): PathCandidate[] => {
   const deduped = dedupeConsecutiveCandidates(candidates);

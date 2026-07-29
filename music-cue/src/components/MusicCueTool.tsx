@@ -2165,7 +2165,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     if (!last || Math.hypot(normalized.x - last.x, normalized.y - last.y) < 0.004) {
       return;
     }
-    strokeRef.current = [...strokeRef.current, normalized];
+    strokeRef.current.push(normalized);
     draftStrokeScheduleRef.current?.();
   };
 
@@ -2193,18 +2193,23 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     pushUndo(cue, { includeStrokes: true, action: "stroke" });
 
     completedStrokesRef.current = nextCompleted;
-    setCompletedStrokes(nextCompleted);
-    setCompletedStrokesRevision((value) => value + 1);
     strokeRef.current = [];
-    setStrokeLayoutConfig(layoutConfig);
+    const songCount = generated.songs.length;
 
-    setCue({
-      ...generated,
-      buildMode: "path",
+    startTransition(() => {
+      setBuildMode("path");
+      saveBuildMode("path");
+      setCompletedStrokes(nextCompleted);
+      setCompletedStrokesRevision((value) => value + 1);
+      setStrokeLayoutConfig(layoutConfig);
+      setCue({
+        ...generated,
+        buildMode: "path",
+      });
+      setStatusMessage(
+        `Added segment · ${songCount} song${songCount === 1 ? "" : "s"} in cue. Draw another path or click nodes. ⌘Z to undo.`
+      );
     });
-    setStatusMessage(
-      `Added segment · ${generated.songs.length} song${generated.songs.length === 1 ? "" : "s"} in cue. Draw another path or click nodes. ⌘Z to undo.`
-    );
   };
 
   const handleClusterLabelPointerDown = (
