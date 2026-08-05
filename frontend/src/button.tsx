@@ -50,8 +50,8 @@ return <g>
                         key = {"nav label " + text}
                         x = {reccenter.x}
                         y = {reccenter.y}
-                        text-anchor="middle"
-                        dominant-baseline = "central"
+                        textAnchor="middle"
+                        dominantBaseline="central"
                         fontSize={0.1*recdims.x}
                         letterSpacing={5*recdims.x/200}
                         // textLength={0.75*widd}

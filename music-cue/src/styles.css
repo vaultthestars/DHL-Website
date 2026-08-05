@@ -138,6 +138,59 @@ body {
   font-weight: 400;
 }
 
+.win95-app-switcher {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+.win95-app-switcher-btn {
+  border: 1px solid var(--w95-highlight);
+  border-right-color: var(--w95-shadow);
+  border-bottom-color: var(--w95-shadow);
+  background: var(--w95-surface);
+  color: var(--w95-text);
+  font-size: 11px;
+  font-weight: 700;
+  padding: 1px 8px;
+  cursor: pointer;
+}
+
+.win95-app-switcher-menu {
+  position: absolute;
+  top: calc(100% + 2px);
+  left: 0;
+  z-index: 20;
+  margin: 0;
+  padding: 2px;
+  list-style: none;
+  min-width: 140px;
+  border: 1px solid var(--w95-shadow-deep);
+  background: var(--w95-surface);
+  box-shadow:
+    inset 1px 1px 0 var(--w95-highlight),
+    inset -1px -1px 0 var(--w95-shadow);
+}
+
+.win95-app-switcher-menu button {
+  display: block;
+  width: 100%;
+  text-align: left;
+  border: none;
+  background: transparent;
+  padding: 4px 8px;
+  font: inherit;
+  cursor: pointer;
+}
+
+.win95-app-switcher-menu button:hover,
+.win95-app-switcher-menu button.is-active {
+  background: var(--w95-title-active);
+  color: var(--w95-title-text);
+}
+
 .win95-titlebar-buttons {
   display: flex;
   gap: 2px;

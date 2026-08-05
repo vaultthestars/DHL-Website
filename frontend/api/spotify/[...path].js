@@ -492,8 +492,19 @@ var SPOTIFY_SCOPES = [
 ].join(" ");
 var NO_DEVICES_MESSAGE = "No Spotify devices found. Open the Spotify app, play any song once, then try Play again.";
 var sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+var parseRetryAfterMs = (retryAfterHeader, attempt) => {
+  if (retryAfterHeader) {
+    const seconds = Number.parseInt(retryAfterHeader, 10);
+    if (Number.isFinite(seconds) && seconds > 0) {
+      return seconds * 1e3;
+    }
+  }
+  return Math.min(1e3 * 2 ** attempt, 1e4);
+};
 var SPOTIFY_API_ORIGIN = "https://api.spotify.com";
 var SPOTIFY_REQUEST_TIMEOUT_MS = 6e3;
+var SPOTIFY_FETCH_MAX_ATTEMPTS = 3;
+var SPOTIFY_TRANSIENT_STATUSES = /* @__PURE__ */ new Set([502, 503, 504]);
 var SPOTIFY_TOKEN_TIMEOUT_MS = 4e3;
 var PLAYLISTS_PAGE_DEFAULT_PATH = "/me/playlists?limit=50";
 var SPOTIFY_PAGE_REQUEST_DELAY_MS = 750;
@@ -550,6 +561,9 @@ var formatSpotifyApiError = (status, path2, spotifyMessage) => {
   }
   if (status === 504) {
     return "Spotify library import timed out. Try again in a moment.";
+  }
+  if (status === 503 || status === 502) {
+    return "Spotify is temporarily unavailable. Progress saved \u2014 wait a moment, then click Resume load & share.";
   }
   if (normalizedMessage.includes("timed out") || normalizedMessage.includes("timeout")) {
     return "Spotify API timed out. Progress saved \u2014 wait a moment, then click Resume load & share.";
@@ -674,7 +688,7 @@ var createSpotifyClient = (store) => {
     const refreshed = await refreshAccessToken(tokens.refreshToken);
     return refreshed.accessToken;
   };
-  const spotifyFetch = async (path2, init) => {
+  const spotifyFetch = async (path2, init, attempt = 0) => {
     const accessToken = await getAccessToken();
     let response;
     try {
@@ -689,6 +703,10 @@ var createSpotifyClient = (store) => {
       });
     } catch (error) {
       const timedOut = error instanceof Error && (error.name === "TimeoutError" || error.name === "AbortError" || error.message.includes("timeout"));
+      if (timedOut && attempt < SPOTIFY_FETCH_MAX_ATTEMPTS - 1) {
+        await sleep(parseRetryAfterMs(null, attempt));
+        return spotifyFetch(path2, init, attempt + 1);
+      }
       if (timedOut) {
         throw new Error("Spotify API timed out. Progress saved \u2014 wait a moment, then click Resume load & share.");
       }
@@ -709,6 +727,10 @@ var createSpotifyClient = (store) => {
     }
     if (!response.ok) {
       const payload = await response.json().catch(() => ({}));
+      if (SPOTIFY_TRANSIENT_STATUSES.has(response.status) && attempt < SPOTIFY_FETCH_MAX_ATTEMPTS - 1) {
+        await sleep(parseRetryAfterMs(response.headers.get("Retry-After"), attempt));
+        return spotifyFetch(path2, init, attempt + 1);
+      }
       throw new Error(formatSpotifyApiError(response.status, path2, payload.error?.message));
     }
     return await response.json();

@@ -2,8 +2,10 @@ import { useState } from "react";
 import { MusicCueTool } from "./components/MusicCueTool";
 import { SpotifyCallback } from "./components/SpotifyCallback";
 import { Win95Taskbar } from "./components/Win95Taskbar";
+import { MUSIC_APPS, switchMusicApp, type MusicAppId } from "./lib/musicApps";
 
 const WINDOW_TITLE = "Music Cue";
+const CURRENT_APP_ID: MusicAppId = "music-cue";
 
 const isEmbeddedApp = (): boolean => {
   try {
@@ -25,6 +27,50 @@ const goToSiteHome = (): void => {
   window.location.href = "/";
 };
 
+const MusicAppSwitcher = ({ welcomeName }: { welcomeName: string | null }) => {
+  const [open, setOpen] = useState(false);
+  const current = MUSIC_APPS.find((app) => app.id === CURRENT_APP_ID) ?? MUSIC_APPS[0];
+
+  return (
+    <div className="win95-app-switcher">
+      <button
+        type="button"
+        className="win95-app-switcher-btn"
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        onClick={() => setOpen((value) => !value)}
+      >
+        {current.label} ▾
+      </button>
+      {open ? (
+        <ul className="win95-app-switcher-menu" role="listbox">
+          {MUSIC_APPS.map((app) => (
+            <li key={app.id}>
+              <button
+                type="button"
+                role="option"
+                aria-selected={app.id === CURRENT_APP_ID}
+                className={app.id === CURRENT_APP_ID ? "is-active" : ""}
+                onClick={() => {
+                  setOpen(false);
+                  if (app.id !== CURRENT_APP_ID) {
+                    switchMusicApp(app.id);
+                  }
+                }}
+              >
+                {app.label}
+              </button>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+      {welcomeName ? (
+        <span className="win95-titlebar-welcome"> · Welcome, {welcomeName}</span>
+      ) : null}
+    </div>
+  );
+};
+
 const TitleBar = ({
   showHomeButton,
   welcomeName,
@@ -39,12 +85,7 @@ const TitleBar = ({
           ← Home
         </button>
       ) : null}
-      <span className="win95-titlebar-text">
-        {WINDOW_TITLE}
-        {welcomeName ? (
-          <span className="win95-titlebar-welcome"> · Welcome, {welcomeName}</span>
-        ) : null}
-      </span>
+      <MusicAppSwitcher welcomeName={welcomeName} />
     </div>
     <div className="win95-titlebar-buttons" aria-hidden>
       <button type="button" className="win95-chrome-btn" tabIndex={-1}>

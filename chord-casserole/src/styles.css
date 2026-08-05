@@ -1,0 +1,364 @@
+@import url("./win95.css");
+
+.casserole-screen {
+  padding: 16px;
+  max-width: 960px;
+  margin: 0 auto;
+  overflow: auto;
+  height: 100%;
+}
+
+.casserole-title {
+  margin: 0 0 8px;
+  font-size: 18px;
+}
+
+.casserole-lede,
+.casserole-help,
+.casserole-muted {
+  color: #404040;
+  line-height: 1.4;
+}
+
+.casserole-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 12px 0;
+}
+
+.casserole-field input {
+  padding: 6px 8px;
+  border: 1px solid #808080;
+  font: inherit;
+}
+
+.casserole-primary-btn {
+  margin-top: 16px;
+  padding: 8px 16px;
+  border: 1px solid #ffffff;
+  border-right-color: #404040;
+  border-bottom-color: #404040;
+  background: #c0c0c0;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.casserole-primary-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.casserole-secondary-btn {
+  margin-top: 8px;
+  padding: 8px 16px;
+  border: 1px solid #808080;
+  background: #e0e0e0;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.casserole-lobby-notice {
+  margin-top: 16px;
+  padding: 12px;
+  border: 1px solid #808080;
+  background: #fff8d6;
+}
+
+.casserole-lobby-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.casserole-participant-list ul {
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.casserole-participant-list li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0;
+}
+
+.casserole-participant-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: 1px solid #000;
+}
+
+.casserole-turn-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.casserole-turn-header .casserole-secondary-btn {
+  margin-top: 0;
+  flex-shrink: 0;
+}
+
+.casserole-timer {
+  padding: 6px 10px;
+  border: 2px inset #c0c0c0;
+  background: #fff;
+  font-weight: 700;
+  font-size: 14px;
+}
+
+.casserole-timer--urgent {
+  color: #a00000;
+}
+
+.casserole-chart-grid {
+  display: grid;
+  gap: 4px;
+  margin-top: 12px;
+}
+
+.casserole-chart-header,
+.casserole-chart-row {
+  display: grid;
+  grid-template-columns: 48px repeat(4, minmax(64px, 1fr));
+  gap: 4px;
+  align-items: center;
+}
+
+.casserole-chart-header span {
+  text-align: center;
+  font-weight: 700;
+  text-transform: uppercase;
+  font-size: 10px;
+}
+
+.casserole-chart-row-label {
+  font-weight: 700;
+  text-align: right;
+  padding-right: 4px;
+}
+
+.casserole-chart-cell {
+  min-height: 36px;
+  border: 1px solid #808080;
+  background: #e8f4ff;
+  cursor: pointer;
+  font-size: 11px;
+}
+
+.casserole-chart-cell--hover:not(:disabled) {
+  background: #fff3d6;
+}
+
+.casserole-chart-cell--selected {
+  background: #ffd27f;
+  font-weight: 700;
+  outline: 2px solid #000080;
+  outline-offset: -2px;
+}
+
+.casserole-direction-wheel {
+  position: relative;
+  width: 280px;
+  height: 280px;
+  margin: 16px auto;
+}
+
+.casserole-direction-btn {
+  position: absolute;
+  width: 88px;
+  height: 88px;
+  border-radius: 50%;
+  border: 2px solid #202020;
+  color: #fff;
+  font-weight: 700;
+  font-size: 11px;
+  cursor: pointer;
+  z-index: 1;
+}
+
+.casserole-direction-btn--hover:not(:disabled) {
+  z-index: 3;
+  transform: scale(1.04);
+}
+
+.casserole-direction-btn--selected {
+  z-index: 2;
+  outline: 3px solid #000080;
+  outline-offset: 2px;
+}
+
+.casserole-direction-btn--n.casserole-direction-btn--hover:not(:disabled),
+.casserole-direction-btn--n.casserole-direction-btn--selected {
+  transform: translateX(-50%) scale(1.04);
+}
+
+.casserole-direction-btn--s.casserole-direction-btn--hover:not(:disabled),
+.casserole-direction-btn--s.casserole-direction-btn--selected {
+  transform: translateX(-50%) scale(1.04);
+}
+
+.casserole-direction-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.casserole-direction-btn--n {
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.casserole-direction-btn--ne {
+  top: 18%;
+  right: 8%;
+}
+
+.casserole-direction-btn--se {
+  bottom: 18%;
+  right: 8%;
+}
+
+.casserole-direction-btn--s {
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.casserole-direction-btn--sw {
+  bottom: 18%;
+  left: 8%;
+}
+
+.casserole-direction-btn--nw {
+  top: 18%;
+  left: 8%;
+}
+
+.casserole-chord-banner {
+  margin: 16px 0 8px;
+  padding: 8px 12px;
+  background: #ffffcc;
+  border: 1px solid #808080;
+}
+
+.casserole-lyrics-block {
+  margin: 12px 0;
+}
+
+.casserole-lyric-prompt {
+  margin: 0 0 4px;
+  font-size: 11px;
+  color: #404040;
+}
+
+.casserole-lyric-line {
+  margin: 0 0 12px;
+  font-size: 14px;
+}
+
+.casserole-lyric-line--prompt {
+  padding: 8px;
+  background: #f0f0f0;
+  border: 1px dashed #808080;
+}
+
+.casserole-note-grid-wrap {
+  overflow-x: auto;
+  margin: 12px 0;
+}
+
+.casserole-note-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 640px;
+}
+
+.casserole-note-row {
+  display: grid;
+  grid-template-columns: 48px repeat(16, 28px);
+  gap: 2px;
+  align-items: center;
+}
+
+.casserole-note-row--drum {
+  margin-top: 4px;
+}
+
+.casserole-note-row-label {
+  font-size: 10px;
+  text-align: right;
+  padding-right: 4px;
+}
+
+.casserole-note-cell {
+  width: 28px;
+  height: 22px;
+  border: 1px solid #a0a0a0;
+  background: #fff;
+  padding: 0;
+  cursor: pointer;
+}
+
+.casserole-note-cell--chord-tone {
+  background: #fff8d6;
+}
+
+.casserole-note-cell--on {
+  background: #4a90d9;
+}
+
+.casserole-note-cell--on.casserole-note-cell--chord-tone {
+  background: #2f6db2;
+}
+
+.casserole-note-cell--playing {
+  box-shadow: inset 0 0 0 2px #ff6600;
+}
+
+.casserole-note-cell--playing.casserole-note-cell--on {
+  background: #ff9933;
+}
+
+.casserole-playback-visualizer {
+  margin-top: 16px;
+}
+
+.casserole-playback-beat {
+  font-weight: 400;
+  color: #404040;
+}
+
+.casserole-joined-badge {
+  margin-left: 8px;
+  font-size: 10px;
+  text-transform: uppercase;
+  color: #006400;
+  font-weight: 700;
+}
+
+.casserole-playback-card {
+  margin-top: 16px;
+  padding: 16px;
+  border: 2px inset #c0c0c0;
+  background: #fff;
+}
+
+.casserole-chord-pill {
+  display: inline-block;
+  padding: 4px 10px;
+  background: #000080;
+  color: #fff;
+  font-weight: 700;
+  margin-bottom: 12px;
+}
+
+.casserole-finished {
+  text-align: center;
+}

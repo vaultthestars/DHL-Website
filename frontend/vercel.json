@@ -11,6 +11,14 @@
     {
       "source": "/music-cue/:path((?!.*\\..*).*)",
       "destination": "/music-cue/index.html"
+    },
+    {
+      "source": "/chord-casserole",
+      "destination": "/chord-casserole/index.html"
+    },
+    {
+      "source": "/chord-casserole/:path((?!.*\\..*).*)",
+      "destination": "/chord-casserole/index.html"
     }
   ],
   "functions": {

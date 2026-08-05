@@ -89,6 +89,8 @@ const parseRetryAfterMs = (retryAfterHeader: string | null, attempt: number): nu
 const SPOTIFY_API_ORIGIN = "https://api.spotify.com";
 /** Keep each serverless invocation under Vercel Hobby's 10s limit. */
 const SPOTIFY_REQUEST_TIMEOUT_MS = 6_000;
+const SPOTIFY_FETCH_MAX_ATTEMPTS = 3;
+const SPOTIFY_TRANSIENT_STATUSES = new Set([502, 503, 504]);
 const SPOTIFY_TOKEN_TIMEOUT_MS = 4_000;
 const PLAYLISTS_PAGE_DEFAULT_PATH = "/me/playlists?limit=50";
 /** Match client PAGE_REQUEST_DELAY_MS — one Spotify call per serverless invocation. */
@@ -155,6 +157,9 @@ const formatSpotifyApiError = (status: number, path: string, spotifyMessage?: st
   }
   if (status === 504) {
     return "Spotify library import timed out. Try again in a moment.";
+  }
+  if (status === 503 || status === 502) {
+    return "Spotify is temporarily unavailable. Progress saved — wait a moment, then click Resume load & share.";
   }
   if (normalizedMessage.includes("timed out") || normalizedMessage.includes("timeout")) {
     return "Spotify API timed out. Progress saved — wait a moment, then click Resume load & share.";
@@ -314,7 +319,7 @@ export const createSpotifyClient = (store: SpotifySessionStore) => {
     return refreshed.accessToken;
   };
 
-  const spotifyFetch = async <T>(path: string, init?: RequestInit): Promise<T> => {
+  const spotifyFetch = async <T>(path: string, init?: RequestInit, attempt = 0): Promise<T> => {
     const accessToken = await getAccessToken();
     let response: Response;
     try {
@@ -331,6 +336,10 @@ export const createSpotifyClient = (store: SpotifySessionStore) => {
       const timedOut =
         error instanceof Error &&
         (error.name === "TimeoutError" || error.name === "AbortError" || error.message.includes("timeout"));
+      if (timedOut && attempt < SPOTIFY_FETCH_MAX_ATTEMPTS - 1) {
+        await sleep(parseRetryAfterMs(null, attempt));
+        return spotifyFetch<T>(path, init, attempt + 1);
+      }
       if (timedOut) {
         throw new Error("Spotify API timed out. Progress saved — wait a moment, then click Resume load & share.");
       }
@@ -353,6 +362,10 @@ export const createSpotifyClient = (store: SpotifySessionStore) => {
     }
     if (!response.ok) {
       const payload = (await response.json().catch(() => ({}))) as { error?: { message?: string } };
+      if (SPOTIFY_TRANSIENT_STATUSES.has(response.status) && attempt < SPOTIFY_FETCH_MAX_ATTEMPTS - 1) {
+        await sleep(parseRetryAfterMs(response.headers.get("Retry-After"), attempt));
+        return spotifyFetch<T>(path, init, attempt + 1);
+      }
       throw new Error(formatSpotifyApiError(response.status, path, payload.error?.message));
     }
     return (await response.json()) as T;

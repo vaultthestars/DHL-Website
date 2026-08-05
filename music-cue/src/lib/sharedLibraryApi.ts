@@ -48,13 +48,31 @@ export const clearGuestLibrarySessionCache = (): void => {
   }
 };
 
+const parseJsonResponse = async <T>(response: Response): Promise<T> => {
+  const contentType = response.headers.get("content-type") ?? "";
+  const raw = await response.text();
+  if (!contentType.includes("application/json")) {
+    const looksLikeHtml = raw.trimStart().startsWith("<!");
+    throw new Error(
+      looksLikeHtml
+        ? "Music Cue API is unavailable in this dev server. Restart frontend with npm start so /api routes are wired up, or use vercel dev."
+        : `Unexpected response from ${response.url || "API"} (${response.status}).`
+    );
+  }
+  try {
+    return JSON.parse(raw) as T;
+  } catch {
+    throw new Error(`Invalid JSON from ${response.url || "API"}.`);
+  }
+};
+
 const fetchJson = async <T>(url: string, init?: RequestInit): Promise<T> => {
   const response = await fetch(url, {
     credentials: "include",
     ...init,
   });
   if (!response.ok) {
-    const payload = (await response.json().catch(() => ({}))) as { error?: string };
+    const payload = await parseJsonResponse<{ error?: string }>(response).catch(() => ({}));
     const detail =
       response.status === 413
         ? "Library upload is too large for this server. Try again after the site updates — publish should refresh from Spotify instead of uploading your library."
@@ -64,7 +82,7 @@ const fetchJson = async <T>(url: string, init?: RequestInit): Promise<T> => {
     }
     throw new Error(detail);
   }
-  return (await response.json()) as T;
+  return parseJsonResponse<T>(response);
 };
 
 export type SharedLibraryIndexResponse = {

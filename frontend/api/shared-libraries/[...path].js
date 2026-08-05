@@ -39,13 +39,17 @@ var asStringArray = (value) => Array.isArray(value) ? value.filter((entry) => ty
 var getSongPlaylists = (song) => asStringArray(song.playlists);
 
 // server-lib/sharedLibrary/playlistNames.ts
+var NOW_PLAYING_PLAYLIST_NAMES = [
+  "MusicCue \u2014 Now Playing",
+  "MusicCue-Now Playing",
+  "Music Cue \u2014 Now Playing"
+];
 var EXCLUDED_PLAYLIST_NAMES = /* @__PURE__ */ new Set([
   "Library",
   "Music",
   "Downloaded",
   "every song in my library atm",
-  "MusicCue \u2014 Now Playing",
-  "MusicCue-Now Playing"
+  ...NOW_PLAYING_PLAYLIST_NAMES
 ]);
 var isExcludedPlaylistName = (name) => {
   if (!name) {

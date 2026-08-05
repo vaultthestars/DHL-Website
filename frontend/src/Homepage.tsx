@@ -114,8 +114,8 @@ export default function Homepage(Timer: number, setPage: pagesetter, mousePositi
                         key = {"nametitle"}
                         x = {center.x}
                         y = {75}
-                        text-anchor="middle"
-                        dominant-baseline = "central"
+                        textAnchor="middle"
+                        dominantBaseline="central"
                         textLength={2*framedims.x}
                         fontSize={32}
                         fill = "hsl(0 100% 100%)"
@@ -129,8 +129,11 @@ export default function Homepage(Timer: number, setPage: pagesetter, mousePositi
                     const widd = 700/N
                     const recdims = {x: widd,y: 0.3*widd}
                     const reccenter = {x: center.x + (framedims.x-recdims.x/2+frameweight/2)*(num-(N-1)/2)*(2/(N-1)),y: center.y + framedims.y + 75}
-                    const centerdist = 2*boxdist(mouse,reccenter,recdims)
-                    return Button(reccenter, recdims, pages[num].name,()=>{setPage(num+1)}, mouse)
+                    return (
+                      <g key={pages[num].name}>
+                        {Button(reccenter, recdims, pages[num].name, () => { setPage(num + 1); }, mouse)}
+                      </g>
+                    );
                     }
                 )}
                 {Array.from(Array(numlayers*3).keys()).map((num) => {
@@ -160,8 +163,8 @@ export default function Homepage(Timer: number, setPage: pagesetter, mousePositi
                         key = {"contactinfo"}
                         x = {center.x}
                         y = {center.y + framedims.y + 145}
-                        text-anchor="middle"
-                        dominant-baseline = "central"
+                        textAnchor="middle"
+                        dominantBaseline="central"
                         fontSize={15}
                         fill = "hsl(0 100% 100%)"
                         fontFamily='Helvetica'
@@ -173,8 +176,8 @@ export default function Homepage(Timer: number, setPage: pagesetter, mousePositi
                         key = {"contactinfo2"}
                         x = {center.x}
                         y = {center.y + framedims.y + 165}
-                        text-anchor="middle"
-                        dominant-baseline = "central"
+                        textAnchor="middle"
+                        dominantBaseline="central"
                         fontSize={15}
                         fill = "hsl(0 100% 100%)"
                         fontFamily='Helvetica'

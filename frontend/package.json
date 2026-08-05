@@ -29,7 +29,8 @@
     "bundle:spotify-api": "esbuild scripts/spotify-handler.ts --bundle --platform=node --format=cjs --target=node18 --outfile='api/spotify/[...path].js' --packages=external",
     "bundle:shared-libraries-api": "esbuild scripts/shared-libraries-index-handler.ts --bundle --platform=node --format=cjs --target=node18 --outfile='api/shared-libraries/index.js' --packages=external && esbuild scripts/shared-libraries-handler.ts --bundle --platform=node --format=cjs --target=node18 --outfile='api/shared-libraries/[...path].js' --packages=external",
     "build:music-cue": "cd ../music-cue && npm install && VITE_BASE_PATH=/music-cue/ VITE_APP_MODE=web npm run build && rm -rf ../frontend/public/music-cue && mkdir -p ../frontend/public/music-cue && cp -r dist/* ../frontend/public/music-cue/",
-    "build": "npm run sync:spotify-api && npm run bundle:spotify-api && npm run sync:shared-libraries-api && npm run bundle:shared-libraries-api && npm run build:music-cue && DISABLE_ESLINT_PLUGIN=true react-scripts build",
+    "build:chord-casserole": "cd ../chord-casserole && npm install && VITE_BASE_PATH=/chord-casserole/ VITE_APP_MODE=web npm run build && rm -rf ../frontend/public/chord-casserole && mkdir -p ../frontend/public/chord-casserole && cp -r dist/* ../frontend/public/chord-casserole/",
+    "build": "npm run sync:spotify-api && npm run bundle:spotify-api && npm run sync:shared-libraries-api && npm run bundle:shared-libraries-api && npm run build:music-cue && npm run build:chord-casserole && DISABLE_ESLINT_PLUGIN=true react-scripts build",
     "test": "react-scripts test",
     "eject": "react-scripts eject"
   },
