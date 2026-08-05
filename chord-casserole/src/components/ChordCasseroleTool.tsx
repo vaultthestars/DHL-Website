@@ -409,6 +409,7 @@ const CasseroleGame = () => {
       currentChord={currentChord}
       previousLine={previousLine}
       draft={draft}
+      participants={participants}
       onDraftChange={updateDraft}
       onPickOpeningChord={pickOpeningChord}
       onPickDirection={pickDirection}

@@ -104,6 +104,19 @@
   flex-shrink: 0;
 }
 
+.casserole-your-turn-banner {
+  margin: 0 0 12px;
+  padding: 10px 14px;
+  border: 2px inset #c0c0c0;
+  background: #000080;
+  color: #fff;
+  font-size: 20px;
+  font-weight: 700;
+  text-align: center;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
 .casserole-timer {
   padding: 6px 10px;
   border: 2px inset #c0c0c0;

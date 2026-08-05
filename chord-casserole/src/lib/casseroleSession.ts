@@ -88,3 +88,31 @@ export const useCasseroleSession = (displayName: string) => {
     updateDisplayName,
   };
 };
+
+export const resolveParticipantName = (
+  playerId: string | undefined,
+  participants: CasseroleParticipant[],
+  turnOrder: string[],
+  parts: { playerId: string; playerName: string }[] = []
+): string => {
+  if (!playerId) {
+    return "Someone";
+  }
+
+  const participant = participants.find((entry) => entry.id === playerId);
+  if (participant?.name) {
+    return participant.name;
+  }
+
+  const part = parts.find((entry) => entry.playerId === playerId);
+  if (part?.playerName) {
+    return part.playerName;
+  }
+
+  const turnIndex = turnOrder.indexOf(playerId);
+  if (turnIndex >= 0) {
+    return `Player ${turnIndex + 1}`;
+  }
+
+  return "Someone";
+};

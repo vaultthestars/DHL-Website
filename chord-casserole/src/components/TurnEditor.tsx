@@ -16,6 +16,7 @@ import { ChordChartPicker } from "./ChordChartPicker";
 import { DirectionPicker } from "./DirectionPicker";
 import { NoteGridEditor } from "./NoteGridEditor";
 import { TurnTimer } from "./TurnTimer";
+import { resolveParticipantName, type CasseroleParticipant } from "../lib/casseroleSession";
 
 export const TurnEditor = ({
   gameState,
@@ -24,6 +25,7 @@ export const TurnEditor = ({
   currentChord,
   previousLine,
   draft,
+  participants,
   onDraftChange,
   onPickOpeningChord,
   onPickDirection,
@@ -38,6 +40,7 @@ export const TurnEditor = ({
   currentChord: ChordSelection | null;
   previousLine: string;
   draft: ActiveTurnDraft;
+  participants: CasseroleParticipant[];
   onDraftChange: (draft: ActiveTurnDraft) => void;
   onPickOpeningChord: (row: number, col: number) => void;
   onPickDirection: (direction: Direction) => void;
@@ -47,6 +50,13 @@ export const TurnEditor = ({
   timedOut: boolean;
 }) => {
   const turnPlayerId = gameState.turnOrder[gameState.currentTurnIndex];
+  const turnPlayerName = resolveParticipantName(
+    turnPlayerId,
+    participants,
+    gameState.turnOrder,
+    gameState.parts
+  );
+  const turnLabel = `Turn ${gameState.currentTurnIndex + 1} of ${gameState.turnOrder.length}`;
   const isFirstTurn = gameState.parts.length === 0;
   const showChart = isFirstTurn && !draft.directionChosen;
   const showDirections = !isFirstTurn && !draft.directionChosen;
@@ -74,14 +84,17 @@ export const TurnEditor = ({
 
   return (
     <div className="casserole-screen casserole-turn">
+      {isMyTurn ? (
+        <p className="casserole-your-turn-banner" role="status">
+          Your turn
+        </p>
+      ) : null}
       <div className="casserole-turn-header">
         <div>
           <h1 className="casserole-title">
-            {isMyTurn ? "Your turn" : `${gameState.turnOrder.length ? "Watching" : "Waiting"}`}
+            {isMyTurn ? "Write your measure" : `${turnPlayerName}'s turn`}
           </h1>
-          <p className="casserole-muted">
-            {turnPlayerId ? `Player ${gameState.currentTurnIndex + 1} of ${gameState.turnOrder.length}` : ""}
-          </p>
+          <p className="casserole-muted">{turnPlayerId ? turnLabel : ""}</p>
         </div>
         <TurnTimer
           active={gameState.phase === "playing" && Boolean(gameState.turnStartedAt)}
@@ -109,7 +122,7 @@ export const TurnEditor = ({
         ) : (
           <div className="casserole-waiting-pick">
             <p className="casserole-muted">
-              Waiting for the current player to pick the opening chord…
+              Waiting for {turnPlayerName} to pick the opening chord…
             </p>
             <ChordChartPicker
               selectedChord={selectedOpeningChord}
@@ -129,7 +142,7 @@ export const TurnEditor = ({
         ) : (
           <div className="casserole-waiting-pick">
             <p className="casserole-muted">
-              Waiting for the current player to choose a direction…
+              Waiting for {turnPlayerName} to choose a direction…
             </p>
             <DirectionPicker
               selectedDirection={draft.direction}
