@@ -330,6 +330,23 @@
   margin-top: 16px;
 }
 
+.casserole-playback-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.casserole-playback-speed {
+  min-width: 120px;
+  margin: 0;
+}
+
+.casserole-playback-speed input {
+  width: 88px;
+}
+
 .casserole-playback-beat {
   font-weight: 400;
   color: #404040;

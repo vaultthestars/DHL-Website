@@ -5,6 +5,7 @@ import { CollaborativePlayProvider, useSyncedGameState } from "../lib/collaborat
 import {
   createEmptyDraft,
   createInitialGameState,
+  normalizePlaybackSpeed,
   resetActiveTurnDraft,
   TURN_SECONDS,
   type SongPart,
@@ -275,6 +276,7 @@ const CasseroleGame = () => {
       state.phase = finished ? "playback" : "playing";
       if (finished) {
         state.playbackIndex = 0;
+        state.playbackSpeed = normalizePlaybackSpeed(state.playbackSpeed);
       }
     });
   }, [displayName, isMyTurn, participants, playerId, setGameState]);
@@ -296,6 +298,15 @@ const CasseroleGame = () => {
       state.playbackIndex += 1;
     });
   }, [setGameState]);
+
+  const setPlaybackSpeed = useCallback(
+    (speed: number) => {
+      setGameState((state) => {
+        state.playbackSpeed = normalizePlaybackSpeed(speed);
+      });
+    },
+    [setGameState]
+  );
 
   const restartGame = useCallback(() => {
     setJoinedSessionEpoch(0);
@@ -391,6 +402,8 @@ const CasseroleGame = () => {
       <PlaybackScreen
         parts={gameState.parts}
         playbackIndex={gameState.playbackIndex}
+        playbackSpeed={normalizePlaybackSpeed(gameState.playbackSpeed)}
+        onPlaybackSpeedChange={setPlaybackSpeed}
         onAdvance={advancePlayback}
         onFinish={finishPlayback}
       />

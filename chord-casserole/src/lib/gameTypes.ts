@@ -41,6 +41,8 @@ export type CasseroleGameState = {
   chordPosition: { row: number; col: number } | null;
   activeDraft: ActiveTurnDraft | null;
   playbackIndex: number;
+  /** Playback tempo; exposed in the UI as "speed". */
+  playbackSpeed: number;
 };
 
 export const createEmptyNoteGrid = (): NoteGrid =>
@@ -74,9 +76,21 @@ export const createInitialGameState = (): CasseroleGameState => ({
   chordPosition: null,
   activeDraft: null,
   playbackIndex: 0,
+  playbackSpeed: DEFAULT_PLAYBACK_SPEED,
 });
 
 export const TURN_SECONDS = 60;
+
+export const DEFAULT_PLAYBACK_SPEED = 240;
+export const MIN_PLAYBACK_SPEED = 1;
+export const MAX_PLAYBACK_SPEED = 2000;
+
+export const normalizePlaybackSpeed = (value: number | undefined | null): number => {
+  if (value === undefined || value === null || !Number.isFinite(value)) {
+    return DEFAULT_PLAYBACK_SPEED;
+  }
+  return Math.min(MAX_PLAYBACK_SPEED, Math.max(MIN_PLAYBACK_SPEED, Math.round(value)));
+};
 
 export const PLAYHTML_GAME_KEY = "chord-casserole-game-v4";
 export const PLAYHTML_ROOM = "dhl-chord-casserole-v1";

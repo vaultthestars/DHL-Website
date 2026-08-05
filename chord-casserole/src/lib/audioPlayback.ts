@@ -1,12 +1,9 @@
 import * as Tone from "tone";
 import type { ChordSelection } from "./accordionGrid";
-import { BEAT_COUNT, PITCH_ROW_COUNT, type NoteGrid } from "./gameTypes";
+import { BEAT_COUNT, PITCH_ROW_COUNT, DEFAULT_PLAYBACK_SPEED, type NoteGrid } from "./gameTypes";
 import { pitchRowToName } from "./accordionGrid";
 
 const NOTE_NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"] as const;
-
-/** Default song playback tempo (beats per minute). */
-const DEFAULT_PLAYBACK_BPM = 240;
 
 const noteNameToMidi = (name: string, octave = 4): number => {
   const index = NOTE_NAMES.indexOf(name as (typeof NOTE_NAMES)[number]);
@@ -134,7 +131,7 @@ export const playMeasureOnce = async (
   notes: NoteGrid,
   options: MeasureLoopOptions = {}
 ): Promise<MeasurePlayback> => {
-  const { bpm = DEFAULT_PLAYBACK_BPM, onBeat } = options;
+  const { bpm = DEFAULT_PLAYBACK_SPEED, onBeat } = options;
   await ensureAudioReady();
   const instruments = createInstruments();
   const beatSeconds = 60 / bpm;
@@ -184,7 +181,7 @@ export const playMeasureLoop = async (
   notes: NoteGrid,
   options: MeasureLoopOptions = {}
 ): Promise<() => void> => {
-  const { bpm = DEFAULT_PLAYBACK_BPM, onBeat } = options;
+  const { bpm = DEFAULT_PLAYBACK_SPEED, onBeat } = options;
   await ensureAudioReady();
   const instruments = createInstruments();
   const beatSeconds = 60 / bpm;
