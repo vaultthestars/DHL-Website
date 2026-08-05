@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ensureAudioReady, playMeasureOnce, stopAllAudio } from "../lib/audioPlayback";
+import { ensureAudioReady, playMeasureLoopUntilStop, stopAllAudio } from "../lib/audioPlayback";
 import { mespeakPitchesForLyrics } from "../lib/noteGridPitch";
 import { speakLyrics, stopMespeak } from "../lib/mespeakPlayer";
 import {
@@ -102,7 +102,10 @@ export const PlaybackScreen = ({
         return;
       }
 
-      const measure = await playMeasureOnce(part.chord, part.notes, {
+      const lyricPitches = mespeakPitchesForLyrics(part.notes);
+      const lyricsPromise = speakLyrics([part.line1, part.line2], { pitches: lyricPitches });
+
+      const loopPlayback = await playMeasureLoopUntilStop(part.chord, part.notes, {
         bpm: playbackSpeedRef.current,
         onBeat: (beat) => {
           if (!cancelled) {
@@ -110,14 +113,15 @@ export const PlaybackScreen = ({
           }
         },
       });
-      stopLoopRef.current = measure.stop;
+      stopLoopRef.current = loopPlayback.stop;
 
-      const lyricPitches = mespeakPitchesForLyrics(part.notes);
+      await lyricsPromise;
+      if (cancelled) {
+        return;
+      }
 
-      await Promise.all([
-        speakLyrics([part.line1, part.line2], { pitches: lyricPitches }),
-        measure.done,
-      ]);
+      loopPlayback.requestStopAfterLoop();
+      await loopPlayback.done;
 
       if (cancelled) {
         return;

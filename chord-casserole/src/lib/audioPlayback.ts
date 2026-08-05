@@ -125,6 +125,84 @@ export type MeasurePlayback = {
   stop: () => void;
 };
 
+export type MeasureLoopPlayback = {
+  /** Stop looping after the current 16-beat measure finishes. */
+  requestStopAfterLoop: () => void;
+  /** Stop immediately and tear down audio. */
+  stop: () => void;
+  done: Promise<void>;
+};
+
+/** Loops a 16-beat measure until `requestStopAfterLoop` is called, then finishes the current loop. */
+export const playMeasureLoopUntilStop = async (
+  chord: ChordSelection,
+  notes: NoteGrid,
+  options: MeasureLoopOptions = {}
+): Promise<MeasureLoopPlayback> => {
+  const { bpm = DEFAULT_PLAYBACK_SPEED, onBeat } = options;
+  await ensureAudioReady();
+  const instruments = createInstruments();
+  const beatSeconds = 60 / bpm;
+  const measureSeconds = beatSeconds * BEAT_COUNT;
+  let stopped = false;
+  let stopAfterLoop = false;
+  let loopTimeout = 0;
+
+  let resolveDone: () => void;
+  const done = new Promise<void>((resolve) => {
+    resolveDone = resolve;
+  });
+
+  const dispose = () => {
+    instruments.piano.dispose();
+    instruments.melody.dispose();
+    instruments.bassDrum.dispose();
+    instruments.snare.dispose();
+  };
+
+  const finish = () => {
+    if (stopped) {
+      return;
+    }
+    stopped = true;
+    window.clearTimeout(loopTimeout);
+    dispose();
+    resolveDone();
+  };
+
+  const loop = () => {
+    if (stopped) {
+      return;
+    }
+    const startTime = Tone.now() + 0.08;
+    scheduleMeasure(instruments, chord, notes, startTime, beatSeconds, (beat) => {
+      if (!stopped) {
+        onBeat?.(beat);
+      }
+    });
+    loopTimeout = window.setTimeout(() => {
+      if (stopped) {
+        return;
+      }
+      if (stopAfterLoop) {
+        finish();
+        return;
+      }
+      loop();
+    }, measureSeconds * 1000 + 80);
+  };
+
+  loop();
+
+  return {
+    requestStopAfterLoop: () => {
+      stopAfterLoop = true;
+    },
+    stop: finish,
+    done,
+  };
+};
+
 /** Plays a single 16-beat measure once. */
 export const playMeasureOnce = async (
   chord: ChordSelection,
