@@ -153,7 +153,7 @@ export const TurnEditor = ({
             </p>
 
             <label className="casserole-field">
-              <span>Your rhyming line</span>
+              <span>Write a line that rhymes with the last line</span>
               <input
                 type="text"
                 value={draft.line1}

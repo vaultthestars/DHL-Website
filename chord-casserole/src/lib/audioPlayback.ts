@@ -5,6 +5,9 @@ import { pitchRowToName } from "./accordionGrid";
 
 const NOTE_NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"] as const;
 
+/** Default song playback tempo (beats per minute). */
+const DEFAULT_PLAYBACK_BPM = 240;
+
 const noteNameToMidi = (name: string, octave = 4): number => {
   const index = NOTE_NAMES.indexOf(name as (typeof NOTE_NAMES)[number]);
   return (index < 0 ? 0 : index) + (octave + 1) * 12;
@@ -131,7 +134,7 @@ export const playMeasureOnce = async (
   notes: NoteGrid,
   options: MeasureLoopOptions = {}
 ): Promise<MeasurePlayback> => {
-  const { bpm = 120, onBeat } = options;
+  const { bpm = DEFAULT_PLAYBACK_BPM, onBeat } = options;
   await ensureAudioReady();
   const instruments = createInstruments();
   const beatSeconds = 60 / bpm;
@@ -181,7 +184,7 @@ export const playMeasureLoop = async (
   notes: NoteGrid,
   options: MeasureLoopOptions = {}
 ): Promise<() => void> => {
-  const { bpm = 120, onBeat } = options;
+  const { bpm = DEFAULT_PLAYBACK_BPM, onBeat } = options;
   await ensureAudioReady();
   const instruments = createInstruments();
   const beatSeconds = 60 / bpm;
