@@ -1,7 +1,9 @@
 import { type ReactNode, useCallback, useEffect } from "react";
 import { PlayProvider, usePageData, usePlayContext } from "@playhtml/react";
 import { playhtmlPathname } from "./runtime";
-import { createInitialGameState, PLAYHTML_GAME_KEY, PLAYHTML_ROOM, type CasseroleGameState } from "./gameTypes";
+import { createInitialGameState, DEFAULT_PLAYBACK_SPEED, normalizePlaybackSpeed, PLAYHTML_GAME_KEY, PLAYHTML_ROOM, type CasseroleGameState } from "./gameTypes";
+
+export const PLAYHTML_PLAYBACK_SPEED_KEY = "chord-casserole-playback-speed-v1";
 
 export const CollaborativePlayProvider = ({ children }: { children: ReactNode }) => (
   <PlayProvider
@@ -49,4 +51,32 @@ export const useSyncedGameState = (): {
   );
 
   return { gameState, setGameState, isLoading };
+};
+
+export const useSyncedPlaybackSpeed = (): {
+  playbackSpeed: number;
+  setPlaybackSpeed: (speed: number) => void;
+  resetPlaybackSpeed: () => void;
+} => {
+  const [playbackSpeed, setPlaybackSpeedRaw] = usePageData<number>(
+    PLAYHTML_PLAYBACK_SPEED_KEY,
+    DEFAULT_PLAYBACK_SPEED
+  );
+
+  const setPlaybackSpeed = useCallback(
+    (speed: number) => {
+      setPlaybackSpeedRaw(normalizePlaybackSpeed(speed));
+    },
+    [setPlaybackSpeedRaw]
+  );
+
+  const resetPlaybackSpeed = useCallback(() => {
+    setPlaybackSpeedRaw(DEFAULT_PLAYBACK_SPEED);
+  }, [setPlaybackSpeedRaw]);
+
+  return {
+    playbackSpeed: normalizePlaybackSpeed(playbackSpeed),
+    setPlaybackSpeed,
+    resetPlaybackSpeed,
+  };
 };

@@ -1,11 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { positionToChord, type Direction } from "../lib/accordionGrid";
 import { useCasseroleSession } from "../lib/casseroleSession";
-import { CollaborativePlayProvider, useSyncedGameState } from "../lib/collaborativeGame";
+import { CollaborativePlayProvider, useSyncedGameState, useSyncedPlaybackSpeed } from "../lib/collaborativeGame";
 import {
   createEmptyDraft,
   createInitialGameState,
-  normalizePlaybackSpeed,
   resetActiveTurnDraft,
   TURN_SECONDS,
   type SongPart,
@@ -60,6 +59,7 @@ const CasseroleGame = () => {
   const [joinedSessionEpoch, setJoinedSessionEpoch] = useState(loadJoinedSessionEpoch);
   const { playerId, playerIdReady, participants, updateDisplayName } = useCasseroleSession(displayName);
   const { gameState, setGameState, isLoading } = useSyncedGameState();
+  const { playbackSpeed, setPlaybackSpeed, resetPlaybackSpeed } = useSyncedPlaybackSpeed();
 
   useEffect(() => {
     saveStoredName(displayName);
@@ -276,7 +276,6 @@ const CasseroleGame = () => {
       state.phase = finished ? "playback" : "playing";
       if (finished) {
         state.playbackIndex = 0;
-        state.playbackSpeed = normalizePlaybackSpeed(state.playbackSpeed);
       }
     });
   }, [displayName, isMyTurn, participants, playerId, setGameState]);
@@ -299,20 +298,12 @@ const CasseroleGame = () => {
     });
   }, [setGameState]);
 
-  const setPlaybackSpeed = useCallback(
-    (speed: number) => {
-      setGameState((state) => {
-        state.playbackSpeed = normalizePlaybackSpeed(speed);
-      });
-    },
-    [setGameState]
-  );
-
   const restartGame = useCallback(() => {
     setJoinedSessionEpoch(0);
     saveJoinedSessionEpoch(0);
+    resetPlaybackSpeed();
     setGameState(createInitialGameState());
-  }, [setGameState]);
+  }, [resetPlaybackSpeed, setGameState]);
 
   const watchCurrentGame = useCallback(() => {
     if (sessionEpoch > 0) {
@@ -402,7 +393,7 @@ const CasseroleGame = () => {
       <PlaybackScreen
         parts={gameState.parts}
         playbackIndex={gameState.playbackIndex}
-        playbackSpeed={normalizePlaybackSpeed(gameState.playbackSpeed)}
+        playbackSpeed={playbackSpeed}
         onPlaybackSpeedChange={setPlaybackSpeed}
         onAdvance={advancePlayback}
         onFinish={finishPlayback}
