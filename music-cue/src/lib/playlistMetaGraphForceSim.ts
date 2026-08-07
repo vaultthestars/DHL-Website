@@ -13,6 +13,8 @@ export type MetaGraphForceSimPersistContext = {
   layoutScope: MetaGraphForceSimLayoutScope;
   /** When set (my song space), positions are stored under owner-scoped isolate keys. */
   mineContributorId?: string | null;
+  /** Web shared multi-contributor layouts use separate playlist override buckets. */
+  splitPlaylistLayoutScopes?: boolean;
 };
 
 const isOwnerScopedPlaylistOverrideKey = (key: string): boolean => key.includes("::");
@@ -20,8 +22,13 @@ const isOwnerScopedPlaylistOverrideKey = (key: string): boolean => key.includes(
 /** Keep merged and isolate playlist layouts in separate localStorage buckets. */
 export const filterPlaylistOverridesForLayoutScope = (
   playlist: Record<string, NormalizedPoint>,
-  layoutScope: MetaGraphForceSimLayoutScope
+  layoutScope: MetaGraphForceSimLayoutScope,
+  splitPlaylistLayoutScopes = false
 ): Record<string, NormalizedPoint> => {
+  if (!splitPlaylistLayoutScopes) {
+    return playlist;
+  }
+
   const filtered: Record<string, NormalizedPoint> = {};
   Object.entries(playlist).forEach(([key, value]) => {
     if (layoutScope === "conglomerate") {
@@ -261,7 +268,11 @@ export const mergeMetaGraphForceSimIntoClusterOverrides = (
   const mergedPlaylist = { ...current.playlist, ...playlistUpdates };
   return {
     ...current,
-    playlist: filterPlaylistOverridesForLayoutScope(mergedPlaylist, persistContext.layoutScope),
+    playlist: filterPlaylistOverridesForLayoutScope(
+      mergedPlaylist,
+      persistContext.layoutScope,
+      persistContext.splitPlaylistLayoutScopes
+    ),
   };
 };
 

@@ -594,8 +594,7 @@ body {
 
 .music-cue-view-gesturing .music-cue-cluster-label,
 .music-cue-view-gesturing .music-cue-axis-label,
-.music-cue-view-gesturing .music-cue-node-label,
-.music-cue-view-gesturing .music-cue-song-nodes {
+.music-cue-view-gesturing .music-cue-node-label {
   visibility: hidden;
 }
 

@@ -549,6 +549,10 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     }
   }, []);
 
+  const scheduleDeferredNodeCullRefresh = useCallback(() => {
+    graphLayerRef.current?.scheduleCullRefresh();
+  }, []);
+
   const commitViewGesture = useCallback(
     (transform?: ViewTransform) => {
       if (transform) {
@@ -564,8 +568,15 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
       setViewGesturingClass(false);
       updatePauseGraphAnimations();
       flushViewTransform();
+      scheduleDeferredNodeCullRefresh();
     },
-    [clearViewGestureTimers, flushViewTransform, setViewGesturingClass, updatePauseGraphAnimations]
+    [
+      clearViewGestureTimers,
+      flushViewTransform,
+      scheduleDeferredNodeCullRefresh,
+      setViewGesturingClass,
+      updatePauseGraphAnimations,
+    ]
   );
 
   const syncViewGestureTransform = useCallback(() => {
@@ -603,10 +614,6 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
 
   const scheduleViewPresencePublish = useCallback(() => {
     viewPresencePublishRef.current();
-  }, []);
-
-  const scheduleDeferredNodeCullRefresh = useCallback(() => {
-    graphLayerRef.current?.scheduleCullRefresh();
   }, []);
 
   const shouldSkipGraphPresenceUpdates = useCallback(() => {
@@ -875,8 +882,9 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
       layoutScope: activeLayoutScope,
       mineContributorId:
         songSpaceMode === "mine" && localContributorId ? localContributorId : null,
+      splitPlaylistLayoutScopes: usesSplitClusterLayoutScopes,
     }),
-    [activeLayoutScope, localContributorId, songSpaceMode]
+    [activeLayoutScope, localContributorId, songSpaceMode, usesSplitClusterLayoutScopes]
   );
 
   const resolveForceSimOverrideBase = useCallback((): ClusterCenterOverrides => {
@@ -1558,10 +1566,20 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
   );
 
   const persistClusterLayoutOverrides = useCallback((overrides?: ClusterCenterOverrides) => {
-    const nextOverrides = overrides ?? clusterOverridesRef.current;
+    const base = clusterOverridesRef.current;
+    const nextOverrides = overrides ?? base;
+    const mergedPlaylist = usesSplitClusterLayoutScopes
+      ? filterPlaylistOverridesForLayoutScope(
+          { ...base.playlist, ...nextOverrides.playlist },
+          activeLayoutScope,
+          true
+        )
+      : { ...base.playlist, ...nextOverrides.playlist };
     const scopedOverrides: ClusterCenterOverrides = {
+      ...base,
       ...nextOverrides,
-      playlist: filterPlaylistOverridesForLayoutScope(nextOverrides.playlist, activeLayoutScope),
+      genre: { ...base.genre, ...nextOverrides.genre },
+      playlist: mergedPlaylist,
     };
     commitForceSimOverrideBase(scopedOverrides);
     if (!overrides) {
@@ -1577,7 +1595,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
     } else {
       void syncClusterLayoutToServer(scopedOverrides);
     }
-  }, [activeLayoutScope, commitForceSimOverrideBase]);
+  }, [activeLayoutScope, commitForceSimOverrideBase, usesSplitClusterLayoutScopes]);
 
   const stopMetaGraphForceSim = useCallback(
     (options?: { persist?: boolean }) => {

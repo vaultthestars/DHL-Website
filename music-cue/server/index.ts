@@ -90,7 +90,11 @@ app.put("/api/cluster-layout", (req, res) => {
     res.status(400).json({ error: "genre and playlist objects are required." });
     return;
   }
-  writeClusterLayoutFile({ genre, playlist });
+  const existing = readClusterLayoutFile();
+  writeClusterLayoutFile({
+    genre: { ...existing.genre, ...genre },
+    playlist: { ...existing.playlist, ...playlist },
+  });
   res.json({ ok: true });
 });
 

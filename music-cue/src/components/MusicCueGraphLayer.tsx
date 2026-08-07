@@ -681,7 +681,9 @@ const renderGraphSongs = useMemo(() => {
 }, [activeContributorIds, graphSongs, isScopeMergeTransition, playlistOwners, visibleSongs]);
 
 const nodeRenderGraphSongs = useMemo(() => {
-  if (!PATH_ONLY_SONG_NODE_RENDER || buildMode !== "path") {
+  const restrictToPathStrokes =
+    PATH_ONLY_SONG_NODE_RENDER && buildMode === "path" && isClusterView(layoutConfig);
+  if (!restrictToPathStrokes) {
     return renderGraphSongs;
   }
   const segments = [...completedStrokes];
@@ -707,6 +709,7 @@ const nodeRenderGraphSongs = useMemo(() => {
   dimensions,
   getPosition,
   graphSongs,
+  layoutConfig,
   pathThreshold,
   renderGraphSongs,
 ]);
@@ -733,7 +736,9 @@ const prioritizedNodeIds = useMemo(() => {
 }, [activePersistentId, cue, hoveredSongId, selectedSongId]);
 
 const enableGraphNodeCulling =
-  useWebPerformanceOptimizations && nodeRenderGraphSongs.length >= GRAPH_NODE_CULLING_THRESHOLD;
+  useWebPerformanceOptimizations &&
+  nodeRenderGraphSongs.length >= GRAPH_NODE_CULLING_THRESHOLD &&
+  isClusterView(coldLayoutConfig);
 
 const useLazyWebNodeCulling = useWebPerformanceOptimizations && enableGraphNodeCulling;
 
@@ -1272,7 +1277,7 @@ const staticPlaylistMetaGraphSegments = useMemo(() => {
   const showClusterDecorations =
     isClusterLayout || Boolean(props.fadingClusterSnapshot && props.fadingClusterSnapshot.opacity > 0);
   const showPlaylistClusterHulls = showClusterDecorations && !showPlaylistMetaGraph;
-  const showSongNodesInGraph = !showPlaylistMetaGraph;
+  const showSongNodesInGraph = !isClusterLayout || !showPlaylistMetaGraph;
   const axisLabels = useMemo(
     () => getLayoutAxisLabels(layoutConfig, musicService),
     [layoutConfig, musicService]
