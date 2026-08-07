@@ -20,7 +20,7 @@ import {
   layoutSongPosition,
   toNormalizedPosition,
 } from "../lib/graphLayout";
-import { invalidateLayoutPositionCaches } from "../lib/layoutInvalidation";
+import { invalidateIsolateLayoutPositionCaches, invalidateLayoutPositionCaches } from "../lib/layoutInvalidation";
 import { invalidatePlaylistOverlapLayoutCache } from "../lib/playlistOverlapLayout";
 import {
   buildPlaylistMetaGraphCenterMap,
@@ -1386,12 +1386,12 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
 
   const isolateGraphSongs = useCallback(
     (sourceSongs: Song[]) => {
-      if (layoutLibraryScopeMode !== "isolate" || !hasMultipleLibraryOwners(sourceSongs)) {
+      if (libraryScopeMode !== "isolate" || !hasMultipleLibraryOwners(sourceSongs)) {
         return sourceSongs;
       }
       return prepareGraphSongsForIsolate(sourceSongs, activeContributorIds, playlistOwners);
     },
-    [activeContributorIds, layoutLibraryScopeMode, playlistOwners]
+    [activeContributorIds, libraryScopeMode, playlistOwners]
   );
 
   const graphSongs = useMemo(
@@ -3341,19 +3341,20 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
 
     if (mode === "shared") {
       const sharedSnapshot = sharedLibrarySnapshotRef.current;
-      if (sharedSnapshot && sharedSnapshot.songs.length > 0) {
-        applyLoadedLibrary(
-          sharedSnapshot.songs,
-          sharedSnapshot.stats,
-          `Shared song space — ${sharedSnapshot.songs.length} tracks.`,
-          sharedSnapshot.playlistOwners,
-          { persist: false }
-        );
-      } else {
-        startTransition(() => {
+      const restoreSharedLibrary = () => {
+        if (sharedSnapshot && sharedSnapshot.songs.length > 0) {
+          applyLoadedLibrary(
+            sharedSnapshot.songs,
+            sharedSnapshot.stats,
+            `Shared song space — ${sharedSnapshot.songs.length} tracks.`,
+            sharedSnapshot.playlistOwners,
+            { persist: false }
+          );
+        } else {
           void refreshSharedContributors({ loadLibrary: true, forceRefresh: true });
-        });
-      }
+        }
+      };
+      startTransition(restoreSharedLibrary);
       setStatusMessage("Shared song space — collaborative library view.");
       return;
     }
@@ -3397,7 +3398,7 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
       reloadLayoutCaches(
         getActiveClusterLayoutScope(songSpaceMode, nextMode, sharedContributorCount)
       );
-      invalidateLayoutPositionCaches();
+      invalidateIsolateLayoutPositionCaches();
     });
     setStatusMessage(
       nextMode === "isolate"

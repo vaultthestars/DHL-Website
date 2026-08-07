@@ -67,7 +67,7 @@ import { getSongNodeFill } from "../lib/graphColors";
 import { prepareGraphSongsForIsolate, scopeSongsForIsolateOwner } from "../lib/isolateScopeSongs";
 import { isClusterLayoutConfig, useLayoutTransition } from "../lib/useLayoutTransition";
 import { asStringArray } from "../lib/arrayUtils";
-import { getCanonicalSongId } from "../lib/isolateScopeSongs";
+import { getCanonicalSongId, isIsolateScopedSongId } from "../lib/isolateScopeSongs";
 import { isWebDeployment } from "../lib/runtime";
 import type { ViewTransform } from "../lib/graphView";
 import type {
@@ -326,7 +326,6 @@ const axisConglomeratePositionBySongId = useMemo(() => {
   activeContributorIds,
   dimensions,
   layoutConfig,
-  libraryScopeMode,
   resolveConglomerateOverridesForLayout,
   stats,
   useWebPerformanceOptimizations,
@@ -368,7 +367,11 @@ const getConglomeratePositionForSong = useCallback(
     if (isFiniteGraphPoint(clusterCached)) {
       return clusterCached;
     }
-    const axisCached = axisConglomeratePositionBySongId?.get(song.id);
+    const axisCached =
+      axisConglomeratePositionBySongId?.get(song.id) ??
+      (isIsolateScopedSongId(song.id)
+        ? axisConglomeratePositionBySongId?.get(getCanonicalSongId(song.id))
+        : undefined);
     if (isFiniteGraphPoint(axisCached)) {
       return axisCached;
     }
@@ -427,9 +430,11 @@ const webDisplayPositionBySongId = useMemo(() => {
   const isolateContext =
     showIsolateContributorView && isolateDisplayContext ? isolateDisplayContext : null;
 
+  const positionCacheSongs = graphSongs;
+
   if (!isClusterView(layoutConfig) && libraryScopeMode === "isolate" && !isolateContext) {
     return buildWebDisplayPositionCache(
-      visibleSongs,
+      positionCacheSongs,
       null,
       null,
       layoutConfig,
@@ -440,7 +445,7 @@ const webDisplayPositionBySongId = useMemo(() => {
 
   if (isolateContext?.isAxisView) {
     return buildWebDisplayPositionCache(
-      visibleSongs,
+      positionCacheSongs,
       null,
       isolateContext,
       layoutConfig,
@@ -454,7 +459,7 @@ const webDisplayPositionBySongId = useMemo(() => {
   }
 
   const displayPositions = buildWebDisplayPositionCache(
-    visibleSongs,
+    positionCacheSongs,
     conglomeratePositions,
     isolateContext,
     layoutConfig,
@@ -471,7 +476,7 @@ const webDisplayPositionBySongId = useMemo(() => {
   ) {
     return compressSharedAxisConglomerateBandGap(
       displayPositions,
-      visibleSongs,
+      positionCacheSongs,
       dimensions,
       activeContributorIds
     );
@@ -484,6 +489,7 @@ const webDisplayPositionBySongId = useMemo(() => {
   conglomeratePositionBySongId,
   dimensions,
   getConglomeratePositionForSong,
+  graphSongs,
   isolateDisplayContext,
   layoutConfig,
   layoutLibraryScopeMode,
@@ -629,7 +635,8 @@ const buildRegionSnapshot = useCallback(
 const getPosition = useCallback(
   (song: Song): GraphPoint => {
     if (useWebPerformanceOptimizations) {
-      const cached = webDisplayPositionBySongIdRef.current?.get(song.id);
+      const positionCache = webDisplayPositionBySongIdRef.current;
+      const cached = positionCache?.get(song.id);
       if (isFiniteGraphPoint(cached)) {
         return cached;
       }
@@ -656,7 +663,7 @@ const getPosition = useCallback(
 
 const layoutTransitionKey = `${songSpaceMode}:${libraryScopeMode}`;
 
-const layoutTransitionSongs = useWebPerformanceOptimizations ? visibleSongs : graphSongs;
+const layoutTransitionSongs = graphSongs;
 const layoutTransitionCompute = useWebPerformanceOptimizations
   ? getConglomeratePositionForSong
   : computeLayoutPosition;
@@ -736,9 +743,7 @@ const prioritizedNodeIds = useMemo(() => {
 }, [activePersistentId, cue, hoveredSongId, selectedSongId]);
 
 const enableGraphNodeCulling =
-  useWebPerformanceOptimizations &&
-  nodeRenderGraphSongs.length >= GRAPH_NODE_CULLING_THRESHOLD &&
-  isClusterView(coldLayoutConfig);
+  useWebPerformanceOptimizations && nodeRenderGraphSongs.length >= GRAPH_NODE_CULLING_THRESHOLD;
 
 const useLazyWebNodeCulling = useWebPerformanceOptimizations && enableGraphNodeCulling;
 

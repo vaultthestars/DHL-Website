@@ -527,6 +527,10 @@ export const invalidateGraphLayoutPositionCaches = (): void => {
   axisRangeCache = null;
 };
 
+export const invalidateIsolateLayoutCache = (): void => {
+  isolateLayoutCache = null;
+};
+
 export const buildInitialCustomPositions = (
   songs: Song[],
   dimensions: GraphDimensions,
