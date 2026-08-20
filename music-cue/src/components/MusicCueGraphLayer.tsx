@@ -297,13 +297,15 @@ const conglomeratePositionBySongId = useMemo(() => {
   visibleSongs,
 ]);
 
+const deferredVisibleSongs = useDeferredValue(visibleSongs);
+
 const axisConglomeratePositionBySongId = useMemo(() => {
   if (!useWebPerformanceOptimizations || isClusterView(layoutConfig)) {
     return null;
   }
   const overridesForLayout = resolveConglomerateOverridesForLayout();
   const positions = new Map<string, GraphPoint>();
-  visibleSongs.forEach((song) => {
+  deferredVisibleSongs.forEach((song) => {
     positions.set(
       song.id,
       layoutSongPosition(
@@ -324,13 +326,25 @@ const axisConglomeratePositionBySongId = useMemo(() => {
   return positions;
 }, [
   activeContributorIds,
+  deferredVisibleSongs,
   dimensions,
   layoutConfig,
   resolveConglomerateOverridesForLayout,
   stats,
   useWebPerformanceOptimizations,
-  visibleSongs,
 ]);
+
+const positionCacheSongs = useMemo(() => {
+  if (
+    useWebPerformanceOptimizations &&
+    isClusterView(layoutConfig) &&
+    libraryScopeMode === "isolate" &&
+    graphSongs.length > visibleSongs.length
+  ) {
+    return graphSongs;
+  }
+  return visibleSongs;
+}, [graphSongs, layoutConfig, libraryScopeMode, useWebPerformanceOptimizations, visibleSongs]);
 
 const isolateDisplayContext = useMemo(() => {
   if (!useWebPerformanceOptimizations || !hasMultipleLibraryOwners(visibleSongs)) {
@@ -430,9 +444,17 @@ const webDisplayPositionBySongId = useMemo(() => {
   const isolateContext =
     showIsolateContributorView && isolateDisplayContext ? isolateDisplayContext : null;
 
-  const positionCacheSongs = graphSongs;
-
   if (!isClusterView(layoutConfig) && libraryScopeMode === "isolate" && !isolateContext) {
+    if (axisConglomeratePositionBySongId) {
+      return buildWebDisplayPositionCache(
+        positionCacheSongs,
+        axisConglomeratePositionBySongId,
+        null,
+        layoutConfig,
+        stats,
+        getConglomeratePositionForSong
+      );
+    }
     return buildWebDisplayPositionCache(
       positionCacheSongs,
       null,
@@ -489,11 +511,11 @@ const webDisplayPositionBySongId = useMemo(() => {
   conglomeratePositionBySongId,
   dimensions,
   getConglomeratePositionForSong,
-  graphSongs,
   isolateDisplayContext,
   layoutConfig,
   layoutLibraryScopeMode,
   libraryScopeMode,
+  positionCacheSongs,
   showIsolateContributorView,
   songSpaceMode,
   stats,
@@ -663,7 +685,7 @@ const getPosition = useCallback(
 
 const layoutTransitionKey = `${songSpaceMode}:${libraryScopeMode}`;
 
-const layoutTransitionSongs = graphSongs;
+const layoutTransitionSongs = graphSongs.length > visibleSongs.length ? graphSongs : visibleSongs;
 const layoutTransitionCompute = useWebPerformanceOptimizations
   ? getConglomeratePositionForSong
   : computeLayoutPosition;
@@ -773,29 +795,39 @@ const clusterViewportHints = useMemo(() => {
   useLazyWebNodeCulling,
 ]);
 
+const resolveRenderPosition = useCallback(
+  (song: Song): GraphPoint => {
+    if (useWebPerformanceOptimizations) {
+      const cached = webDisplayPositionBySongIdRef.current?.get(song.id);
+      if (isFiniteGraphPoint(cached)) {
+        return cached;
+      }
+      return getPosition(song);
+    }
+    if (isLargeLibrary) {
+      return computeLayoutPosition(song, coldLayoutConfig);
+    }
+    return getRenderablePosition(song);
+  },
+  [
+    coldLayoutConfig,
+    computeLayoutPosition,
+    getPosition,
+    getRenderablePosition,
+    isLargeLibrary,
+    useWebPerformanceOptimizations,
+  ]
+);
+
 const bakedPositionedSongs = useMemo(() => {
   if (useLazyWebNodeCulling) {
     return [] as { song: Song; position: GraphPoint }[];
   }
   return nodeRenderGraphSongs.map((song) => ({
     song,
-    position: useWebPerformanceOptimizations
-      ? getPosition(song)
-      : isLargeLibrary
-        ? computeLayoutPosition(song, coldLayoutConfig)
-        : getRenderablePosition(song),
+    position: resolveRenderPosition(song),
   }));
-}, [
-  coldLayoutConfig,
-  computeLayoutPosition,
-  getPosition,
-  getRenderablePosition,
-  isLargeLibrary,
-  layoutColdKey,
-  nodeRenderGraphSongs,
-  useLazyWebNodeCulling,
-  useWebPerformanceOptimizations,
-]);
+}, [layoutColdKey, nodeRenderGraphSongs, resolveRenderPosition, useLazyWebNodeCulling]);
 
 const renderedPositionedSongsRef = useRef<{ song: Song; position: GraphPoint }[]>([]);
 
@@ -838,18 +870,36 @@ const findHoveredSongAtPoint = useCallback(
 
 
 const renderedPositionedSongs = useMemo(() => {
+  const cullOptions = {
+    alwaysIncludeSongIds: prioritizedNodeIds,
+    enableCulling: true as const,
+    clusterHints: clusterViewportHints,
+    cullSeed: songSpaceMode === "shared" ? PLAYHTML_ROOM : undefined,
+  };
+
   if (useLazyWebNodeCulling) {
+    const displayCache = webDisplayPositionBySongId;
+    if (displayCache && displayCache.size > 0) {
+      const positioned: { song: Song; position: GraphPoint }[] = [];
+      nodeRenderGraphSongs.forEach((song) => {
+        const position = displayCache.get(song.id);
+        if (isFiniteGraphPoint(position)) {
+          positioned.push({ song, position });
+        }
+      });
+      return cullPositionedGraphNodes(
+        positioned,
+        dimensions,
+        viewTransformForCullRef.current,
+        cullOptions
+      );
+    }
     return cullGraphSongsWithLazyPositions(
       nodeRenderGraphSongs,
       dimensions,
       viewTransformForCullRef.current,
-      getPosition,
-      {
-        alwaysIncludeSongIds: prioritizedNodeIds,
-        enableCulling: true,
-        clusterHints: clusterViewportHints,
-        cullSeed: songSpaceMode === "shared" ? PLAYHTML_ROOM : undefined,
-      }
+      resolveRenderPosition,
+      cullOptions
     );
   }
   return cullPositionedGraphNodes(
@@ -867,13 +917,13 @@ const renderedPositionedSongs = useMemo(() => {
   clusterViewportHints,
   dimensions,
   enableGraphNodeCulling,
-  getPosition,
-  libraryScopeMode,
   nodeCullRevision,
   nodeRenderGraphSongs,
   prioritizedNodeIds,
+  resolveRenderPosition,
   songSpaceMode,
   useLazyWebNodeCulling,
+  webDisplayPositionBySongId,
 ]);
 
 renderedPositionedSongsRef.current = renderedPositionedSongs;
@@ -1247,7 +1297,13 @@ const staticPlaylistMetaGraphSegments = useMemo(() => {
       return;
     }
     setNodeCullRevision((value) => value + 1);
-  }, [libraryScopeMode, pauseGraphAnimationsRef, useWebPerformanceOptimizations, webDisplayPositionBySongId]);
+  }, [
+    layoutColdKey,
+    libraryScopeMode,
+    nodeRenderGraphSongs.length,
+    pauseGraphAnimationsRef,
+    useWebPerformanceOptimizations,
+  ]);
 
   if (props.visibleNodeCountRef) {
     props.visibleNodeCountRef.current = visiblePositionedSongs.length;

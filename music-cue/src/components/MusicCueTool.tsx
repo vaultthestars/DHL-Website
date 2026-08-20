@@ -1389,9 +1389,14 @@ export const MusicCueTool = ({ onWelcomeNameChange }: MusicCueToolProps = {}) =>
       if (libraryScopeMode !== "isolate" || !hasMultipleLibraryOwners(sourceSongs)) {
         return sourceSongs;
       }
+      // Axis view uses display-only wedge transforms; expanding songs duplicates nodes and
+      // breaks the web position cache (canonical ids vs scoped ids).
+      if (useWebPerformanceOptimizations && !isClusterView(layoutConfig)) {
+        return sourceSongs;
+      }
       return prepareGraphSongsForIsolate(sourceSongs, activeContributorIds, playlistOwners);
     },
-    [activeContributorIds, libraryScopeMode, playlistOwners]
+    [activeContributorIds, layoutConfig, libraryScopeMode, playlistOwners, useWebPerformanceOptimizations]
   );
 
   const graphSongs = useMemo(
