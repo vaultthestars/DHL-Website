@@ -184,6 +184,53 @@ const applyNodeRenderBudget = <T extends { id: string }>(
   return [...required, ...sampledOptional];
 };
 
+/** Single-pass viewport cull from a precomputed position map — avoids materializing all nodes. */
+export const cullGraphSongsFromPositionMap = <T extends { id: string }>(
+  songs: T[],
+  positions: Map<string, GraphPoint>,
+  dimensions: GraphDimensions,
+  transform: ViewTransform,
+  options?: {
+    alwaysIncludeSongIds?: Set<string>;
+    enableCulling?: boolean;
+    viewportPaddingPx?: number;
+    cullSeed?: string;
+  }
+): PositionedGraphNode<T>[] => {
+  if (songs.length === 0) {
+    return [];
+  }
+
+  const enableCulling = options?.enableCulling ?? songs.length >= GRAPH_NODE_CULLING_THRESHOLD;
+  if (!enableCulling) {
+    return toPositionedNodes(songs, (song) => positions.get(song.id) ?? { x: NaN, y: NaN });
+  }
+
+  const paddingPx = options?.viewportPaddingPx ?? getCullingViewportPadding(dimensions);
+  const bounds = getGraphViewportBounds(dimensions, transform, paddingPx);
+  const alwaysInclude = options?.alwaysIncludeSongIds;
+  const inViewport: PositionedGraphNode<T>[] = [];
+
+  songs.forEach((song) => {
+    if (alwaysInclude?.has(song.id)) {
+      const position = positions.get(song.id);
+      if (isFiniteGraphPoint(position)) {
+        inViewport.push({ song, position });
+      }
+      return;
+    }
+    const position = positions.get(song.id);
+    if (!isFiniteGraphPoint(position)) {
+      return;
+    }
+    if (isPointInGraphViewport(position, bounds)) {
+      inViewport.push({ song, position });
+    }
+  });
+
+  return cullPositionedGraphNodes(inViewport, dimensions, transform, options);
+};
+
 /** Viewport cull with lazy O(1) position lookup — only materializes positions for rendered nodes. */
 export const cullGraphSongsWithLazyPositions = <T extends { id: string }>(
   songs: T[],
