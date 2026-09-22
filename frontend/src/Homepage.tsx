@@ -2,7 +2,7 @@ import { stringify } from 'querystring';
 import React, { useState, Dispatch, SetStateAction, useEffect, useCallback } from 'react';
 import {Dstring, Hstring, Lstring} from "./LetterData";
 import App from "./App"
-import {pages, pagesetter} from "./App"
+import {pages, pagesetter, GRAPHICS_GENERATOR_PAGE} from "./App"
 import { Button } from './button';
 import { Viewport } from './hooks/useWindowSize';
 import { MobileHomeHero } from './components/MobileHomeHero';
@@ -106,7 +106,20 @@ export default function Homepage(Timer: number, setPage: pagesetter, mousePositi
     const frameweight = 16
     const framedims = {x: 420, y: 200}
 
-    return <div key = "wrapper" className = "wrapper">
+    return <div key = "wrapper" className = "wrapper homepage-shell">
+            <button
+              type="button"
+              className="homepage-graphics-btn"
+              onClick={() => setPage(GRAPHICS_GENERATOR_PAGE)}
+              aria-label="Graphics generator"
+              title="Graphics generator"
+            >
+              <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+                <rect x="3" y="4" width="18" height="14" rx="1.5" fill="none" stroke="currentColor" strokeWidth="1.75" />
+                <circle cx="8.5" cy="9" r="1.6" fill="currentColor" />
+                <path d="M4.5 16.5 9 12l3 2.5 3.5-4.5 4 6" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinejoin="round" />
+              </svg>
+            </button>
             <div className="desktop-only">
             <svg className="svgwindow" fill = "true"
                  width="100%" height={viewport.height} aria-label="loading screen">

@@ -7,6 +7,7 @@ import Desmospage from './pages/desmos';
 import musicpage from './pages/musicpage';
 import Writing from './pages/writing';
 import Aboutpage from './pages/aboutpage';
+import GraphicsGenerator from './pages/graphicsGenerator';
 import { Analytics } from "@vercel/analytics/react"
 import { useWindowSize, Viewport } from './hooks/useWindowSize';
 import { useStableViewport } from './hooks/useStableViewport';
@@ -38,19 +39,27 @@ export type pagesetter = React.Dispatch<React.SetStateAction<number>>
 export type reactvar = {var: any, setter: React.Dispatch<React.SetStateAction<any>>}
 type pagebutton = {name: string, page: (timer: number, setter: pagesetter, mouse: point, extravars: reactvar[], viewport: Viewport)=>{}}
 
+/** Main homepage nav buttons — excludes tools linked via dedicated icons. */
 export const pages = [{name: "MUSIC", page: musicpage},
 {name: "ANIMATION", page: Animationpage},
 {name: "DESMOS", page: Desmospage},
 {name: "WRITING", page: Writing},
 {name: "ABOUT", page: Aboutpage}]
 
+/** Extra pages reachable outside the main nav strip (1-indexed Currpage). */
+export const GRAPHICS_GENERATOR_PAGE = pages.length + 1;
+
+const allPages = [
+  ...pages,
+  { name: "GRAPHICS", page: GraphicsGenerator },
+];
+
 function returnpage(currpage: number, timer: number, setter: pagesetter, mouse: point, extravars: reactvar[], viewport: Viewport, layoutViewport: Viewport): JSX.Element{
   if(currpage == 0){
     return Homepage(timer, setter, mouse, viewport)
   } 
   else{
-    return pages[currpage-1].page(timer, setter, mouse, extravars, layoutViewport)
-    //HERE: Only return pages 1 through 4!
+    return allPages[currpage - 1].page(timer, setter, mouse, extravars, layoutViewport);
   }
 }
 
