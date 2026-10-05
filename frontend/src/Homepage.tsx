@@ -2,7 +2,7 @@ import { stringify } from 'querystring';
 import React, { useState, Dispatch, SetStateAction, useEffect, useCallback } from 'react';
 import {Dstring, Hstring, Lstring} from "./LetterData";
 import App from "./App"
-import {pages, pagesetter, GRAPHICS_GENERATOR_PAGE} from "./App"
+import {pages, pagesetter, GRAPHICS_GENERATOR_PAGE, WHATSAPP_SCANNER_PAGE, SPELLING_BEE_PAGE} from "./App"
 import { Button } from './button';
 import { Viewport } from './hooks/useWindowSize';
 import { MobileHomeHero } from './components/MobileHomeHero';
@@ -107,6 +107,31 @@ export default function Homepage(Timer: number, setPage: pagesetter, mousePositi
     const framedims = {x: 420, y: 200}
 
     return <div key = "wrapper" className = "wrapper homepage-shell">
+            <div className="homepage-tool-stack homepage-tool-stack--left">
+            <button
+              type="button"
+              className="homepage-graphics-btn homepage-bee-btn"
+              onClick={() => setPage(SPELLING_BEE_PAGE)}
+              aria-label="Spelling Bee map"
+              title="Spelling Bee map"
+            >
+              <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+                <polygon
+                  points="12,2.2 19.5,6.5 19.5,15.1 12,19.4 4.5,15.1 4.5,6.5"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.7"
+                  strokeLinejoin="round"
+                />
+                <polygon
+                  points="12,7.2 15.6,9.3 15.6,13.5 12,15.6 8.4,13.5 8.4,9.3"
+                  fill="currentColor"
+                  opacity="0.9"
+                />
+              </svg>
+            </button>
+            </div>
+            <div className="homepage-tool-stack">
             <button
               type="button"
               className="homepage-graphics-btn"
@@ -120,6 +145,26 @@ export default function Homepage(Timer: number, setPage: pagesetter, mousePositi
                 <path d="M4.5 16.5 9 12l3 2.5 3.5-4.5 4 6" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinejoin="round" />
               </svg>
             </button>
+            <button
+              type="button"
+              className="homepage-graphics-btn"
+              onClick={() => setPage(WHATSAPP_SCANNER_PAGE)}
+              aria-label="Chat scanner"
+              title="Chat scanner"
+            >
+              <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+                <path
+                  d="M11 2.75h2v11.1a3.25 3.25 0 1 1-2 0V2.75z"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.75"
+                  strokeLinejoin="round"
+                />
+                <path d="M12 5.5v7.2" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" />
+                <circle cx="12" cy="16.75" r="1.35" fill="currentColor" />
+              </svg>
+            </button>
+            </div>
             <div className="desktop-only">
             <svg className="svgwindow" fill = "true"
                  width="100%" height={viewport.height} aria-label="loading screen">

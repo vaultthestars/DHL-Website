@@ -8,6 +8,8 @@ import musicpage from './pages/musicpage';
 import Writing from './pages/writing';
 import Aboutpage from './pages/aboutpage';
 import GraphicsGenerator from './pages/graphicsGenerator';
+import WhatsAppScanner from './pages/whatsappScanner';
+import SpellingBee from './pages/spellingBee';
 import { Analytics } from "@vercel/analytics/react"
 import { useWindowSize, Viewport } from './hooks/useWindowSize';
 import { useStableViewport } from './hooks/useStableViewport';
@@ -48,10 +50,14 @@ export const pages = [{name: "MUSIC", page: musicpage},
 
 /** Extra pages reachable outside the main nav strip (1-indexed Currpage). */
 export const GRAPHICS_GENERATOR_PAGE = pages.length + 1;
+export const WHATSAPP_SCANNER_PAGE = pages.length + 2;
+export const SPELLING_BEE_PAGE = pages.length + 3;
 
 const allPages = [
   ...pages,
   { name: "GRAPHICS", page: GraphicsGenerator },
+  { name: "CHAT SCANNER", page: WhatsAppScanner },
+  { name: "SPELLING BEE", page: SpellingBee },
 ];
 
 function returnpage(currpage: number, timer: number, setter: pagesetter, mouse: point, extravars: reactvar[], viewport: Viewport, layoutViewport: Viewport): JSX.Element{
